@@ -1,0 +1,61 @@
+{
+  "layout": "landscape",
+  "template_dir": "src",
+  "output_filename": "ACM_Templates",
+  "clean_after_build": true,
+  "page_margins": {
+    "landscape": {
+      "left": "1.5cm",
+      "right": "1.5cm",
+      "top": "2cm",
+      "bottom": "2cm"
+    }
+  },
+  "supported_extensions": [
+    ".cpp",
+    ".hpp",
+    ".h",
+    ".c",
+    ".cc",
+    ".cxx"
+  ],
+  "exclude_patterns": [
+    "*.tmp",
+    "*.bak",
+    "*~",
+    "*.swp"
+  ],
+  "fonts": {
+    "main": "Times New Roman",
+    "cjk_main": "SimHei",
+    "cjk_sans": "SimHei",
+    "cjk_mono": "SimSun",
+    "code": "Fira Code"
+  },
+  "colors": {
+    "section": "blue!70!black",
+    "subsection": "green!60!black",
+    "subsubsection": "orange!80!black",
+    "code_background": "gray!5",
+    "code_keyword": "blue",
+    "code_comment": "green!50!black",
+    "code_string": "red",
+    "code_number": "gray"
+  },
+  "code_style": {
+    "font_size": "6pt",
+    "line_numbers": true,
+    "frame_style": "leftline",
+    "frame_round": false,
+    "break_lines": true,
+    "tab_size": 4,
+    "columns": "fixed",
+    "base_width": "0.6em",
+    "scale_factor": 0.85,
+    "line_spacing": "0.60",
+    "left_margin": "0pt",
+    "right_margin": "0pt",
+    "above_skip": "0.5em",
+    "below_skip": "0.5em"
+  }
+}
