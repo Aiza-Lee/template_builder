@@ -1,0 +1,114 @@
+% Unified LaTeX Template (corrected version)
+\documentclass[{{DOCUMENT_CLASS_OPTIONS}}]{ctexart}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xeCJK}
+\usepackage{fontspec}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\usepackage{tocloft}
+
+% Geometry / Page
+\geometry{
+	a4paper,
+	{{PAGE_ORIENTATION}},
+	left={{MARGIN_LEFT}},
+	right={{MARGIN_RIGHT}},
+	top={{MARGIN_TOP}},
+	bottom={{MARGIN_BOTTOM}},
+	{{COLUMN_SEP_OPTION}}
+}
+
+% Fonts
+\setmainfont{{{MAIN_FONT}}}
+\setCJKmainfont[BoldFont={{CJK_BOLD_FONT}}, ItalicFont={{CJK_ITALIC_FONT}}]{{{CJK_MAIN_FONT}}}
+
+% Code font setup
+{{CODE_FONT_SETUP}}
+
+% Hyperref configuration for navigation and bookmarks
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    filecolor=magenta,
+    urlcolor=cyan!70!black,
+    bookmarksnumbered=true,
+    bookmarksopen=true,
+    pdftitle={{{DOCUMENT_TITLE}}},
+    pdfauthor={{{DOCUMENT_AUTHOR}}},
+    pdfsubject={Algorithm Templates}
+}
+
+% Table of Contents styling
+\setlength{\cftbeforesecskip}{{{TOC_SEC_SPACING}}}
+\setlength{\cftbeforesubsecskip}{{{TOC_SUBSEC_SPACING}}}
+\setlength{\cftbeforesubsubsecskip}{{{TOC_SUBSUBSEC_SPACING}}}
+\renewcommand{\cftsecfont}{{{{TOC_SEC_FONT}}\color{{{SECTION_COLOR}}}}}
+\renewcommand{\cftsubsecfont}{{{{TOC_SUBSEC_FONT}}\color{{{SUBSECTION_COLOR}}}}}
+\renewcommand{\cftsubsubsecfont}{{{{TOC_SUBSUBSEC_FONT}}\color{{{SUBSUBSECTION_COLOR}}}}}
+
+% Set TOC depth to include subsubsections
+\setcounter{tocdepth}{{{TOC_DEPTH}}}
+
+% Section styles
+\titleformat{\section}{\large\bfseries\color{{{SECTION_COLOR}}}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries\color{{{SUBSECTION_COLOR}}}}{\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\footnotesize\bfseries\color{{{SUBSUBSECTION_COLOR}}}}{\thesubsubsection}{0.4em}{}
+
+% Spacing
+\titlespacing*{\section}{0pt}{{{SECTION_SPACING_BEFORE}}}{{{SECTION_SPACING_AFTER}}}
+\titlespacing*{\subsection}{0pt}{{{SUBSECTION_SPACING_BEFORE}}}{{{SUBSECTION_SPACING_AFTER}}}
+\titlespacing*{\subsubsection}{0pt}{{{SUBSUBSECTION_SPACING_BEFORE}}}{{{SUBSUBSECTION_SPACING_AFTER}}}
+
+% Listings style
+\lstset{
+	language=C++,
+	basicstyle={{CODE_BASIC_STYLE}},
+	keywordstyle=\color{{{CODE_KEYWORD_COLOR}}}\bfseries,
+	commentstyle=\color{{{CODE_COMMENT_COLOR}}}\itshape,
+	stringstyle=\color{{{CODE_STRING_COLOR}}},
+	numberstyle=\tiny\color{{{CODE_NUMBER_COLOR}}},
+	backgroundcolor=\color{{{CODE_BACKGROUND_COLOR}}},
+	frame={{CODE_FRAME_STYLE}},
+	breaklines={{CODE_BREAK_LINES}},
+	tabsize={{CODE_TAB_SIZE}},
+	showstringspaces=false,
+	showspaces=false,
+	showtabs=false,
+	aboveskip={{CODE_ABOVE_SKIP}},
+	belowskip={{CODE_BELOW_SKIP}},
+	{{CODE_NUMBERS_OPTION}}numbersep=4pt
+}
+
+% Paragraph / columns
+\setlength{\parskip}{{{PARAGRAPH_SKIP}}}
+\setlength{\parindent}{{{PARAGRAPH_INDENT}}}
+\setlength{\columnseprule}{{{COLUMN_RULE_WIDTH}}}
+\setlength{\columnsep}{{{COLUMN_SEPARATION}}}
+
+% Page style
+\pagestyle{{{PAGE_STYLE}}}
+{{HEADER_FOOTER_SETTINGS}}
+
+% Title meta
+\title{\Large\textbf{{{DOCUMENT_TITLE}}}}
+\author{{{DOCUMENT_AUTHOR}} \\ \normalsize {{{DOCUMENT_SUBTITLE}}}}
+\date{{{DOCUMENT_DATE}}}
+
+\begin{document}
+{{TITLE_PAGE_LAYOUT}}
+\maketitle
+{{CUSTOM_TITLE_CONTENT}}
+\newpage
+{{TOC_LAYOUT}}
+{{TOC_SPACING_BEFORE}}
+{{TOC_FONT_SIZE}}\tableofcontents
+{{TOC_SPACING_AFTER}}
+\newpage
+{{MAIN_CONTENT_LAYOUT}}
+{{AUTO_INSERTED_CONTENT}}
+\end{document}

@@ -140,7 +140,7 @@ class BuildManager:
     
     def _move_output_pdf(self, tex_filename: str) -> bool:
         """移动PDF文件到输出目录"""
-        output_filename = self.config.get('output_filename', 'ACM_Templates')
+        output_filename = self.config.get('build', {}).get('output_filename', 'ACM_Templates')
         pdf_file = self.build_dir / f"{output_filename}.pdf"
         output_pdf = self.output_dir / f"{output_filename}.pdf"
         
@@ -157,7 +157,7 @@ class BuildManager:
     
     def clean_temp_files(self) -> None:
         """清理临时文件"""
-        if not self.config.get('clean_after_build', True):
+        if not self.config.get('build', {}).get('clean_after_build', True):
             return
         
         temp_extensions = ['.aux', '.log', '.out', '.fdb_latexmk', '.fls', '.toc', '.pyg']
@@ -192,11 +192,11 @@ class BuildManager:
     
     def get_build_info(self) -> Dict[str, Any]:
         """获取构建信息"""
-        output_filename = self.config.get('output_filename', 'ACM_Templates')
+        output_filename = self.config.get('build', {}).get('output_filename', 'ACM_Templates')
         
         return {
             'tex_file': self.build_dir / f"{output_filename}.tex",
             'pdf_file': self.output_dir / f"{output_filename}.pdf",
-            'layout': self.config.get('layout', 'landscape'),
-            'layout_name': '横版双列' if self.config.get('layout') == 'landscape' else '竖版单列'
+            'layout': self.config.get('build', {}).get('layout', 'landscape'),
+            'layout_name': '横版双列' if self.config.get('build', {}).get('layout') == 'landscape' else '竖版单列'
         }

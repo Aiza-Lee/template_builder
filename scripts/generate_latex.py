@@ -3,7 +3,7 @@
 """
 ACM 模板 LaTeX/PDF 生成器 - 重构版
 支持横版双列和竖版单列布局
-模块化的项目结构
+模块化的项目结构，统一模板系统
 """
 
 import sys
@@ -14,9 +14,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config_manager import ConfigManager
-from latex_styler import LaTeXStyler
 from file_processor import FileProcessor
 from build_manager import BuildManager
+from template_processor import LaTeXTemplateProcessor
 
 # 项目结构路径
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -27,9 +27,10 @@ OUTPUT_DIR = PROJECT_ROOT / 'output'
 CONFIG_FILE = PROJECT_ROOT / 'config.json'
 
 INSERT_MARK = '%__AUTO_INSERTED_CONTENT__'
+UNIFIED_PLACEHOLDER = '{{AUTO_INSERTED_CONTENT}}'
 
 class TemplateGenerator:
-    """主模板生成器类 - 重构版"""
+    """主模板生成器类 - 重构版，支持统一模板系统"""
     
     def __init__(self, config_path=None):
         # 初始化配置管理器
@@ -41,13 +42,18 @@ class TemplateGenerator:
             raise ValueError("配置验证失败")
         
         # 初始化各个组件
-        self.styler = LaTeXStyler(self.config_manager.config)
         self.file_processor = FileProcessor(self.config_manager.config)
         self.build_manager = BuildManager(
             self.config_manager.config,
             BUILD_DIR,
             OUTPUT_DIR
         )
+        
+        # 初始化模板处理器（如果启用统一模板）
+        if self.config_manager.get('build.use_unified_template', False):
+            self.template_processor = LaTeXTemplateProcessor(self.config_manager.config)
+        else:
+            self.template_processor = None
     
     @property
     def config(self):
@@ -55,30 +61,67 @@ class TemplateGenerator:
         return self.config_manager.config
     
     def generate_latex(self):
-        """生成LaTeX文件"""
+        """生成LaTeX文件 - 支持统一模板和传统模板"""
         print("正在生成 LaTeX 文件...")
-        
-        # 选择并加载模板
-        template_content = self._load_template()
-        if not template_content:
-            return False
         
         # 生成内容
         insert_content = self._generate_content()
         if not insert_content:
             print("警告: 没有找到任何模板文件")
         
-        # 应用样式配置
-        template_content = self._apply_styles(template_content)
+        # 根据配置选择模板处理方式
+        if self.config_manager.get('build.use_unified_template', False):
+            final_content = self._process_unified_template(insert_content)
+        else:
+            # 传统模板处理方式
+            template_content = self._load_legacy_template()
+            if not template_content:
+                return False
+            # 注意：在统一模板系统中，样式处理由模板处理器完成
+            # 传统模式下直接插入内容，不再应用单独的样式处理
+            final_content = self._insert_content(template_content, insert_content)
         
-        # 插入生成的内容
-        final_content = self._insert_content(template_content, insert_content)
-        
+        if not final_content:
+            return False
+            
         # 保存文件
         return self._save_latex_file(final_content)
     
-    def _load_template(self):
-        """加载LaTeX模板文件"""
+    def _process_unified_template(self, insert_content):
+        """处理统一模板系统"""
+        print("使用统一模板系统...")
+        
+        # 加载统一模板
+        unified_template_name = self.config_manager.get('build.unified_template_name', 'unified_template.tex')
+        template_file = TEMPLATES_DIR / unified_template_name
+        
+        if not template_file.exists():
+            print(f"错误: 找不到统一模板文件 {template_file}")
+            return None
+        
+        try:
+            template_content = self.template_processor.load_template(template_file)
+            
+            # 验证模板
+            validation_result = self.template_processor.validate_template(template_content)
+            if not validation_result['valid']:
+                print("模板验证失败:")
+                for msg in validation_result['validation_messages']:
+                    print(f"  - {msg}")
+                return None
+            
+            print("✓ 模板验证通过")
+            
+            # 处理模板，替换所有占位符
+            final_content = self.template_processor.process_template(template_content, insert_content)
+            return final_content
+            
+        except Exception as e:
+            print(f"错误: 处理统一模板时发生错误: {e}")
+            return None
+    
+    def _load_legacy_template(self):
+        """加载传统LaTeX模板文件（向后兼容）"""
         layout = self.config_manager.get('layout', 'landscape')
         template_file = TEMPLATES_DIR / f'{layout}_template.tex'
         
@@ -95,7 +138,7 @@ class TemplateGenerator:
     
     def _generate_content(self):
         """生成文档内容"""
-        template_root = PROJECT_ROOT / self.config_manager.get('template_dir', 'src')
+        template_root = PROJECT_ROOT / self.config_manager.get('build.template_dir', 'src')
         
         if not template_root.exists():
             print(f"错误: 模板目录 {template_root} 不存在")
@@ -104,12 +147,6 @@ class TemplateGenerator:
         
         print("正在遍历模板文件...")
         return self.file_processor.walk_templates(template_root)
-    
-    def _apply_styles(self, tex_content):
-        """应用所有样式配置"""
-        tex_content = self.styler.apply_font_config(tex_content)
-        tex_content = self.styler.apply_code_style_config(tex_content)
-        return tex_content
     
     def _insert_content(self, template_content, insert_content):
         """将生成的内容插入模板"""

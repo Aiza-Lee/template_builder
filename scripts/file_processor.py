@@ -14,8 +14,8 @@ class FileProcessor:
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.supported_extensions = config.get('supported_extensions', ['.cpp'])
-        self.exclude_patterns = config.get('exclude_patterns', [])
+        self.supported_extensions = config.get('files', {}).get('supported_extensions', ['.cpp'])
+        self.exclude_patterns = config.get('files', {}).get('exclude_patterns', [])
     
     def should_exclude_file(self, filepath: Path) -> bool:
         """检查文件是否应该被排除"""
@@ -175,7 +175,7 @@ class FileProcessor:
         tex += "\\end{lstlisting}\n\n"
         
         # 根据布局调整间距 - 更紧凑
-        layout = self.config.get('layout', 'landscape')
+        layout = self.config.get('build', {}).get('layout', 'landscape')
         if layout == 'landscape':
             tex += "\\vspace{0.1em}\n\n"
         else:
