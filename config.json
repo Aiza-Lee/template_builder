@@ -23,7 +23,8 @@
       ".h",
       ".c",
       ".cc",
-      ".cxx"
+      ".cxx",
+      ".json"
     ],
     "exclude_patterns": [
       "*.tmp",

@@ -2,7 +2,9 @@
 
 [![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/Aiza-Lee/template_builder) [![Python](https://img.shields.io/badge/python-3.7+-green.svg)](https://www.python.org/) [![LaTeX](https://img.shields.io/badge/LaTeX-XeLaTeX-orange.svg)](https://www.latex-project.org/)
 
-一个高效的 LaTeX 模板生成工具，专为 ACM 算法竞赛选手设计，将算法代码模板自动编译成pdf文档
+> 该项目目前几乎由 AI 完成
+
+LaTeX 生成工具，将算法代码模板编译成pdf文档
 
 - **[快速开始指南](docs/quick_start.md)** - 5分钟上手教程
 - **[配置文件详解](docs/config_structure.md)** - 完整配置说明
