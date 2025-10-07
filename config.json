@@ -1,116 +1,87 @@
 {
-  "_metadata": {
-    "version": "2.0.0",
-    "description": "ACM 算法竞赛模板构建配置文件"
-  },
-  "project": {
-    "title": "ACM 算法竞赛模板集合",
-    "author": "Aiza",
-    "version": "2025"
-  },
-  "build": {
-    "layout": "landscape",
-    "template_dir": "src",
-    "output_filename": "ACM_Templates",
-    "clean_after_build": true,
-    "use_unified_template": true,
-    "unified_template_name": "unified_template.tex"
-  },
-  "files": {
-    "supported_extensions": [
-      ".cpp",
-      ".hpp",
-      ".h",
-      ".c",
-      ".cc",
-      ".cxx",
-      ".json"
-    ],
-    "exclude_patterns": [
-      "*.tmp",
-      "*.bak",
-      "*~",
-      "*.swp"
-    ]
-  },
-  "page_layout": {
-    "margins": {
-      "landscape": {
-        "left": "0.8cm",
-        "right": "0.8cm",
-        "top": "1.5cm",
-        "bottom": "1.5cm"
-      }
-    },
-    "column_separation": "1cm"
-  },
-  "typography": {
-    "fonts": {
-      "main": "Times New Roman",
-      "cjk_main": "SimSun",
-      "cjk_sans": "SimHei",
-      "cjk_mono": "SimSun",
-      "code": "Fira Code"
-    },
-    "colors": {
-      "section": "blue!70!black",
-      "subsection": "green!60!black",
-      "subsubsection": "orange!80!black",
-      "code_background": "gray!5",
-      "code_keyword": "blue",
-      "code_comment": "green!50!black",
-      "code_string": "red",
-      "code_number": "gray"
-    }
-  },
-  "code_style": {
-    "appearance": {
-      "font_size": "5pt",
-      "line_numbers": true,
-      "frame_style": "leftline",
-      "frame_round": true,
-      "break_lines": true
-    },
-    "formatting": {
-      "tab_size": 4,
-      "columns": "flexible",
-      "base_width": "0.5em",
-      "scale_factor": 0.85,
-      "line_spacing": "0.1"
-    },
-    "spacing": {
-      "left_margin": "0pt",
-      "right_margin": "0pt",
-      "above_skip": "0em",
-      "below_skip": "0em"
-    }
-  },
-  "table_of_contents": {
-    "structure": {
-      "depth": 3,
-      "show_page_numbers": true,
-      "show_dots": true,
-      "font_size": "\\tiny"
-    },
-    "styling": {
-      "fonts": {
-        "section": "\\scriptsize\\bfseries",
-        "subsection": "\\tiny\\bfseries",
-        "subsubsection": "\\tiny"
-      },
-      "indent": {
-        "section": "0em",
-        "subsection": "1.5em",
-        "subsubsection": "3em"
-      }
-    },
-    "spacing": {
-      "before_section": "0.2pt",
-      "before_subsection": "0.1pt",
-      "before_subsubsection": "0pt",
-      "before_toc": "-1.5cm",
-      "after_toc": "-1.2cm"
-    }
-  },
-  "layout": "landscape"
+	"_metadata": {
+		"version": "2.0.0",
+		"description": "ACM 算法竞赛模板构建配置文件"
+	},
+	"project": {
+		"title": "ACM 算法竞赛模板集合",
+		"author": "Aiza",
+		"version": "2025"
+	},
+	"build": {
+		"template_dir": "src",
+		"output_filename": "ACM_Templates",
+		"clean_after_build": true,
+		"use_unified_template": true,
+		"unified_template_name": "unified_template.tex"
+	},
+	"files": {
+		"supported_extensions": [
+			".cpp",
+			".hpp",
+			".h",
+			".c",
+			".cc",
+			".cxx",
+			".json"
+		],
+		"exclude_patterns": [
+			"*.tmp",
+			"*.bak",
+			"*~",
+			"*.swp"
+		]
+	},
+	"page_layout": {
+		"margins": {
+			"landscape": {
+				"left": "0.8cm",
+				"right": "0.8cm",
+				"top": "1.5cm",
+				"bottom": "1.5cm"
+			}
+		},
+		"column_separation": "1cm"
+	},
+	"typography": {
+		"fonts": {
+			"main": "Times New Roman",
+			"cjk_main": "SimSun",
+			"cjk_sans": "SimHei",
+			"cjk_mono": "SimSun",
+			"code": "Fira Code"
+		},
+		"colors": {
+			"section": "blue!70!black",
+			"subsection": "green!60!black",
+			"subsubsection": "orange!80!black",
+			"code_background": "gray!5",
+			"code_keyword": "blue",
+			"code_comment": "green!50!black",
+			"code_string": "red",
+			"code_number": "gray"
+		}
+	},
+	"code_style": {
+		"appearance": {
+			"font_size": "5pt",
+			"line_numbers": true,
+			"frame_style": "leftline",
+			"frame_round": true,
+			"break_lines": true
+		},
+		"formatting": {
+			"tab_size": 4,
+			"columns": "flexible",
+			"base_width": "0.5em",
+			"scale_factor": 0.85,
+			"line_spacing": "0.1"
+		},
+		"spacing": {
+			"left_margin": "0pt",
+			"right_margin": "0pt",
+			"above_skip": "0em",
+			"below_skip": "0em"
+		}
+	}
 }
