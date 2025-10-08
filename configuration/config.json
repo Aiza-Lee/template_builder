@@ -1,0 +1,53 @@
+{
+	"_metadata": {
+		"version": "3.0",
+		"description": "配置文件，定义LaTeX文档的各项参数"
+	},
+	"TEX": {
+		"author": "Aiza",
+		"subject": "文档主题",
+		"title": {
+			"content": "文档标题",
+			"note": "标题页额外内容"
+		},
+		"code": {
+			"font_family": "Fira Code",
+			"font_size": "12em",
+			"line_height": "1.5em",
+			"auto_break_lines": true,
+			"tab_size": 4,
+			"space_before": "1em",
+			"space_after": "1em",
+			"keyword_color": "blue",
+			"comment_color": "green",
+			"string_color": "red",
+			"bg_color": "lightgray"
+		},
+		"hyperref": {
+			"enable_colorlinks": true,
+			"link_color": "blue",
+			"file_color": "magenta",
+			"url_color": "cyan",
+			"numbered_bookmarks": true,
+			"open_bookmarks": false
+		},
+		"geometry": {
+			"paper_size": "a4paper",
+			"left_margin": "2.5cm",
+			"right_margin": "2.5cm",
+			"top_margin": "2.5cm",
+			"bottom_margin": "2.5cm"
+		},
+		"global": {
+			"main_font": "Times New Roman",
+			"cjk_main_font": "SimSun",
+			"page_style": "plain"
+		}
+	},
+	"program": {
+		"template_path": "templates/main_template.tex",
+		"build_path": "build/generated_document.tex",
+		"output_pdf_path": "output/document.pdf",
+		"include_file_type": [".cpp", ".c", ".json"]
+	}
+}

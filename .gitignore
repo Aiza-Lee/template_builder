@@ -1,4 +1,5 @@
 /output
 /build
-/src
 /scripts/__pycache__
+/bin
+/obj

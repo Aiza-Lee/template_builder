@@ -1,0 +1,100 @@
+% Unified LaTeX Template (corrected version)
+% 本模板用于生成算法竞赛模板集，支持中英文混排和代码高亮
+% 文档类选项可以包括：a4paper, 12pt, oneside/twoside 等
+\documentclass[10pt,landscape,twocolumn]{ctexart} % ctexart支持中文排版
+
+% Packages - 导入所需的LaTeX包
+\usepackage[utf8]{inputenc}	% 输入编码支持
+\usepackage{geometry}		% 页面布局设置
+\usepackage{listings}		% 代码列表和高亮
+\usepackage{xeCJK}			% 中文支持（XeLaTeX）
+\usepackage{fontspec}		% 字体设置
+\usepackage{xcolor}			% 颜色支持
+\usepackage{hyperref}		% 超链接和PDF书签
+
+% Geometry / Page - 页面布局设置
+\geometry{
+	##GEOMETRY_PAPER_SIZE##,				% 纸张大小，如: a4paper, letterpaper
+	landscape,								% landscape
+	left=##GEOMETRY_LEFT_MARGIN##,			% 左边距值，如: 2cm
+	right=##GEOMETRY_RIGHT_MARGIN##,		% 右边距值，如: 2cm
+	top=##GEOMETRY_TOP_MARGIN##,			% 上边距值，如: 2.5cm
+	bottom=##GEOMETRY_BOTTOM_MARGIN##		% 下边距值，如: 2.5cm
+}
+
+% Fonts - 字体设置
+\setmainfont{##GLOBAL_MAIN_FONT##}  % 西文主字体名称，如：Times New Roman
+\setCJKmainfont{##GLOBAL_CJK_MAIN_FONT##}  % 中文主字体名称
+
+% Hyperref configuration - PDF导航、书签和元数据设置
+\hypersetup{
+	colorlinks=##HYPERREF_ENABLE_COLORLINKS##,			% 是否使用彩色链接: true/false
+	linkcolor=##HYPERREF_LINK_COLOR##,					% 内部链接颜色名称，如: blue
+	filecolor=##HYPERREF_FILE_COLOR##,					% 文件链接颜色名称，如: magenta
+	urlcolor=##HYPERREF_URL_COLOR##,						% URL链接颜色名称，如: cyan
+	bookmarksnumbered=##HYPERREF_NUMBERED_BOOKMARKS##,	% 书签是否包含编号: true/false
+	bookmarksopen=##HYPERREF_OPEN_BOOKMARKS##,			% 是否默认展开书签: true/false
+	pdftitle={##TITLE_CONTENT##},						% PDF文档标题
+	pdfauthor={##AUTHOR##},						% PDF文档作者
+	pdfsubject={##SUBJECT##}					% PDF文档主题
+}
+
+% 代码列表样式设置
+\definecolor{code_keyword}{RGB}{##CODE_KEYWORD_COLOR##}		% 关键词RGB颜色，如: 0,0,255
+\definecolor{code_comment}{RGB}{##CODE_COMMENT_COLOR##}		% 注释RGB颜色，如: 0,128,0
+\definecolor{code_string}{RGB}{##CODE_STRING_COLOR##}		% 字符串RGB颜色，如: 163,21,21
+\definecolor{code_background}{RGB}{##CODE_BG_COLOR##}		% 背景RGB颜色，如: 248,248,248
+
+\newfontfamily{\customcodefontfamily}{##CODE_FONT_FAMILY##}[		% Fira Code 字体设置
+	Contextuals={Alternate},  % 启用编程连字
+	Ligatures={Common, Rare}, % 启用所有连字类型
+	Kerning=On                % 开启字距调整
+]
+
+% 代码字体设置
+\lstset{
+	language=C++,											% 代码语言: C++
+	basicstyle=
+		\customcodefontfamily
+		\fontsize{##CODE_FONT_SIZE##}{##CODE_LINE_HEIGHT##}
+		\selectfont,										% 代码字体样式
+	keywordstyle=\color{code_keyword}\bfseries,				% 关键词样式
+	commentstyle=\color{code_comment}\itshape,				% 注释样式
+	stringstyle=\color{code_string},						% 字符串样式
+	numberstyle=\tiny\color{gray},							% 行号样式
+	backgroundcolor=\color{code_background},				% 背景颜色
+	frame=none,												% 边框样式: none, leftline, topline, bottomline, lines, single, shadowbox
+	breaklines=##CODE_AUTO_BREAK_LINES##,					% 是否自动换行: true/false
+	tabsize=##CODE_TAB_SIZE##,								% Tab宽度，如: 4
+	numbers=left,											% 行号位置: left, right, none
+	showstringspaces=false,									% 不显示字符串中的空格
+	showspaces=false,										% 不显示空格
+	showtabs=false,											% 不显示Tab
+	aboveskip=##CODE_SPACE_BEFORE##,						% 代码块前间距
+	belowskip=##CODE_SPACE_AFTER##							% 代码块后间距
+}
+
+% 页面样式设置
+\pagestyle{##GLOBAL_PAGE_STYLE##}  % 页面风格: plain（只有页码）, headings（页眉带章节，页脚带页码）, empty（无页眉页脚）
+
+% 文档标题元数据设置
+\title{\Large\bfseries##TITLE_CONTENT##}			% 文档标题
+\author{##AUTHOR##}			% 作者名称
+\date{\today}
+
+\begin{document}
+
+	\onecolumn			% 标题页和目录为单栏格式
+	\maketitle			% 生成标题页
+	\begin{center}
+		##TITLE_NOTE##	% 标题页额外内容
+	\end{center}
+
+	\newpage
+	\twocolumn			% 目录和正文为双栏格式
+	\tableofcontents	% 生成目录
+
+	\newpage
+	##CONTENT##			% 正文内容
+
+\end{document}
