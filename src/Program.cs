@@ -1,16 +1,21 @@
 using System.CommandLine;
+using Core;
 using Utils;
 
 namespace Program {
 	public class Program {
 
-		private static readonly List<ILogger> _loggers = [];
-		private static ILogger? _logger;
+		private static readonly Logger _logger;
+		private static readonly PdfBuilder _pdfBuilder;
+
+		static Program() {
+			_logger = new Logger();
+			_pdfBuilder = new PdfBuilder(_logger);
+		}
 
 		public static int Main(string[] args) {
-			_logger = new Logger("[Program]");
-			_loggers.Add(_logger);
 			_logger.Info("Application started.");
+
 			var rootCommand = CreateRootCommand();
 			return rootCommand.Parse(args).Invoke();
 		}
@@ -35,23 +40,35 @@ namespace Program {
 
 			rootCommand.SetAction((parseResult) => {
 				var logLevel = parseResult.GetValue(logLevelOption);
-				SetLogLevel(logLevel);
+				SetGlobalLogLevel(logLevel);
+
+				var verbose = parseResult.GetValue(verboseOption);
+				if (verbose) SetGlobalLogLevel(LogLevel.INFO);
+
+				var buildCommandResult = parseResult.GetResult(buildCommand);
+				if (buildCommandResult != null) {
+					_pdfBuilder?.Build();
+				}
 			});
 
 			return rootCommand;
 		}
 
-		private static void SetLogLevel(string? logLevel) {
-			var levelEnum = LogLevel.INFO;
-			try {
-				if (string.IsNullOrEmpty(logLevel)) return;
-				levelEnum = Enum.Parse<LogLevel>(logLevel.ToUpper());
-			} catch (Exception) {
-				_logger?.Error($"Invalid log level: {logLevel}. Defaulting to INFO.");
+		private static void SetGlobalLogLevel(string? logLevel) {
+			if (string.IsNullOrEmpty(logLevel)) {
+				SetGlobalLogLevel(LogLevel.INFO);
+				return;
 			}
-			foreach (var logger in _loggers) {
-				logger.Level = levelEnum;
+
+			if (!Enum.TryParse<LogLevel>(logLevel, true, out var levelEnum)) {
+				_logger.Warning($"Invalid log level: \"{logLevel}\". Defaulting to INFO.");
+				levelEnum = LogLevel.INFO;
 			}
+			SetGlobalLogLevel(levelEnum);
+		}
+
+		private static void SetGlobalLogLevel(LogLevel level) {
+			_logger.Level = level;
 		}
 
 	}

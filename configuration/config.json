@@ -44,7 +44,7 @@
 			"page_style": "plain"
 		}
 	},
-	"program": {
+	"PROGRAM": {
 		"build_path": "build/",
 		"code_source_path": "code/",
 		"include_file_type": [".cpp", ".c", ".json"]

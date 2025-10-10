@@ -1,12 +1,12 @@
 namespace Utils {
-	public enum LogLevel {
-		NONE,
+	internal enum LogLevel {
+		DEBUG,
 		INFO,
 		WARNING,
 		ERROR,
-		DEBUG
+		NONE,
 	}
-	public interface ILogger {
+	internal interface ILogger {
 		LogLevel Level { get; set; }
 		void Info(string message);
 		void Warning(string message);
