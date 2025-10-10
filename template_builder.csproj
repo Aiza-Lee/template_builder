@@ -1,14 +1,26 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="System.CommandLine" Version="2.0.0-rc.1.25451.107" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="System.CommandLine" Version="2.0.0-rc.1.25451.107" />
+		<EmbeddedResource Include="Resources\DefaultConfig.json">
+			<LogicalName>DefaultConfig.json</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Resources\Templates\Main.tex">
+			<LogicalName>Templates.Main.tex</LogicalName>
+		</EmbeddedResource>
+		<EmbeddedResource Include="Resources\Templates\CodeBlock.tex">
+			<LogicalName>Templates.CodeBlock.tex</LogicalName>
+		</EmbeddedResource>
+		<content Include="configuration\config.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</content>
+	</ItemGroup>
 
 </Project>
