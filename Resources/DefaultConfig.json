@@ -45,8 +45,9 @@
 		}
 	},
 	"PROGRAM": {
-		"build_path": "build/",
-		"code_source_path": "code/",
-		"include_file_type": [".cpp", ".c", ".json"]
+		"build_directory": "build",
+		"code_source_directory": "code",
+		"include_file_type": [".cpp", ".c", ".json"],
+		"output_file_name": "output.pdf"
 	}
 }

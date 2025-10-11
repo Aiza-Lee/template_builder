@@ -3,21 +3,21 @@ namespace Utils {
 		public LogLevel Level { get; set; } = LogLevel.INFO;
 
 		public void Info(string message) {
-			if (Level > LogLevel.INFO) return;
+			if (LogLevel.INFO <= Level) return;
 			Console.ForegroundColor = ConsoleColor.White;
 			Console.WriteLine($"{message}");
 			Console.ResetColor();
 		}
 
 		public void Warning(string message) {
-			if (Level > LogLevel.WARNING) return;
+			if (LogLevel.WARNING <= Level) return;
 			Console.ForegroundColor = ConsoleColor.Yellow;
 			Console.WriteLine($"[Warning] {message}");
 			Console.ResetColor();
 		}
 
 		public void Error(string message) {
-			if (Level > LogLevel.ERROR) return;
+			if (LogLevel.ERROR <= Level) return;
 			Console.ForegroundColor = ConsoleColor.Red;
 			Console.WriteLine($"[Error] {message}");
 			Console.ResetColor();
@@ -25,7 +25,7 @@ namespace Utils {
 
 		public void Debug(string message) {
 #if DEBUG
-			if (Level > LogLevel.DEBUG) return;
+			if (LogLevel.DEBUG <= Level) return;
 			Console.ForegroundColor = ConsoleColor.Cyan;
 			Console.WriteLine($"[Debug] {message}");
 			Console.ResetColor();

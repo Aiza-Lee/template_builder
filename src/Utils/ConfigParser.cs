@@ -1,9 +1,9 @@
 using System.Text.Json;
 
 namespace Utils {
-	internal struct ConfigValue(string defaultValue) {
-		public string? Value { get; set; } = defaultValue;
-		public string DefaultValue { get; } = defaultValue;
+	internal struct ConfigValue(string[] defaultValue) {
+		public string[]? Value { get; set; } = defaultValue;
+		public string[] DefaultValue { get; } = defaultValue;
 	}
 
 	internal class ConfigParser : IConfigParser {
@@ -24,7 +24,7 @@ namespace Utils {
 			ParseDefaultConfig();
 		}
 
-		public IEnumerable<KeyValuePair<string, string>> GetAllConfigs() {
+		public IEnumerable<KeyValuePair<string, string[]>> GetAllConfigs() {
 			foreach (var kvp in _configValues) {
 				yield return new(
 					kvp.Key,
@@ -33,24 +33,20 @@ namespace Utils {
 			}
 		}
 
-		public void ParseConfigFile(FileInfo fileInfo) {
-			if (fileInfo.Extension != ".json") {
-				_logger?.Error($"Config file '{fileInfo}' is not a JSON file.");
+		public void ParseConfigFile(string content) {
+			if (string.IsNullOrWhiteSpace(content)) {
+				_logger?.Error($"Config file content is empty.");
+				return;
 			}
-			if (!fileInfo.Exists) {
-				_logger?.Error($"Config file '{fileInfo}' does not exist.");
-			} else {
-				var jsonContent = fileInfo.OpenText().ReadToEnd();
-				ParseJsonContent(jsonContent, false);
-			}
+			ParseJsonContent(content, false);
 		}
 
-		public string QueryConfig(string key) {
+		public string[] QueryConfig(string key) {
 			if (_configValues.TryGetValue(key, out var configValue)) {
 				return configValue.Value ?? configValue.DefaultValue;
 			} else {
-				_logger?.Warning($"Key '{key}' is not registered. Returning empty string.");
-				return string.Empty;
+				_logger?.Warning($"Key '{key}' is not registered. Returning empty array.");
+				return [];
 			}
 		}
 
@@ -89,9 +85,22 @@ namespace Utils {
 					path.RemoveAt(path.Count - 1);
 				}
 			} else if (element.ValueKind == JsonValueKind.Array) {
-				_logger?.Warning($"Arrays are not supported in config files. Skipping array at '{string.Join('.', path)}'.");
+				var values = new List<string>();
+				foreach (var item in element.EnumerateArray()) {
+					if (item.ValueKind == JsonValueKind.String) {
+						values.Add(item.GetString() ?? string.Empty);
+					} else {
+						_logger?.Warning($"Unsupported array item type '{item.ValueKind}' at '{string.Join('_', path)}'. Skipping item.");
+					}
+				}
+				string key = string.Join('_', path);
+				if (isDefaultConfig) {
+					RegisterConfig(key, [.. values]);
+				} else {
+					SetConfigValue(key, [.. values]);
+				}
 			} else {
-				string key = string.Join('_', path) + '_';
+				string key = string.Join('_', path);
 
 				string OtherValueAction() {
 					_logger?.Warning($"Unsupported JSON value type '{element.ValueKind}' at '{string.Join('_', path)}'. Storing raw text.");
@@ -108,9 +117,9 @@ namespace Utils {
 				};
 
 				if (isDefaultConfig) {
-					RegisterConfig(key, value);
+					RegisterConfig(key, [value]);
 				} else {
-					SetConfigValue(key, value);
+					SetConfigValue(key, [value]);
 				}
 			}
 		}
@@ -120,7 +129,7 @@ namespace Utils {
 		/// </summary>
 		/// <param name="key">配置项键值</param>
 		/// <param name="defaultValue">配置项默认值</param>
-		private void RegisterConfig(string key, string defaultValue) {
+		private void RegisterConfig(string key, string[] defaultValue) {
 			if (!_configValues.ContainsKey(key)) {
 				_configValues[key] = new(defaultValue);
 			} else {
@@ -128,7 +137,7 @@ namespace Utils {
 			}
 		}
 
-		private void SetConfigValue(string key, string value) {
+		private void SetConfigValue(string key, string[] value) {
 			if (_configValues.TryGetValue(key, out var configValue)) {
 				_configValues[key] = new(configValue.DefaultValue) { Value = value };
 			} else {

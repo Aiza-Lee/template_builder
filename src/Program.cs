@@ -26,24 +26,24 @@ namespace Program {
 			var buildCommand = new Command("build", "Build pdf file from source files");
 			rootCommand.Add(buildCommand);
 
-			var logLevelOption = new Option<string>("--log-level", "-l") {
-				Description = "Set the logging level (info, warning, error)",
-				HelpName = "LOG_LEVEL",
-			};
-			var verboseOption = new Option<bool>("--verbose", "-v") {
-				Description = "Enable verbose output",
-				HelpName = "VERBOSE",
-			};
+			// var logLevelOption = new Option<string>("--log-level", "-l") {
+			// 	Description = "Set the logging level (info, warning, error)",
+			// 	HelpName = "LOG_LEVEL",
+			// };
+			// var verboseOption = new Option<bool>("--verbose", "-v") {
+			// 	Description = "Enable verbose output",
+			// 	HelpName = "VERBOSE",
+			// };
 
-			rootCommand.Options.Add(logLevelOption);
-			rootCommand.Options.Add(verboseOption);
+			// rootCommand.Options.Add(logLevelOption);
+			// rootCommand.Options.Add(verboseOption);
 
 			rootCommand.SetAction((parseResult) => {
-				var logLevel = parseResult.GetValue(logLevelOption);
-				SetGlobalLogLevel(logLevel);
+				// var logLevel = parseResult.GetValue(logLevelOption);
+				// SetGlobalLogLevel(logLevel);
 
-				var verbose = parseResult.GetValue(verboseOption);
-				if (verbose) SetGlobalLogLevel(LogLevel.INFO);
+				// var verbose = parseResult.GetValue(verboseOption);
+				// if (verbose) SetGlobalLogLevel(LogLevel.INFO);
 
 				var buildCommandResult = parseResult.GetResult(buildCommand);
 				if (buildCommandResult != null) {
@@ -54,22 +54,22 @@ namespace Program {
 			return rootCommand;
 		}
 
-		private static void SetGlobalLogLevel(string? logLevel) {
-			if (string.IsNullOrEmpty(logLevel)) {
-				SetGlobalLogLevel(LogLevel.INFO);
-				return;
-			}
+		// private static void SetGlobalLogLevel(string? logLevel) {
+		// 	if (string.IsNullOrEmpty(logLevel)) {
+		// 		SetGlobalLogLevel(LogLevel.INFO);
+		// 		return;
+		// 	}
 
-			if (!Enum.TryParse<LogLevel>(logLevel, true, out var levelEnum)) {
-				_logger.Warning($"Invalid log level: \"{logLevel}\". Defaulting to INFO.");
-				levelEnum = LogLevel.INFO;
-			}
-			SetGlobalLogLevel(levelEnum);
-		}
+		// 	if (!Enum.TryParse<LogLevel>(logLevel, true, out var levelEnum)) {
+		// 		_logger.Warning($"Invalid log level: \"{logLevel}\". Defaulting to INFO.");
+		// 		levelEnum = LogLevel.INFO;
+		// 	}
+		// 	SetGlobalLogLevel(levelEnum);
+		// }
 
-		private static void SetGlobalLogLevel(LogLevel level) {
-			_logger.Level = level;
-		}
+		// private static void SetGlobalLogLevel(LogLevel level) {
+		// 	_logger.Level = level;
+		// }
 
 	}
 }
