@@ -1,38 +1,43 @@
-# ACM 算法竞赛模板构建器
+# ACM 代码模板PDF构建器
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/Aiza-Lee/template_builder) [![Python](https://img.shields.io/badge/python-3.7+-green.svg)](https://www.python.org/) [![LaTeX](https://img.shields.io/badge/LaTeX-XeLaTeX-orange.svg)](https://www.latex-project.org/)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/Aiza-Lee/template_builder) [![LaTeX](https://img.shields.io/badge/LaTeX-XeLaTeX-orange.svg)](https://www.latex-project.org/)
 
-> 该项目目前几乎由 AI 完成
+## 介绍
 
-LaTeX 生成工具，将算法代码模板编译成pdf文档
+LaTeX 生成工具，将算法代码模板编译成PDF文档。
 
-- **[快速开始指南](docs/quick_start.md)** - 5分钟上手教程
-- **[配置文件详解](docs/config_structure.md)** - 完整配置说明
-- **[常见问题解答](docs/quick_start.md#常见问题)** - 故障排除指南
+软件使用 C# 编写。提供了命令行工具 `template_builder`。有丰富的可配置项。
 
-## 实用命令 文档
+**[配置文件详解](docs/config_structure.md)**
 
+---
 
-## 实用命令
+## 快速开始
 
-| 命令 | 功能 |
-|------|------|
-| `python main.py build` | 构建PDF模板 |
-| `python main.py status` | 查看项目状态 |
-| `python main.py validate-config` | 验证配置文件 |
+### 安装
+1. 克隆仓库：
 
-## 项目结构
-
+```bash
+git clone https://github.com/Aiza-Lee/template_builder.git
+cd template_builder
 ```
-template_builder/
-├── main.py                 # 主程序入口
-├── config.json             # 配置文件
-├── src/                    # 算法代码目录
-├── scripts/                # 核心处理脚本
-├── templates/              # LaTeX模板
-├── build/                  # 构建输出
-└── output/                 # 最终PDF输出
+2. 构建项目：
+
+```bash
+bash ./build.sh
 ```
+### 使用
+
+在构建好的 `publish` 目录下找到可执行文件 `template_builder`（Linux/macOS）或 `template_builder.exe`（Windows）。
+
+在当前目录运行：
+
+```bash
+./template_builder build
+```
+pdf文件将生成在 `output` 目录下。
+
+---
 
 ## 贡献
 
@@ -44,4 +49,4 @@ template_builder/
 
 ---
 
-**如果这个项目对你有帮助，请给一个 Star 支持一下！**
+**如果这个项目对你有帮助，不妨给一个 Star⭐ 支持一下！**

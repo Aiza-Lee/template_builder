@@ -12,7 +12,7 @@ namespace Utils {
 		/// 用户配置文件路径，用于解析用户自定义路径中的相对路径
 		/// </summary>
 		public static string GetConfigInPath(IConfigParser configParser, string configName) {
-			var configFilePath = configParser.QueryConfig(configName);
+			var configFilePath = configParser.QueryConfig(configName)[0];
 			return Path.Combine(BaseDirectory, configFilePath);
 		}
 

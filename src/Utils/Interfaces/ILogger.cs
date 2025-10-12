@@ -6,11 +6,15 @@ namespace Utils {
 		INFO,
 		DEBUG,
 	}
-	internal interface ILogger {
+
+	internal static class LoggerConfig {
 		/// <summary>
-		/// 日志级别
+		/// 最详细的日志等级
 		/// </summary>
-		LogLevel Level { get; set; }
+		public static LogLevel GlobalLevel { get; set; } = LogLevel.INFO;
+	}
+
+	internal interface ILogger {
 		void Info(string message);
 		void Warning(string message);
 		void Error(string message);

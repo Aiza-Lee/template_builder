@@ -22,6 +22,8 @@
 	bottom=##GEOMETRY_BOTTOM_MARGIN##		% 下边距值，如: 2.5cm
 }
 
+\setlength{\columnsep}{##GEOMETRY_COLUMN_SEP##} % 双栏间距，如: 1cm
+
 % Fonts - 字体设置
 \setmainfont{##GLOBAL_MAIN_FONT##}  % 西文主字体名称，如：Times New Roman
 \setCJKmainfont{##GLOBAL_CJK_MAIN_FONT##}  % 中文主字体名称
@@ -40,10 +42,10 @@
 }
 
 % 代码列表样式设置
-\definecolor{code_keyword}{RGB}{##CODE_KEYWORD_COLOR##}		% 关键词RGB颜色，如: 0,0,255
-\definecolor{code_comment}{RGB}{##CODE_COMMENT_COLOR##}		% 注释RGB颜色，如: 0,128,0
-\definecolor{code_string}{RGB}{##CODE_STRING_COLOR##}		% 字符串RGB颜色，如: 163,21,21
-\definecolor{code_background}{RGB}{##CODE_BG_COLOR##}		% 背景RGB颜色，如: 248,248,248
+% \definecolor{code_keyword}{RGB}{}		% 关键词RGB颜色，如: 0,0,255
+% \definecolor{code_comment}{RGB}{}		% 注释RGB颜色，如: 0,128,0
+% \definecolor{code_string}{RGB}{}		% 字符串RGB颜色，如: 163,21,21
+% \definecolor{code_background}{RGB}{}		% 背景RGB颜色，如: 248,248,248
 
 \newfontfamily{\customcodefontfamily}{##CODE_FONT_FAMILY##}[		% Fira Code 字体设置
 	Contextuals={Alternate},  % 启用编程连字
@@ -58,11 +60,11 @@
 		\customcodefontfamily
 		\fontsize{##CODE_FONT_SIZE##}{##CODE_LINE_HEIGHT##}
 		\selectfont,										% 代码字体样式
-	keywordstyle=\color{code_keyword}\bfseries,				% 关键词样式
-	commentstyle=\color{code_comment}\itshape,				% 注释样式
-	stringstyle=\color{code_string},						% 字符串样式
+	keywordstyle=\color{##CODE_KEYWORD_COLOR##}\bfseries,				% 关键词样式
+	commentstyle=\color{##CODE_COMMENT_COLOR##}\itshape,				% 注释样式
+	stringstyle=\color{##CODE_STRING_COLOR##},						% 字符串样式
 	numberstyle=\tiny\color{gray},							% 行号样式
-	backgroundcolor=\color{code_background},				% 背景颜色
+	backgroundcolor=\color{##CODE_BG_COLOR##},				% 背景颜色
 	frame=none,												% 边框样式: none, leftline, topline, bottomline, lines, single, shadowbox
 	breaklines=##CODE_AUTO_BREAK_LINES##,					% 是否自动换行: true/false
 	tabsize=##CODE_TAB_SIZE##,								% Tab宽度，如: 4
@@ -78,7 +80,7 @@
 \pagestyle{##GLOBAL_PAGE_STYLE##}  % 页面风格: plain（只有页码）, headings（页眉带章节，页脚带页码）, empty（无页眉页脚）
 
 % 文档标题元数据设置
-\title{\Large\bfseries##TITLE_CONTENT##}			% 文档标题
+\title{\Large\bfseries{##TITLE_CONTENT##}}			% 文档标题
 \author{##AUTHOR##}			% 作者名称
 \date{\today}
 
