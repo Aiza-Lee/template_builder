@@ -1,9 +1,42 @@
 using System.Text.Json;
 
 namespace Utils {
-	internal struct ConfigValue(string[] defaultValue) {
-		public string[]? Value { get; set; } = defaultValue;
-		public string[] DefaultValue { get; } = defaultValue;
+	internal class ConfigValue(JsonElement defaultValue) {
+		private JsonElement? _value;
+		private JsonElement DefaultValue { get; } = defaultValue;
+		public JsonElement Value {
+			get => _value ?? DefaultValue;
+			set => _value = value;
+		}
+
+		public string GetAsString() => Value.ValueKind == JsonValueKind.String ? Value.GetString() ?? string.Empty : Value.GetRawText();
+		public string[] GetAsStringArray() {
+			if (Value.ValueKind == JsonValueKind.Array) {
+				return Value.EnumerateArray().Select(
+					ele => ele.ValueKind == JsonValueKind.String ? ele.GetString() ?? string.Empty : ele.GetRawText()
+				).ToArray();
+			}
+			return [GetAsString()];
+		}
+		public int GetAsInt() {
+			if (Value.ValueKind == JsonValueKind.Number && Value.TryGetInt32(out int intValue)) { return intValue; }
+			if (Value.ValueKind == JsonValueKind.String && int.TryParse(Value.GetString(), out intValue)) { return intValue; }
+			throw new InvalidCastException($"Cannot convert config value '{GetAsString()}' to int.");
+		}
+		public bool GetAsBool() {
+			if (Value.ValueKind == JsonValueKind.True) { return true; }
+			if (Value.ValueKind == JsonValueKind.False) { return false; }
+			if (Value.ValueKind == JsonValueKind.String && bool.TryParse(Value.GetString(), out bool boolValue)) { return boolValue; }
+			throw new InvalidCastException($"Cannot convert config value '{GetAsString()}' to bool.");
+		}
+	}
+
+	internal class ReadonlyConfigValue(ConfigValue configValue) {
+		private ConfigValue ConfigValue { get; } = configValue;
+		public string GetAsString() => ConfigValue.GetAsString();
+		public string[] GetAsStringArray() => ConfigValue.GetAsStringArray();
+		public int GetAsInt() => ConfigValue.GetAsInt();
+		public bool GetAsBool() => ConfigValue.GetAsBool();
 	}
 
 	internal class ConfigParser : IConfigParser {
@@ -24,12 +57,20 @@ namespace Utils {
 			ParseDefaultConfig();
 		}
 
-		public IEnumerable<KeyValuePair<string, string[]>> GetAllConfigs() {
+		public ReadonlyConfigValue this[string key] {
+			get {
+				if (_configValues.TryGetValue(key, out var configValue)) {
+					return new ReadonlyConfigValue(configValue);
+				} else {
+					_logger?.Error($"Key '{key}' is not registered. Returning empty ReadonlyConfigValue.");
+					return new ReadonlyConfigValue(new ConfigValue(JsonDocument.Parse("{}").RootElement));
+				}
+			}
+		}
+
+		public IEnumerable<KeyValuePair<string, string>> GetAllConfigsAsString() {
 			foreach (var kvp in _configValues) {
-				yield return new(
-					kvp.Key,
-					kvp.Value.Value ?? kvp.Value.DefaultValue
-				);
+				yield return new(kvp.Key, kvp.Value.GetAsString());
 			}
 		}
 
@@ -39,15 +80,6 @@ namespace Utils {
 				return;
 			}
 			ParseJsonContent(content, false);
-		}
-
-		public string[] QueryConfig(string key) {
-			if (_configValues.TryGetValue(key, out var configValue)) {
-				return configValue.Value ?? configValue.DefaultValue;
-			} else {
-				_logger?.Warning($"Key '{key}' is not registered. Returning empty array.");
-				return [];
-			}
 		}
 
 		private void ParseDefaultConfig() {
@@ -65,8 +97,8 @@ namespace Utils {
 		private void ParseJsonContent(string jsonContent, bool isDefaultConfig) {
 			try {
 				var json = JsonDocument.Parse(jsonContent).RootElement;
-				if (json.TryGetProperty(_rootObjectName, out var texElement)) {
-					ParseJsonElement_R(texElement, [], isDefaultConfig);
+				if (json.TryGetProperty(_rootObjectName, out var jsonElement)) {
+					ParseJsonElement_R(jsonElement, [], isDefaultConfig);
 				} else {
 					_logger?.Error($"Config content does not contain '{_rootObjectName}' root element.");
 				}
@@ -84,42 +116,13 @@ namespace Utils {
 					ParseJsonElement_R(property.Value, path, isDefaultConfig);
 					path.RemoveAt(path.Count - 1);
 				}
-			} else if (element.ValueKind == JsonValueKind.Array) {
-				var values = new List<string>();
-				foreach (var item in element.EnumerateArray()) {
-					if (item.ValueKind == JsonValueKind.String) {
-						values.Add(item.GetString() ?? string.Empty);
-					} else {
-						_logger?.Warning($"Unsupported array item type '{item.ValueKind}' at '{string.Join('_', path)}'. Skipping item.");
-					}
-				}
-				string key = string.Join('_', path);
-				if (isDefaultConfig) {
-					RegisterConfig(key, [.. values]);
-				} else {
-					SetConfigValue(key, [.. values]);
-				}
 			} else {
 				string key = string.Join('_', path);
-
-				string OtherValueAction() {
-					_logger?.Warning($"Unsupported JSON value type '{element.ValueKind}' at '{string.Join('_', path)}'. Storing raw text.");
-					return element.GetRawText();
-				}
-
-				string value = element.ValueKind switch {
-					JsonValueKind.String => element.GetString() ?? string.Empty,
-					JsonValueKind.Number => element.GetRawText(),
-					JsonValueKind.True => "true",
-					JsonValueKind.False => "false",
-					JsonValueKind.Null => string.Empty,
-					_ => OtherValueAction()
-				};
-
+				var configValue = new ConfigValue(element);
 				if (isDefaultConfig) {
-					RegisterConfig(key, [value]);
+					RegisterConfig(key, configValue);
 				} else {
-					SetConfigValue(key, [value]);
+					SetConfigValue(key, configValue);
 				}
 			}
 		}
@@ -129,17 +132,23 @@ namespace Utils {
 		/// </summary>
 		/// <param name="key">配置项键值</param>
 		/// <param name="defaultValue">配置项默认值</param>
-		private void RegisterConfig(string key, string[] defaultValue) {
+		private void RegisterConfig(string key, ConfigValue configValue) {
+			if (_rootObjectName == "PROGRAM") {
+				_logger?.Debug($"Registering config key: '{key}' with default value: '{configValue.GetAsString()}'");
+			}
 			if (!_configValues.ContainsKey(key)) {
-				_configValues[key] = new(defaultValue);
+				_configValues[key] = configValue;
 			} else {
 				_logger?.Warning($"Key '{key}' is already registered. Skipping.");
 			}
 		}
 
-		private void SetConfigValue(string key, string[] value) {
-			if (_configValues.TryGetValue(key, out var configValue)) {
-				_configValues[key] = new(configValue.DefaultValue) { Value = value };
+		private void SetConfigValue(string key, ConfigValue configValue) {
+			if (_rootObjectName == "PROGRAM") {
+				_logger?.Debug($"Setting config key: '{key}' with value: '{configValue.GetAsString()}'");
+			}
+			if (_configValues.TryGetValue(key, out var existingConfigValue)) {
+				existingConfigValue.Value = configValue.Value;
 			} else {
 				_logger?.Warning($"Key '{key}' is not registered. Skipping.");
 			}

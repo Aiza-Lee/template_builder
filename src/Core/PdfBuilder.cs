@@ -13,6 +13,9 @@ namespace Core {
 			_logger = logger;
 			_texConfigParser = new ConfigParser("TEX", logger);
 			_programConfigParser = new ConfigParser("PROGRAM", logger);
+
+			_texConfigParser.ParseConfigFile(File.ReadAllText(FilePaths.GetUserConfigFileInfo().FullName));
+			_programConfigParser.ParseConfigFile(File.ReadAllText(FilePaths.GetUserConfigFileInfo().FullName));
 		}
 
 		public void Build() {
@@ -36,7 +39,7 @@ namespace Core {
 		private void CompileTexToPdf(string outputDir, string outputTexPath) {
 			_logger.Info("Starting LaTeX compilation...");
 
-			var outputFileName = _programConfigParser.QueryConfig("OUTPUT_FILE_NAME")[0];
+			var outputFileName = _programConfigParser["OUTPUT_FILE_NAME"].GetAsString();
 
 			const int requiredCompilations = 2;
 
@@ -163,9 +166,9 @@ namespace Core {
 		/// </summary>
 		/// <param name="content">要替换的模板内容</param>
 		private void ReplaceMainPlaceholders(StringBuilder content) {
-			foreach (var kvp in _texConfigParser.GetAllConfigs()) {
+			foreach (var kvp in _texConfigParser.GetAllConfigsAsString()) {
 				var placeholder = $"##{kvp.Key}##";
-				content.Replace(placeholder, kvp.Value[0]);
+				content.Replace(placeholder, kvp.Value);
 			}
 		}
 	}

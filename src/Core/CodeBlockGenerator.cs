@@ -25,7 +25,7 @@ namespace Core {
 			var resMgr = new ManifestResourceManager(_logger);
 
 			_codeBlockTemplate = resMgr.GetResourceInString("Templates.CodeBlock.tex");
-			_includeFileTypes = _programConfigParser.QueryConfig("INCLUDE_FILE_TYPES");
+			_includeFileTypes = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
 		}
 
 
@@ -67,6 +67,8 @@ namespace Core {
 
 		private string GenerateCodeBlock_File(FileInfo codeFile) {
 			var language = codeFile.Extension.TrimStart('.').ToLower();
+			// _logger.Info($"Processing file: {codeFile.FullName} with language: {language}");
+			// _logger.Info($"Included file types: {string.Join(", ", _includeFileTypes)}");
 			// 检查文件类型是否在包含列表中
 			if (Array.IndexOf(_includeFileTypes, "." + language) == -1) {
 				_logger.Warning($"File type '{language}' is not in the include list. Skipping file '{codeFile.FullName}'.");
