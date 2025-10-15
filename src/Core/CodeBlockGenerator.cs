@@ -10,12 +10,27 @@ namespace Core {
 		private readonly DirectoryInfo _sourceDir;
 		private readonly IConfigParser _programConfigParser;
 
-		private string _codeBlockTemplate = string.Empty;
-		private string[] _includeFileTypes = [];
-		private static readonly string[] SubDirectoryName = [
+		private readonly string CODE_BLOCK_TEMPLATE = string.Empty;
+		private readonly string[] INCLUDE_FILE_TYPES = [];
+		private readonly string[] SUB_DIRECTORY_NAMES = [
 			"section", "subsection", "subsubsection",
 			"paragraph", "subparagraph"
 		];
+		private readonly HashSet<string> CODE_LANGUAGES_EXTENSIONS = [
+			"cpp", "c", "hpp", "h", "cs", "rs", "ts", "js", "java",
+			"py", "rb", "go", "php", "html", "css", "xml", "json",
+			"sh", "bat", "ps1", "swift", "kt", "m", "sql", "yaml", "yml"
+		];
+		private readonly Dictionary<string, string> EXTENSION_TO_LANGUAGE = new() {
+			{ "cpp", "c++" }, { "hpp", "c++" }, { "h", "c" },
+			{ "cs", "c#" }, { "rs", "rust" }, { "ts", "typescript" },
+			{ "js", "javascript" }, { "py", "python" }, { "rb", "ruby" },
+			{ "go", "go" }, { "php", "php" }, { "html", "html" },
+			{ "css", "css" }, { "xml", "xml" }, { "json", "json" },
+			{ "sh", "bash" }, { "bat", "batch" }, { "ps1", "powershell" },
+			{ "swift", "swift" }, { "kt", "kotlin" }, { "m", "objective-c" },
+			{ "sql", "sql" }, { "yaml", "yaml" }, { "yml", "yaml" }
+		};
 
 		public CodeBlockGenerator(ILogger logger, IConfigParser programConfigParser) {
 			_logger = logger;
@@ -24,8 +39,8 @@ namespace Core {
 
 			var resMgr = new ManifestResourceManager(_logger);
 
-			_codeBlockTemplate = resMgr.GetResourceInString("Templates.CodeBlock.tex");
-			_includeFileTypes = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
+			CODE_BLOCK_TEMPLATE = resMgr.GetResourceInString("Templates.CodeBlock.tex");
+			INCLUDE_FILE_TYPES = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
 		}
 
 
@@ -43,7 +58,7 @@ namespace Core {
 			DirectoryInfo codeDir,
 			int depth = 0
 		) {
-			if (depth >= SubDirectoryName.Length) {
+			if (depth >= SUB_DIRECTORY_NAMES.Length) {
 				_logger.Warning($"Directory nesting exceeds supported depth at '{codeDir.FullName}'. Skipping deeper levels.");
 				return strBuilder;
 			}
@@ -70,30 +85,38 @@ namespace Core {
 			// _logger.Info($"Processing file: {codeFile.FullName} with language: {language}");
 			// _logger.Info($"Included file types: {string.Join(", ", _includeFileTypes)}");
 			// 检查文件类型是否在包含列表中
-			if (Array.IndexOf(_includeFileTypes, "." + language) == -1) {
+			if (Array.IndexOf(INCLUDE_FILE_TYPES, "." + language) == -1) {
 				_logger.Warning($"File type '{language}' is not in the include list. Skipping file '{codeFile.FullName}'.");
 				return string.Empty;
 			}
-			var codeContent = File.ReadAllText(codeFile.FullName);
-			var codeBlock = new StringBuilder(_codeBlockTemplate);
+			var content = File.ReadAllText(codeFile.FullName);
 
-			// note: cpp -> c++
-			if (language == "cpp") { language = "c++"; }
-
-			codeBlock.Replace("##LANGUAGE##", language);
-			codeBlock.Replace("##CODE##", codeContent);
-			return codeBlock.ToString();
+			if (CODE_LANGUAGES_EXTENSIONS.Contains(language)) {
+				var codeBlock = new StringBuilder(CODE_BLOCK_TEMPLATE);
+				if (EXTENSION_TO_LANGUAGE.TryGetValue(language, out string? value)) {
+					language = value;
+				}
+				codeBlock.Replace("##LANGUAGE##", language);
+				codeBlock.Replace("##CODE##", content);
+				return codeBlock.ToString();
+			} else {
+				return content;
+			}
 		}
 
 		/// <summary>
 		/// 插入章节标题
 		/// </summary>
 		private void InsertSection(StringBuilder strBuilder, string sectionName, int depth) {
-			if (depth < 0 || depth >= SubDirectoryName.Length) {
+			if (depth < 0 || depth >= SUB_DIRECTORY_NAMES.Length) {
 				_logger.Error($"Invalid section depth: {depth}. Cannot insert section '{sectionName}'.");
 				return;
 			}
-			strBuilder.AppendLine($"\\{SubDirectoryName[depth]}{{{sectionName}}}");
+			strBuilder.AppendLine($"\\{SUB_DIRECTORY_NAMES[depth]}{{{sectionName}}}");
+			if (depth >= 3) {
+				// 段落和子段落作为标题使用，后添加空行以增加可读性
+				strBuilder.AppendLine(@"\textbf{ } \\");
+			}
 		}
 	}
 }

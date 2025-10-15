@@ -12,6 +12,9 @@
 \usepackage{xcolor}			% 颜色支持
 \usepackage{hyperref}		% 超链接和PDF书签
 
+\setcounter{secnumdepth}{5}
+\setcounter{tocdepth}{5}
+
 % Geometry / Page - 页面布局设置
 \geometry{
 	##GEOMETRY_PAPER_SIZE##,				% 纸张大小，如: a4paper, letterpaper
@@ -30,22 +33,17 @@
 
 % Hyperref configuration - PDF导航、书签和元数据设置
 \hypersetup{
+	bookmarksdepth=5									% 最深目录层级
 	colorlinks=##HYPERREF_ENABLE_COLORLINKS##,			% 是否使用彩色链接: true/false
 	linkcolor=##HYPERREF_LINK_COLOR##,					% 内部链接颜色名称，如: blue
 	filecolor=##HYPERREF_FILE_COLOR##,					% 文件链接颜色名称，如: magenta
-	urlcolor=##HYPERREF_URL_COLOR##,						% URL链接颜色名称，如: cyan
+	urlcolor=##HYPERREF_URL_COLOR##,					% URL链接颜色名称，如: cyan
 	bookmarksnumbered=##HYPERREF_NUMBERED_BOOKMARKS##,	% 书签是否包含编号: true/false
 	bookmarksopen=##HYPERREF_OPEN_BOOKMARKS##,			% 是否默认展开书签: true/false
 	pdftitle={##TITLE_CONTENT##},						% PDF文档标题
-	pdfauthor={##AUTHOR##},						% PDF文档作者
-	pdfsubject={##SUBJECT##}					% PDF文档主题
+	pdfauthor={##AUTHOR##},								% PDF文档作者
+	pdfsubject={##SUBJECT##}							% PDF文档主题
 }
-
-% 代码列表样式设置
-% \definecolor{code_keyword}{RGB}{}		% 关键词RGB颜色，如: 0,0,255
-% \definecolor{code_comment}{RGB}{}		% 注释RGB颜色，如: 0,128,0
-% \definecolor{code_string}{RGB}{}		% 字符串RGB颜色，如: 163,21,21
-% \definecolor{code_background}{RGB}{}		% 背景RGB颜色，如: 248,248,248
 
 \newfontfamily{\customcodefontfamily}{##CODE_FONT_FAMILY##}[		% Fira Code 字体设置
 	Contextuals={Alternate},  % 启用编程连字
