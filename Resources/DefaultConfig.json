@@ -12,16 +12,16 @@
 		},
 		"code": {
 			"font_family": "Fira Code",
-			"font_size": "8pt",
-			"line_height": "8.1pt",
+			"font_size": "6pt",
+			"line_height": "6pt",
 			"auto_break_lines": true,
 			"tab_size": 4,
 			"space_before": "1em",
 			"space_after": "1em",
 			"keyword_color": "blue",
-			"comment_color": "green",
+			"comment_color": "green!50!black",
 			"string_color": "red",
-			"bg_color": "gray!10"
+			"bg_color": "gray!3"
 		},
 		"hyperref": {
 			"enable_colorlinks": true,
@@ -33,11 +33,11 @@
 		},
 		"geometry": {
 			"paper_size": "a4paper",
-			"left_margin": "1.4cm",
-			"right_margin": "1.4cm",
-			"top_margin": "1.4cm",
-			"bottom_margin": "1.4cm",
-			"column_sep": "1.5cm"
+			"left_margin": "1cm",
+			"right_margin": "1cm",
+			"top_margin": "1cm",
+			"bottom_margin": "1.2cm",
+			"column_sep": "1cm"
 		},
 		"global": {
 			"main_font": "Times New Roman",
@@ -48,7 +48,7 @@
 	"PROGRAM": {
 		"build_directory": "build",
 		"code_source_directory": "code",
-		"include_file_types": [".cpp", ".c", ".json"],
+		"include_file_types": [".cpp", ".c", ".json", ".tex", ".hpp", ".h", ".py", ".txt"],
 		"output_file_name": "output"
 	}
 }

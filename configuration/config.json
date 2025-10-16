@@ -48,7 +48,7 @@
 	"PROGRAM": {
 		"build_directory": "build",
 		"code_source_directory": "code",
-		"include_file_types": [".cpp", ".c", ".json", ".hpp", ".tex"],
+		"include_file_types": [".cpp", ".c", ".json", ".tex", ".hpp", ".h", ".py", ".txt"],
 		"output_file_name": "output"
 	}
 }
