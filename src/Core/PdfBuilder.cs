@@ -3,6 +3,9 @@ using System.Text;
 using Utils;
 
 namespace Core {
+	/// <summary>
+	/// 构建最终pdf文件的类
+	/// </summary>
 	internal class PdfBuilder {
 		private readonly ILogger _logger;
 		private readonly IConfigParser _texConfigParser;
@@ -143,8 +146,12 @@ namespace Core {
 		/// 加载用户配置
 		/// </summary>
 		private void LoadUserConfig(ManifestResourceManager resMgr) {
-			var configJson = resMgr.GetContentInString(FilePaths.GetUserConfigFileInfo());
-			_texConfigParser.ParseConfigFile(configJson ?? string.Empty);
+			try {
+				var configJson = File.ReadAllText(FilePaths.GetUserConfigFileInfo().FullName);
+				_texConfigParser.ParseConfigFile(configJson ?? string.Empty);
+			} catch (Exception ex) {
+				_logger.Error($"Failed to load user configuration: {ex.Message}");
+			}
 		}
 
 		/// <summary>

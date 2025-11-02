@@ -2,6 +2,10 @@ using System.CommandLine;
 using Utils;
 
 namespace Core.Commands {
+	/// <summary>
+	/// “构建命令”工厂类
+	/// </summary>
+	/// <param name="logger">日志器</param>
 	internal class BuildCommandFactory(ILogger logger) {
 		private readonly ILogger _logger = logger;
 
@@ -9,6 +13,7 @@ namespace Core.Commands {
 
 			var cmd = new Command("build", "Build pdf file from source files.");
 
+			// 是否启用详细输出
 			var verboseOption = new Option<bool>("--verbose", "-v") {
 				Description = "Enable verbose output",
 				HelpName = "VERBOSE",
@@ -16,7 +21,8 @@ namespace Core.Commands {
 			};
 			cmd.Options.Add(verboseOption);
 
-			var userConfigPath = new UserConfigPath(_logger, "NightingaleStudio", "TemplateBuilder").GetUserConfigPath();
+			// 配置文件的路径，默认值是操作系统用户配置目录下的 NightingaleStudio/TemplateBuilder/config.json
+			var userConfigPath = new UserConfigPathHelper(_logger, "NightingaleStudio", "TemplateBuilder").GetUserConfigPath();
 
 			var configOption = new Option<FileInfo>("--config", "-c") {
 				Description = "Set the path of configuration file.",

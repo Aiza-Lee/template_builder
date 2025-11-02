@@ -39,6 +39,9 @@ namespace Utils {
 		public bool GetAsBool() => ConfigValue.GetAsBool();
 	}
 
+	/// <summary>
+	/// 负责解析配置文件的类
+	/// </summary>
 	internal class ConfigParser : IConfigParser {
 		private readonly Dictionary<string, ConfigValue> _configValues = [];
 		private readonly ILogger? _logger;
@@ -48,9 +51,9 @@ namespace Utils {
 
 		/// <summary>
 		/// 构造函数
+		/// </summary>
 		/// <param name="rootObjectName">配置文件的根对象名称</param>
 		/// <param name="logger">日志记录器，可选</param>
-		/// </summary>
 		public ConfigParser(string rootObjectName, ILogger? logger = null) {
 			_logger = logger;
 			_rootObjectName = rootObjectName;
