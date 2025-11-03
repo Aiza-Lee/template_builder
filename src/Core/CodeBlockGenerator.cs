@@ -44,15 +44,27 @@ namespace Core {
 		}
 
 
+		/// <summary>
+		/// 生成代码块TeX
+		/// </summary>
+		/// <returns></returns>
 		public string Generate() {
-			if (!_sourceDir.Exists) {
-				Directory.CreateDirectory(_sourceDir.FullName);
-				_logger.Warning($"Source directory '{_sourceDir.FullName}' does not exist. Created the directory. Please add source files and rebuild.");
+			var sourceDirInfo = CommandInfoHelper.SourceFilesDirectoryInfo;
+			if (!sourceDirInfo.Exists) {
+				Directory.CreateDirectory(sourceDirInfo.FullName);
+				_logger.Warning($"Source directory '{sourceDirInfo.FullName}' does not exist. Created the directory. Please add source files and rebuild.");
 				return string.Empty;
 			}
-			return GenerateCodeBlock_Directory(new(), _sourceDir).ToString();
+			return GenerateCodeBlock_Directory(new(), sourceDirInfo).ToString();
 		}
 
+		/// <summary>
+		/// 递归生成目录下所有代码文件的代码块TeX
+		/// </summary>
+		/// <param name="strBuilder">字符串构建器</param>
+		/// <param name="codeDir">目录信息</param>
+		/// <param name="depth">当前深度</param>
+		/// <returns>返回生成的TeX代码（StringBuilder）</returns>
 		private StringBuilder GenerateCodeBlock_Directory(
 			StringBuilder strBuilder,
 			DirectoryInfo codeDir,
@@ -80,6 +92,11 @@ namespace Core {
 			return strBuilder;
 		}
 
+		/// <summary>
+		/// 生成单个代码文件的代码块TeX
+		/// </summary>
+		/// <param name="codeFile">代码文件信息</param>
+		/// <returns>返回生成的tex代码</returns>
 		private string GenerateCodeBlock_File(FileInfo codeFile) {
 			var language = codeFile.Extension.TrimStart('.').ToLower();
 			// _logger.Info($"Processing file: {codeFile.FullName} with language: {language}");
@@ -105,7 +122,7 @@ namespace Core {
 		}
 
 		/// <summary>
-		/// 插入章节标题
+		/// 插入章节标题，根据深度选择合适的章节命令
 		/// </summary>
 		private void InsertSection(StringBuilder strBuilder, string sectionName, int depth) {
 			if (depth < 0 || depth >= SUB_DIRECTORY_NAMES.Length) {

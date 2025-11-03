@@ -51,12 +51,12 @@
 		}
 	},
 	"PROGRAM": {		// 构建源相关设置
-		"build_directory": "build",			// 构建输出目录
-		"code_source_directory": "code",	// 源代码文件目录
 		"include_file_types": [				// 包含的代码文件类型
 			".cpp", ".c", ".json", ".hpp"
 		],
-		"output_file_name": "output"		// 输出PDF文件名（不含扩展名）
+		"output_file_name": "output"		// 输出PDF文件名
 	}
 }
 ```
+
+**提示：** 配置文件中的注释仅供参考，实际 JSON 文件中不应包含注释。
