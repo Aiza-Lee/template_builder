@@ -1,0 +1,20 @@
+{
+	"configurations": [
+	{
+		"name": ".NET Core Launch (console)",
+		"type": "coreclr",
+		"request": "launch",
+		"preLaunchTask": "build",
+		"program": "${workspaceFolder}/bin/Debug/net9.0/template_builder.dll",
+		"args": [
+			"build",
+			"-s", "./temp/code",
+			"-o", "./temp/output",
+			"-c", "./temp/configgg.json"
+		],
+		"cwd": "${workspaceFolder}",
+		"stopAtEntry": false,
+		"console": "internalConsole"
+	}
+	]
+}

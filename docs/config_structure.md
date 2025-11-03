@@ -1,8 +1,9 @@
 # 配置文件结构
 
-**注意：** 配置文件应放在程序所在目录的 `configuration` 文件夹内，命名为 `config.json`。
+**注意：** 默认的配置文件在用户目录下的 `.config/NightingaleStudio/TemplateBuilder/config.json`。你可以通过命令行参数 `-c` 指定自定义配置文件路径。
 
 配置文件采用 JSON 格式，包含以下部分：
+配置时无需添加所有配置项，没有出现在配置文件中的配置项将使用默认值。
 
 ``` json
 {
@@ -53,8 +54,7 @@
 	"PROGRAM": {		// 构建源相关设置
 		"include_file_types": [				// 包含的代码文件类型
 			".cpp", ".c", ".json", ".hpp"
-		],
-		"output_file_name": "output"		// 输出PDF文件名
+		]
 	}
 }
 ```

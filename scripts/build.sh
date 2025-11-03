@@ -41,15 +41,15 @@ mkdir -p "$PROJECT_DIR/publish"
 
 # Publish for detected platform
 echo "Publishing for $RUNTIME..."
-dotnet publish "$PROJECT_DIR/template_builder.csproj" --configuration Release --runtime $RUNTIME --output "$PROJECT_DIR/publish/$RUNTIME" --self-contained true
+dotnet publish "$PROJECT_DIR/template_builder.csproj" --configuration Release --runtime $RUNTIME --output "$PROJECT_DIR/publish/template_builder-$RUNTIME" --self-contained true
 
 echo "Cleaning unnecessary files..."
 # 保留主程序、配置、资源目录，删除 pdb、xml、.DS_Store 等常见无关文件
-find "$PROJECT_DIR/publish/$RUNTIME" -type f \( -name "*.pdb" -o -name "*.xml" -o -name ".DS_Store" \) -delete
+find "$PROJECT_DIR/publish/template_builder-$RUNTIME" -type f \( -name "*.pdb" -o -name "*.xml" -o -name ".DS_Store" \) -delete
 
 echo "Packaging to compressed archive..."
 cd "$PROJECT_DIR/publish"
-tar -czvf "template_builder-$RUNTIME.tar.gz" "$RUNTIME"
+tar -czvf "template_builder-$RUNTIME.tar.gz" "template_builder-$RUNTIME"
 
 sha256sum "template_builder-$RUNTIME.tar.gz" > "template_builder-$RUNTIME.sha256"
 

@@ -33,9 +33,8 @@ bash ./build.sh
 在当前目录运行：
 
 ```bash
-./template_builder build
+./template_builder build -s "path/to/your/code/templates/folder" -o "output/file" [-c "path/to/config.json"]
 ```
-pdf文件将生成在 `output` 目录下。
 
 ---
 

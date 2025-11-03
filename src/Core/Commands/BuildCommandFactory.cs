@@ -12,8 +12,8 @@ namespace Core.Commands {
 	/// <code> 
 	/// template-builder build [source-file-folder] [enable-verbose-log] [configuration] [output-path] 
 	/// 
-	/// source-files-options: 
-	///   --source-files &lt;SOURCE_FILE_FOLDER&gt; | -s &lt;SOURCE_FILE_FOLDER&gt; # 源文件所在文件夹
+	/// source-files-folder-options: 
+	///   --source-files-folder &lt;SOURCE_FILE_FOLDER&gt; | -s &lt;SOURCE_FILE_FOLDER&gt; # 源文件所在文件夹
 	/// enable-verbose-log-options:
 	///   --verbose | -v # 启用详细日志输出
 	/// output-path-options:
@@ -34,13 +34,13 @@ namespace Core.Commands {
 
 			var finalCmd = new Command("build", "Build pdf file from source files.");
 
-			/* --source-files -s */
-			var sourceFilesOption = new Option<DirectoryInfo>("--source-files", "-s") {
+			/* --source-files-folder -s */
+			var sourceFilesFolderOption = new Option<DirectoryInfo>("--source-files-folder", "-s") {
 				Description = "Set the folder path of source files.",
-				HelpName = "SOURCE_FILE_FOLDER",
+				HelpName = "SOURCE_FILES_FOLDER",
 				Required = true,
 			};
-			finalCmd.Options.Add(sourceFilesOption);
+			finalCmd.Options.Add(sourceFilesFolderOption);
 
 			/* --output -o */
 			var outputOption = new Option<FileInfo>("--output", "-o") {
@@ -80,23 +80,37 @@ namespace Core.Commands {
 					return configFileInfo;
 				}
 			};
+			finalCmd.Options.Add(configOption);
 
 			finalCmd.SetAction((pr) => {
-				/* --source-files -s */
-				var sourceFiles = pr.GetValue(sourceFilesOption);
-				if (!sourceFiles!.Exists) {
-					_logger.Error($"Source files folder \"{sourceFiles.FullName}\" not found.");
+				/* --source-files-folder -s */
+				var sourceFilesFolder = pr.GetValue(sourceFilesFolderOption);
+				if (sourceFilesFolder == null) {
+					_logger.Error("Invalid source files folder.");
 					return;
 				}
-				CommandInfoHelper.SourceFilesDirectoryInfo = sourceFiles;
+				if (!sourceFilesFolder.Exists) {
+					_logger.Error($"Source files folder \"{sourceFilesFolder.FullName}\" not found.");
+					return;
+				}
+				CommandInfoHelper.SourceFilesDirectoryInfo = sourceFilesFolder;
 
 				/* --output -o */
 				var output = pr.GetValue(outputOption);
-				if (!output!.Exists) {
-					_logger.Error($"Output file \"{output.FullName}\" not found.");
+				if (output == null || output.Directory == null) {
+					_logger.Error("Invalid output file path.");
 					return;
 				}
-				CommandInfoHelper.OutputFileInfo = output;
+				// 如果目标所在的文件夹不存在，则提前创建
+				if (!output.Directory.Exists) {
+					_logger.Warning($"Output directory \"{output.Directory.FullName}\" not found, created by the program.");
+					output.Directory.Create();
+				}
+				// 修正文件后缀为pdf
+				var pdfFileName = Path.GetFileNameWithoutExtension(output.Name) + ".pdf";
+				CommandInfoHelper.OutputFileInfo = new FileInfo(
+					Path.Combine(output.Directory.FullName, pdfFileName)
+				);
 
 				/* --verbose -v */
 				var verbose = pr.GetValue(verboseOption);

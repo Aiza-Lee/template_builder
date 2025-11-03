@@ -33,7 +33,7 @@ internal static class CommandInfoHelper {
 
 	private static FileInfo? _outputFileInfo;
 	/// <summary>
-	/// 输出文件路径信息，已验证存在
+	/// 输出文件路径信息，已验证其所在的文件夹存在
 	/// </summary>
 	public static FileInfo OutputFileInfo {
 		get {

@@ -17,32 +17,30 @@ namespace Core {
 			_texConfigParser = new ConfigParser("TEX", logger);
 			_programConfigParser = new ConfigParser("PROGRAM", logger);
 
-			_texConfigParser.ParseConfigFile(File.ReadAllText(FilePaths.GetUserConfigFileInfo().FullName));
-			_programConfigParser.ParseConfigFile(File.ReadAllText(FilePaths.GetUserConfigFileInfo().FullName));
+			_texConfigParser.ParseConfigFile(File.ReadAllText(CommandInfoHelper.ConfigurationFileInfo.FullName));
+			_programConfigParser.ParseConfigFile(File.ReadAllText(CommandInfoHelper.ConfigurationFileInfo.FullName));
 		}
 
+		/// <summary>
+		/// 执行构建命令。生成tex文件内容，并编译为pdf，输出到配置中的路径。
+		/// </summary>
 		public void Build() {
 			_logger.Info("Build process started...");
-
-			var resMgr = new ManifestResourceManager(_logger);
-
 			// 加载用户配置
-			LoadUserConfig(resMgr);
+			LoadUserConfig();
 
 			// 生成 TeX 正文内容
-			string texContent = GenerateTexContent(resMgr).ToString();
+			string texContent = GenerateTexContent().ToString();
 
 			// 保存 TeX 文件
-			SaveTexFile(texContent, out string outputDir, out string outputTexPath);
+			var midTexFileInfo = SaveTexFile(texContent);
 
 			// 编译 TeX 文件为 PDF
-			CompileTexToPdf(outputDir, outputTexPath);
+			CompileTexToPdf(midTexFileInfo);
 		}
 
-		private void CompileTexToPdf(string outputDir, string outputTexPath) {
+		private void CompileTexToPdf(FileInfo midTexFileInfo) {
 			_logger.Info("Starting LaTeX compilation...");
-
-			var outputFileName = _programConfigParser["OUTPUT_FILE_NAME"].GetAsString();
 
 			const int requiredCompilations = 2;
 
@@ -51,9 +49,9 @@ namespace Core {
 			for (int pass = 1; pass <= requiredCompilations; pass++) {
 				_logger.Info($"Compilation pass #{pass}...");
 
-				int exitCode = RunXelatex(outputDir, outputTexPath, outputFileName);
+				int exitCode = RunXelatex(midTexFileInfo);
 				if (exitCode != 0) {
-					if (File.Exists(Path.Combine(outputDir, $"{outputFileName}.pdf"))) {
+					if (CommandInfoHelper.OutputFileInfo.Exists) {
 						_logger.Warning("xelatex returned a non-zero exit code, but the PDF was generated. Please check the compilation log for warnings or non-fatal errors.");
 						cleanupNeeded = false; // 保留辅助文件以供调试
 					} else {
@@ -64,15 +62,16 @@ namespace Core {
 			}
 			_logger.Info("LaTeX compilation completed successfully.");
 			if (cleanupNeeded)
-				CleanupAuxiliaryFiles(outputDir, outputFileName);
+				CleanupAuxiliaryFiles();
 		}
 
-		private int RunXelatex(string outputDir, string outputTexPath, string outputFileName) {
+		private int RunXelatex(FileInfo midTexFileInfo) {
+
 			StringBuilder arguments = new();
 			arguments.Append("-interaction=nonstopmode ");
-			arguments.Append($"-jobname={outputFileName} ");
-			arguments.Append($"-output-directory \"{outputDir}\" ");
-			arguments.Append($"\"{outputTexPath}\"");
+			arguments.Append($"-jobname={Path.GetFileNameWithoutExtension(CommandInfoHelper.OutputFileInfo.Name)} ");
+			arguments.Append($"-output-directory \"{CommandInfoHelper.OutputFileInfo.Directory!.FullName}\" ");
+			arguments.Append($"\"{midTexFileInfo.FullName}\"");
 
 			using var xelatex = new Process {
 				StartInfo = new ProcessStartInfo {
@@ -82,7 +81,7 @@ namespace Core {
 					RedirectStandardError = true,
 					UseShellExecute = false,
 					CreateNoWindow = true,
-					WorkingDirectory = outputDir
+					WorkingDirectory = AppContext.BaseDirectory
 				},
 			};
 
@@ -114,8 +113,11 @@ namespace Core {
 		/// <summary>
 		/// 清理辅助文件
 		/// </summary>
-		private void CleanupAuxiliaryFiles(string outputDir, string baseName) {
+		private void CleanupAuxiliaryFiles() {
 			var extensionsToDelete = new[] { ".aux", ".log", ".toc", ".out", ".nav", ".snm" };
+
+			var baseName = Path.GetFileNameWithoutExtension(CommandInfoHelper.OutputFileInfo.Name);
+			var outputDir = CommandInfoHelper.OutputFileInfo.Directory!.FullName;
 
 			foreach (var ext in extensionsToDelete) {
 				var filePath = Path.Combine(outputDir, baseName + ext);
@@ -134,20 +136,19 @@ namespace Core {
 		/// <summary>
 		/// 保存 TeX 文件
 		/// </summary>
-		private void SaveTexFile(string texContent, out string outputDir, out string outputTexPath) {
-			// 输出 TeX 文件
-			outputDir = FilePaths.GetConfigInPath(_programConfigParser, "BUILD_DIRECTORY");
-			Directory.CreateDirectory(outputDir);
-			outputTexPath = Path.Combine(outputDir, "mid-output.tex");
-			File.WriteAllText(outputTexPath, texContent);
+		private static FileInfo SaveTexFile(string texContent) {
+			var outputDir = CommandInfoHelper.OutputFileInfo.Directory!;
+			var fileInfo = new FileInfo(Path.Combine(outputDir.FullName, "mid-output.tex"));
+			File.WriteAllText(fileInfo.FullName, texContent);
+			return fileInfo;
 		}
 
 		/// <summary>
 		/// 加载用户配置
 		/// </summary>
-		private void LoadUserConfig(ManifestResourceManager resMgr) {
+		private void LoadUserConfig() {
 			try {
-				var configJson = File.ReadAllText(FilePaths.GetUserConfigFileInfo().FullName);
+				var configJson = File.ReadAllText(CommandInfoHelper.ConfigurationFileInfo.FullName);
 				_texConfigParser.ParseConfigFile(configJson ?? string.Empty);
 			} catch (Exception ex) {
 				_logger.Error($"Failed to load user configuration: {ex.Message}");
@@ -157,7 +158,8 @@ namespace Core {
 		/// <summary>
 		/// 生成 TeX 正文内容
 		/// </summary>
-		private StringBuilder GenerateTexContent(ManifestResourceManager resMgr) {
+		private StringBuilder GenerateTexContent() {
+			var resMgr = new ManifestResourceManager(_logger);
 			var mainTemplate = new StringBuilder(resMgr.GetResourceInString("Templates.Main.tex"));
 			ReplaceMainPlaceholders(mainTemplate);
 

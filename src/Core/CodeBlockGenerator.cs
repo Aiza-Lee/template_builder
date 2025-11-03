@@ -7,7 +7,7 @@ namespace Core {
 	/// </summary>
 	internal class CodeBlockGenerator {
 		private readonly ILogger _logger;
-		private readonly DirectoryInfo _sourceDir;
+		private readonly DirectoryInfo _sourceDirInfo;
 		private readonly IConfigParser _programConfigParser;
 
 		private readonly string CODE_BLOCK_TEMPLATE = string.Empty;
@@ -34,7 +34,7 @@ namespace Core {
 
 		public CodeBlockGenerator(ILogger logger, IConfigParser programConfigParser) {
 			_logger = logger;
-			_sourceDir = new(FilePaths.GetConfigInPath(programConfigParser, "CODE_SOURCE_DIRECTORY"));
+			_sourceDirInfo = CommandInfoHelper.SourceFilesDirectoryInfo;
 			_programConfigParser = programConfigParser;
 
 			var resMgr = new ManifestResourceManager(_logger);

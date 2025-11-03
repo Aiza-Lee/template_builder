@@ -41,10 +41,14 @@ namespace Utils {
 
 	/// <summary>
 	/// 负责解析配置文件的类
+	/// <para>
+	/// 只有在嵌入式资源的中的默认配置文件中出现过的配置项才能被解析 <br/>
+	/// 最终每个配置项的键都是，顶层的json类名称依次展开到当前配置项的类名称，期间所有类名称的大写，并以'_'连接。
+	/// </para>
 	/// </summary>
 	internal class ConfigParser : IConfigParser {
 		private readonly Dictionary<string, ConfigValue> _configValues = [];
-		private readonly ILogger? _logger;
+		private readonly ILogger _logger;
 		private readonly string _rootObjectName;
 
 		const string DefaultConfigFileName = "DefaultConfig.json";
@@ -54,10 +58,12 @@ namespace Utils {
 		/// </summary>
 		/// <param name="rootObjectName">配置文件的根对象名称</param>
 		/// <param name="logger">日志记录器，可选</param>
-		public ConfigParser(string rootObjectName, ILogger? logger = null) {
+		public ConfigParser(string rootObjectName, ILogger logger) {
 			_logger = logger;
 			_rootObjectName = rootObjectName;
-			ParseDefaultConfig();
+
+			// 此处的默认配置是指在潜入文件中的json配置文件
+			ParseJsonContent(new ManifestResourceManager(logger).GetResourceInString(DefaultConfigFileName), true);
 		}
 
 		public ReadonlyConfigValue this[string key] {
@@ -71,30 +77,26 @@ namespace Utils {
 			}
 		}
 
+		/// <summary>
+		/// 获取所有配置项，键值对都为字符串类型
+		/// </summary>
+		/// <returns></returns>
 		public IEnumerable<KeyValuePair<string, string>> GetAllConfigsAsString() {
 			foreach (var kvp in _configValues) {
 				yield return new(kvp.Key, kvp.Value.GetAsString());
 			}
 		}
 
+		/// <summary>
+		/// 传入字符串格式的json文件内容
+		/// </summary>
+		/// <param name="content">字符串形式的json文件内容</param>
 		public void ParseConfigFile(string content) {
 			if (string.IsNullOrWhiteSpace(content)) {
 				_logger?.Error($"Config file content is empty.");
 				return;
 			}
 			ParseJsonContent(content, false);
-		}
-
-		private void ParseDefaultConfig() {
-			var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-			using var stream = assembly.GetManifestResourceStream(DefaultConfigFileName);
-			if (stream != null) {
-				using var reader = new StreamReader(stream);
-				string jsonContent = reader.ReadToEnd();
-				ParseJsonContent(jsonContent, true);
-			} else {
-				_logger?.Error($"Default config file '{DefaultConfigFileName}' not found in embedded resources.");
-			}
 		}
 
 		private void ParseJsonContent(string jsonContent, bool isDefaultConfig) {
@@ -112,6 +114,12 @@ namespace Utils {
 			}
 		}
 
+		/// <summary>
+		/// 解析JsonElement,并记录路径以对配置项命名
+		/// </summary>
+		/// <param name="element"></param>
+		/// <param name="path"></param>
+		/// <param name="isDefaultConfig"></param>
 		private void ParseJsonElement_R(JsonElement element, List<string> path, bool isDefaultConfig) {
 			if (element.ValueKind == JsonValueKind.Object) {
 				foreach (var property in element.EnumerateObject()) {
@@ -133,7 +141,7 @@ namespace Utils {
 		/// <summary>
 		/// 注册配置项，只有注册了的配置项才会被解析
 		/// </summary>
-		/// <param name="key">配置项键值</param>
+		/// <param name="key">配置项键</param>
 		/// <param name="defaultValue">配置项默认值</param>
 		private void RegisterConfig(string key, ConfigValue configValue) {
 			if (_rootObjectName == "PROGRAM") {
@@ -146,6 +154,11 @@ namespace Utils {
 			}
 		}
 
+		/// <summary>
+		/// 对于实际的配置，设置配置项的值
+		/// </summary>
+		/// <param name="key">配置项键</param>
+		/// <param name="configValue">配置项值</param>
 		private void SetConfigValue(string key, ConfigValue configValue) {
 			if (_rootObjectName == "PROGRAM") {
 				_logger?.Debug($"Setting config key: '{key}' with value: '{configValue.GetAsString()}'");

@@ -1,0 +1,13 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build",
+			"type": "dotnet",
+			"task": "build /home/aiza/projects/cloned/template_builder/template_builder.csproj",
+			"file": "/home/aiza/projects/cloned/template_builder/template_builder.csproj",
+			"group": "build",
+			"problemMatcher": []
+		}
+	]
+}
