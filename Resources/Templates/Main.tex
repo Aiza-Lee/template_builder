@@ -4,11 +4,10 @@
 \documentclass[10pt,landscape,twocolumn]{ctexart} % ctexart支持中文排版
 
 % Packages - 导入所需的LaTeX包
-\usepackage[utf8]{inputenc}	% 输入编码支持
 \usepackage{geometry}		% 页面布局设置
 \usepackage{listings}		% 代码列表和高亮
-\usepackage{xeCJK}			% 中文支持（XeLaTeX）
 \usepackage{fontspec}		% 字体设置
+\usepackage{xeCJK}			% 中文支持（XeLaTeX）
 \usepackage{xcolor}			% 颜色支持
 \usepackage{hyperref}		% 超链接和PDF书签
 
@@ -29,7 +28,12 @@
 
 % Fonts - 字体设置
 \setmainfont{##GLOBAL_MAIN_FONT##}  % 西文主字体名称，如：Times New Roman
-\setCJKmainfont{##GLOBAL_CJK_MAIN_FONT##}  % 中文主字体名称
+\setCJKmainfont{##GLOBAL_CJK_MAIN_FONT##}[  % 中文主字体名称
+	% BoldFont=##GLOBAL_CJK_MAIN_FONT## Bold,
+	% ItalicFont=##GLOBAL_CJK_MAIN_FONT## Italic,
+	AutoFakeBold=true,
+	AutoFakeSlant=true
+]
 
 % Hyperref configuration - PDF导航、书签和元数据设置
 \hypersetup{
