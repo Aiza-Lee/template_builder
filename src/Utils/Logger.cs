@@ -22,12 +22,10 @@ namespace Utils {
 		}
 
 		public void Debug(string message) {
-#if DEBUG
 			if (LogLevel.DEBUG > LoggerConfig.GlobalLevel) return;
 			Console.ForegroundColor = ConsoleColor.Cyan;
 			Console.WriteLine($"[Debug] {message}");
 			Console.ResetColor();
-#endif
 		}
 	}
 }

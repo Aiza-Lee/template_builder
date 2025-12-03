@@ -1,0 +1,110 @@
+name: Build and Publish
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore
+        run: dotnet restore template_builder.sln
+
+      - name: Build
+        run: dotnet build template_builder.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test template_builder.sln --configuration Release --no-build --verbosity normal
+
+  publish:
+    if: github.event_name == 'release' && github.event.action == 'published'
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            runtime: linux-x64
+            archive: template_builder-linux-x64.tar.gz
+            checksum: template_builder-linux-x64.tar.gz.sha256
+          - os: macos-latest
+            runtime: osx-x64
+            archive: template_builder-osx-x64.tar.gz
+            checksum: template_builder-osx-x64.tar.gz.sha256
+          - os: windows-latest
+            runtime: win-x64
+            archive: template_builder-win-x64.zip
+            checksum: template_builder-win-x64.zip.sha256
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Publish self-contained binaries
+        run: dotnet publish template_builder.csproj --configuration Release --runtime ${{ matrix.runtime }} --self-contained true --output publish/template_builder-${{ matrix.runtime }}
+
+      - name: Clean artifacts (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          find publish/template_builder-${{ matrix.runtime }} -type f \( -name '*.pdb' -o -name '*.xml' -o -name '.DS_Store' \) -delete
+
+      - name: Clean artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Get-ChildItem "publish\template_builder-${{ matrix.runtime }}" -Include *.pdb,*.xml,.DS_Store -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
+
+      - name: Archive release (tar.gz)
+        if: matrix.os != 'windows-latest'
+        run: |
+          tar -czf publish/${{ matrix.archive }} -C publish template_builder-${{ matrix.runtime }}
+
+      - name: Archive release (zip)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "publish\template_builder-${{ matrix.runtime }}\*" -DestinationPath "publish\${{ matrix.archive }}"
+
+      - name: Generate checksum (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          sha256sum publish/${{ matrix.archive }} > publish/${{ matrix.checksum }}
+
+      - name: Generate checksum (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          (Get-FileHash "publish\${{ matrix.archive }}" -Algorithm SHA256).Hash | Out-File -Encoding ascii "publish\${{ matrix.checksum }}"
+
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            publish/${{ matrix.archive }}
+            publish/${{ matrix.checksum }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
