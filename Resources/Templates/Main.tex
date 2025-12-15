@@ -1,9 +1,5 @@
-% Unified LaTeX Template (corrected version)
-% 本模板用于生成算法竞赛模板集，支持中英文混排和代码高亮
-% 文档类选项可以包括：a4paper, 12pt, oneside/twoside 等
 \documentclass[10pt,landscape,twocolumn]{ctexart} % ctexart支持中文排版
 
-% Packages - 导入所需的LaTeX包
 \usepackage{geometry}		% 页面布局设置
 \usepackage[outputdir=<<MINTED_OUTPUTDIR>>]{minted}			% 代码高亮显示
 \usepackage{fontspec}		% 字体设置
@@ -50,14 +46,16 @@
 }
 
 \newfontfamily{\customcodefontfamily}{##CODE_FONT_FAMILY##}[		% Fira Code 字体设置
+	NFSSFamily=CustomCodeFont,
 	Contextuals={Alternate},  % 启用编程连字
 	Ligatures={Common, Rare}, % 启用所有连字类型
 	Kerning=On                % 开启字距调整
 ]
 
 \setminted{
-	style=xcode,
-	fontsize=\customcodefontfamily\fontsize{##CODE_FONT_SIZE##}{##CODE_LINE_HEIGHT##}\selectfont,
+	style=##CODE_MINTED_STYLE##,
+	fontfamily=CustomCodeFont,
+	fontsize=\fontsize{##CODE_FONT_SIZE##}{##CODE_LINE_HEIGHT##}\selectfont,
 	breaklines=##CODE_AUTO_BREAK_LINES##,
 	tabsize=##CODE_TAB_SIZE##,
 	linenos=true,
