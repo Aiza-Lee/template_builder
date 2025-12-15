@@ -122,6 +122,8 @@ namespace Core.Commands {
 				if (!config!.Exists) {
 					_logger.Warning($"Configuration file \"{config.FullName}\" not found, use default configuration instead.");
 					config = configOption.GetDefaultValue() as FileInfo; // 默认值是用户配置目录下的 config.json，此默认值是在创建选项时设置的
+				} else {
+					_logger.Info($"Using configuration file at \"{config.FullName}\".");
 				}
 				CommandInfoHelper.ConfigurationFileInfo = config!;
 

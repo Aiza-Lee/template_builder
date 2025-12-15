@@ -11,16 +11,11 @@
 			"note": "标题页额外内容"
 		},
 		"code": {
+			"minted_style": "bw",
 			"font_family": "Fira Code",
 			"font_size": "6pt",
 			"line_height": "6pt",
-			"auto_break_lines": true,
 			"tab_size": 4,
-			"space_before": "1em",
-			"space_after": "1em",
-			"keyword_color": "blue",
-			"comment_color": "green!50!black",
-			"string_color": "red",
 			"bg_color": "gray!3"
 		},
 		"hyperref": {

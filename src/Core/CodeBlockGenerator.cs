@@ -9,6 +9,7 @@ namespace Core {
 		private readonly ILogger _logger;
 		private readonly DirectoryInfo _sourceDirInfo;
 		private readonly IConfigParser _programConfigParser;
+		private readonly int _tabSize;
 
 		private readonly string CODE_BLOCK_TEMPLATE = string.Empty;
 		private readonly string[] INCLUDE_FILE_TYPES = [];
@@ -27,18 +28,16 @@ namespace Core {
 		/// <summary>
 		/// 文件扩展名到Listings语言的映射
 		/// </summary>
-		private static readonly IReadOnlyDictionary<string, string> EXTENSION_TO_LANGUAGE =
-			new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
-				{ "c", "C" }, { "cpp", "C++" }, { "h", "C" }, { "hpp", "C++" },
-				{ "cs", "[Sharp]C" }, { "java", "Java" }, { "py", "Python" },
-				{ "rb", "Ruby" }, { "go", "Go" }, { "php", "PHP" }, { "html", "HTML" },
-				{ "css", "CSS" }, { "xml", "XML" }, { "json", "JSON" }, { "js", "JavaScript" },
-				{ "ts", "TypeScript" }, { "sh", "bash" }, { "bat", "PlainText" },
-				{ "ps1", "PowerShell" }, { "swift", "Swift" }, { "kt", "Kotlin" },
-				{ "rs", "Rust" }, { "m", "[Objective]C" }, { "sql", "SQL" },
-				{ "yaml", "YAML" }, { "yml", "YAML" }, { "tex", "[LaTeX]TeX" },
-				{ "txt", "PlainText" }
-			};
+		private readonly Dictionary<string, string> EXTENSION_TO_LANGUAGE = new() {
+			{ "cpp", "cpp" }, { "hpp", "cpp" }, { "h", "c" },
+			{ "cs", "csharp" }, { "rs", "rust" }, { "ts", "typescript" },
+			{ "js", "javascript" }, { "py", "python" }, { "rb", "ruby" },
+			{ "go", "go" }, { "php", "php" }, { "html", "html" },
+			{ "css", "css" }, { "xml", "xml" }, { "json", "json" },
+			{ "sh", "bash" }, { "bat", "batch" }, { "ps1", "powershell" },
+			{ "swift", "swift" }, { "kt", "kotlin" }, { "m", "objective-c" },
+			{ "sql", "sql" }, { "yaml", "yaml" }, { "yml", "yaml" }
+		};
 		private const string DEFAULT_LANGUAGE = "PlainText";
 		private readonly HashSet<string> _warnedExtensions = new(StringComparer.OrdinalIgnoreCase);
 		private static readonly IReadOnlyDictionary<char, string> LATEX_ESCAPES = new Dictionary<char, string> {
@@ -50,10 +49,11 @@ namespace Core {
 			{ '~', @"\textasciitilde{}" }
 		};
 
-		public CodeBlockGenerator(ILogger logger, IConfigParser programConfigParser) {
+		public CodeBlockGenerator(ILogger logger, IConfigParser programConfigParser, int tabSize) {
 			_logger = logger;
 			_sourceDirInfo = CommandInfoHelper.SourceFilesDirectoryInfo;
 			_programConfigParser = programConfigParser;
+			_tabSize = tabSize;
 
 			var resMgr = new ManifestResourceManager(_logger);
 
@@ -125,19 +125,41 @@ namespace Core {
 				return string.Empty;
 			}
 			var content = File.ReadAllText(codeFile.FullName);
+			content = ExpandTabs(content);
 
 			if (CODE_LANGUAGES_EXTENSIONS.Contains(extension)) {
 				var codeBlock = new StringBuilder(CODE_BLOCK_TEMPLATE);
-				var listingsLanguage = ResolveListingsLanguage(extension, codeFile.Name);
-				codeBlock.Replace("##LANGUAGE_DIRECTIVE##", BuildLanguageDirective(listingsLanguage));
-				codeBlock.Replace("##CODE##", content);
+				var language = ResolveLanguage(extension, codeFile.Name);
+				codeBlock.Replace("<<LANGUAGE>>", language);
+				codeBlock.Replace("<<CODE>>", content);
 				return codeBlock.ToString();
 			} else {
 				return content;
 			}
 		}
 
-		private string ResolveListingsLanguage(string extension, string fileName) {
+		// 展开制表符
+		private string ExpandTabs(string content) {
+			if (string.IsNullOrEmpty(content)) return content;
+			var sb = new StringBuilder(content.Length);
+			int column = 0;
+			foreach (char c in content) {
+				if (c == '\t') {
+					int spaces = _tabSize - (column % _tabSize);
+					sb.Append(' ', spaces);
+					column += spaces;
+				} else if (c == '\n' || c == '\r') {
+					sb.Append(c);
+					column = 0;
+				} else {
+					sb.Append(c);
+					column++;
+				}
+			}
+			return sb.ToString();
+		}
+
+		private string ResolveLanguage(string extension, string fileName) {
 			if (EXTENSION_TO_LANGUAGE.TryGetValue(extension, out var mappedLanguage)) {
 				return mappedLanguage;
 			}
@@ -145,10 +167,6 @@ namespace Core {
 				_logger.Warning($"File '{fileName}' uses extension '.{extension}' which has no dedicated listings language. Rendering as plain text.");
 			}
 			return DEFAULT_LANGUAGE;
-		}
-
-		private static string BuildLanguageDirective(string listingsLanguage) {
-			return $@"\lstset{{language={listingsLanguage}}}";
 		}
 
 		/// <summary>

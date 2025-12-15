@@ -68,6 +68,8 @@ namespace Core {
 		private int RunXelatex(FileInfo midTexFileInfo) {
 
 			StringBuilder arguments = new();
+			// arguments.Append("-8bit ");
+			arguments.Append("-shell-escape ");
 			arguments.Append("-interaction=nonstopmode ");
 			arguments.Append($"-jobname={Path.GetFileNameWithoutExtension(CommandInfoHelper.OutputFileInfo.Name)} ");
 			arguments.Append($"-output-directory \"{CommandInfoHelper.OutputFileInfo.Directory!.FullName}\" ");
@@ -161,12 +163,18 @@ namespace Core {
 		private StringBuilder GenerateTexContent() {
 			var resMgr = new ManifestResourceManager(_logger);
 			var mainTemplate = new StringBuilder(resMgr.GetResourceInString("Templates.Main.tex"));
+	
+			// 设置 minted 的输出目录
+			var outputDir = CommandInfoHelper.OutputFileInfo.Directory!.FullName.Replace("\\", "/");
+			mainTemplate.Replace("<<MINTED_OUTPUTDIR>>", outputDir);
+
 			ReplaceMainPlaceholders(mainTemplate);
 
-			var codeBlocks = new CodeBlockGenerator(_logger, _programConfigParser).Generate();
+			int tabSize = _texConfigParser["CODE_TAB_SIZE"].GetAsInt();
+			var codeBlocks = new CodeBlockGenerator(_logger, _programConfigParser, tabSize).Generate();
 
 			// 插入正文内容，生成最终的 TeX 内容
-			mainTemplate.Replace("##CONTENT##", codeBlocks);
+			mainTemplate.Replace("<<CONTENT>>", codeBlocks);
 			return mainTemplate;
 		}
 

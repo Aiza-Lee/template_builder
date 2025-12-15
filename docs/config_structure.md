@@ -19,16 +19,11 @@
 			"note": "标题页额外内容"
 		},
 		"code": {	// 代码块设置
+			"minted_style": "bw",			// v1.2.0 后使用minted作为代码高亮引擎，可能的选项见 https://pygments.org/styles/
 			"font_family": "Fira Code",
 			"font_size": "8pt",				// 注意单位是 pt
 			"line_height": "8.1pt",			// 注意单位是 pt
-			"auto_break_lines": true,		// 自动换行
 			"tab_size": 4,					// Tab 键宽度，单位是空格数
-			"space_before": "1em",			// 段落前间距
-			"space_after": "1em",			// 段落后间距
-			"keyword_color": "blue",		// 关键字颜色
-			"comment_color": "green",		// 注释颜色
-			"string_color": "red",			// 字符串颜色
 			"bg_color": "gray!10"			// 背景颜色
 		},
 		"hyperref": {

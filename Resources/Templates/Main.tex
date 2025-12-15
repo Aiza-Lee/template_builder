@@ -1,107 +1,11 @@
-% Unified LaTeX Template (corrected version)
-% 本模板用于生成算法竞赛模板集，支持中英文混排和代码高亮
-% 文档类选项可以包括：a4paper, 12pt, oneside/twoside 等
 \documentclass[10pt,landscape,twocolumn]{ctexart} % ctexart支持中文排版
 
-% Packages - 导入所需的LaTeX包
 \usepackage{geometry}		% 页面布局设置
-\usepackage{listings}		% 代码列表和高亮
+\usepackage[outputdir=<<MINTED_OUTPUTDIR>>]{minted}			% 代码高亮显示
 \usepackage{fontspec}		% 字体设置
 \usepackage{xeCJK}			% 中文支持（XeLaTeX）
 \usepackage{xcolor}			% 颜色支持
 \usepackage{hyperref}		% 超链接和PDF书签
-
-\lstdefinelanguage{PlainText}{
-	sensitive=true,
-	morecomment=[l]{//},
-	morecomment=[l]{\#},
-	morecomment=[s]{/*}{*/},
-	morestring=[b]',
-	morestring=[b]"
-}
-
-\lstdefinelanguage{JSON}{
-	sensitive=true,
-	morecomment=[l]{//},
-	morecomment=[s]{/*}{*/},
-	morestring=[b]",
-	keywords={true,false,null}
-}
-
-\lstdefinelanguage{YAML}{
-	sensitive=false,
-	morecomment=[l]{\#},
-	morestring=[b]',
-	morestring=[b]",
-	keywords={true,false,null,yes,no,on,off}
-}
-
-\lstdefinelanguage{JavaScript}{
-	sensitive=true,
-	morecomment=[l]{//},
-	morecomment=[s]{/*}{*/},
-	morestring=[b]',
-	morestring=[b]",
-	morestring=[b]`,
-	alsoletter={-},
-	keywords={const,let,var,function,return,if,else,for,while,do,break,continue,try,catch,finally,switch,case,default,new,delete,typeof,instanceof,this,throw,class,extends,super,import,from,export,async,await,yield,in,of}
-}
-
-\lstdefinelanguage{TypeScript}{
-	sensitive=true,
-	morecomment=[l]{//},
-	morecomment=[s]{/*}{*/},
-	morestring=[b]',
-	morestring=[b]",
-	morestring=[b]`,
-	alsoletter={-},
-	keywords={const,let,var,function,return,if,else,for,while,do,break,continue,try,catch,finally,switch,case,default,new,delete,typeof,instanceof,this,throw,class,extends,super,import,from,export,async,await,yield,in,of,interface,implements,enum,namespace,declare,readonly,type}
-}
-
-\lstdefinelanguage{CSS}{
-	sensitive=true,
-	morecomment=[s]{/*}{*/},
-	morestring=[b]',
-	morestring=[b]",
-	keywords={color,background,background-color,border,display,position,margin,padding,font,font-size,font-family,width,height,flex,grid,justify-content,align-items,content,animation}
-}
-
-\lstdefinelanguage{PowerShell}{
-	sensitive=true,
-	morecomment=[l]{\#},
-	morecomment=[s]{<#}{#>},
-	morestring=[b]',
-	morestring=[b]",
-	alsoletter={-},
-	keywords={function,param,if,else,elseif,for,foreach,while,do,until,return,switch,try,catch,finally,throw,class,enum,using,namespace,begin,process,end,filter,workflow,inlineScript}
-}
-
-\lstdefinelanguage{Rust}{
-	sensitive=true,
-	morecomment=[l]{//},
-	morecomment=[s]{/*}{*/},
-	morestring=[b]',
-	morestring=[b]",
-	keywords={fn,let,mut,impl,trait,struct,enum,match,if,else,loop,while,for,in,as,crate,super,self,Self,mod,use,move,ref,async,await,unsafe,return,break,continue,where,pub,const,static,extern,type,dyn,macro_rules}
-}
-
-\lstdefinelanguage{Swift}{
-	sensitive=true,
-	morecomment=[l]{//},
-	morecomment=[s]{/*}{*/},
-	morestring=[b]',
-	morestring=[b]",
-	keywords={func,var,let,class,struct,enum,protocol,extension,if,else,guard,do,catch,try,throws,rethrows,return,for,in,while,repeat,switch,case,break,continue,defer,where,associatedtype,inout,import,open,public,internal,fileprivate,private,mutating,nonmutating}
-}
-
-\lstdefinelanguage{Kotlin}{
-	sensitive=true,
-	morecomment=[l]{//},
-	morecomment=[s]{/*}{*/},
-	morestring=[b]',
-	morestring=[b]",
-	keywords={fun,val,var,class,object,interface,data,sealed,when,if,else,while,for,in,is,as,return,break,continue,package,import,where,by,companion,super,this,constructor,init,lateinit,override,inline,noinline,crossinline}
-}
 
 \setcounter{secnumdepth}{5}
 \setcounter{tocdepth}{5}
@@ -142,32 +46,22 @@
 }
 
 \newfontfamily{\customcodefontfamily}{##CODE_FONT_FAMILY##}[		% Fira Code 字体设置
+	NFSSFamily=CustomCodeFont,
 	Contextuals={Alternate},  % 启用编程连字
 	Ligatures={Common, Rare}, % 启用所有连字类型
 	Kerning=On                % 开启字距调整
 ]
 
-% 代码字体设置
-\lstset{
-	language=C++,											% 代码语言: C++
-	basicstyle=
-		\customcodefontfamily
-		\fontsize{##CODE_FONT_SIZE##}{##CODE_LINE_HEIGHT##}
-		\selectfont,										% 代码字体样式
-	keywordstyle=\color{##CODE_KEYWORD_COLOR##}\bfseries,				% 关键词样式
-	commentstyle=\color{##CODE_COMMENT_COLOR##}\itshape,				% 注释样式
-	stringstyle=\color{##CODE_STRING_COLOR##},						% 字符串样式
-	numberstyle=\tiny\color{gray},							% 行号样式
-	backgroundcolor=\color{##CODE_BG_COLOR##},				% 背景颜色
-	frame=none,												% 边框样式: none, leftline, topline, bottomline, lines, single, shadowbox
-	breaklines=##CODE_AUTO_BREAK_LINES##,					% 是否自动换行: true/false
-	tabsize=##CODE_TAB_SIZE##,								% Tab宽度，如: 4
-	numbers=left,											% 行号位置: left, right, none
-	showstringspaces=false,									% 不显示字符串中的空格
-	showspaces=false,										% 不显示空格
-	showtabs=false,											% 不显示Tab
-	aboveskip=##CODE_SPACE_BEFORE##,						% 代码块前间距
-	belowskip=##CODE_SPACE_AFTER##							% 代码块后间距
+\setminted{
+	style=##CODE_MINTED_STYLE##,
+	fontfamily=CustomCodeFont,
+	fontsize=\fontsize{##CODE_FONT_SIZE##}{##CODE_LINE_HEIGHT##}\selectfont,
+	breaklines=##CODE_AUTO_BREAK_LINES##,
+	tabsize=##CODE_TAB_SIZE##,
+	linenos=true,
+	numbersep=2pt,
+	bgcolor=##CODE_BG_COLOR##,
+	frame=none,
 }
 
 % 页面样式设置
@@ -191,6 +85,6 @@
 	\tableofcontents	% 生成目录
 
 	\newpage
-	##CONTENT##			% 正文内容
+	<<CONTENT>>			% 正文内容
 
 \end{document}

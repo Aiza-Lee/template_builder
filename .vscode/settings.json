@@ -9,6 +9,16 @@
 					// "textDecoration": "underline"
 				}
 			]
+		},
+		"(<<[^<>]*>>)": {
+			"filterFileRegex": ".*\\.tex$",
+			"decorations": [
+				{
+					"color": "#53d33f",
+					"fontWeight": "bold",
+					// "textDecoration": "underline"
+				}
+			]
 		}
 	},
 	"highlight.decorations": {

@@ -24,7 +24,7 @@ public class CodeBlockGeneratorTests {
 			CommandInfoHelper.SourceFilesDirectoryInfo = new DirectoryInfo(tempDir);
 			var logger = new TestLogger();
 			var programParser = new ConfigParser("PROGRAM", logger);
-			var generator = new CodeBlockGenerator(logger, programParser);
+			var generator = new CodeBlockGenerator(logger, programParser, 4);
 
 			var output = generator.Generate();
 
@@ -67,12 +67,12 @@ public class CodeBlockGeneratorTests {
 					}
 					"""
 				);
-				var generator = new CodeBlockGenerator(logger, programParser);
+				var generator = new CodeBlockGenerator(logger, programParser, 4);
 
 				var output = generator.Generate();
 
-				Assert.Contains(@"\lstset{language=JSON}", output);
-				Assert.Contains(@"\lstset{language=TypeScript}", output);
+				Assert.Contains(@"\begin{minted}{json}", output);
+				Assert.Contains(@"\begin{minted}{typescript}", output);
 			} finally {
 				Directory.Delete(tempDir, true);
 			}
