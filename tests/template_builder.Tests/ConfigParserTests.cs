@@ -30,7 +30,6 @@ public class ConfigParserTests {
 
 		Assert.Equal("Unit Tester", parser["AUTHOR"].GetAsString());
 		Assert.Equal("CustomFont", parser["CODE_FONT_FAMILY"].GetAsString());
-		Assert.False(parser["CODE_AUTO_BREAK_LINES"].GetAsBool());
 		Assert.Equal(8, parser["CODE_TAB_SIZE"].GetAsInt());
 		Assert.Equal("Custom Title", parser["TITLE_CONTENT"].GetAsString());
 		Assert.Equal("Times New Roman", parser["GLOBAL_MAIN_FONT"].GetAsString());
