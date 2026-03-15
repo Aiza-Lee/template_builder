@@ -13,6 +13,7 @@ namespace Core {
 
 		private readonly string CODE_BLOCK_TEMPLATE = string.Empty;
 		private readonly string[] INCLUDE_FILE_TYPES = [];
+		private readonly string[] IGNORE_PATTERNS = [];
 		private readonly string[] SUB_DIRECTORY_NAMES = [
 			"section", "subsection", "subsubsection",
 			"paragraph", "subparagraph"
@@ -59,6 +60,7 @@ namespace Core {
 
 			CODE_BLOCK_TEMPLATE = resMgr.GetResourceInString("Templates.CodeBlock.tex");
 			INCLUDE_FILE_TYPES = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
+			IGNORE_PATTERNS = _programConfigParser["IGNORE_PATTERNS"].GetAsStringArray();
 		}
 
 
@@ -95,11 +97,28 @@ namespace Core {
 
 			// 处理子目录
 			foreach (var subDir in codeDir.GetDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)) {
+				if (subDir.Name.StartsWith('.')) {
+					_logger.Warning($"Skipping hidden directory: {subDir.FullName}");
+					continue;
+				}
+				if (IGNORE_PATTERNS.Any(subDir.Name.Contains)) {
+					_logger.Warning($"Skipping directory '{subDir.FullName}' due to ignore pattern match.");
+					continue;
+				}
 				InsertSection(strBuilder, subDir.Name, depth);
 				GenerateCodeBlock_Directory(strBuilder, subDir, depth + 1);
 			}
 			// 处理当前目录下的文件
 			foreach (var codeFile in codeDir.GetFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)) {
+				if (codeFile.Name.StartsWith('.')) {
+					_logger.Warning($"Skipping hidden file: {codeFile.FullName}");
+					continue;
+				}
+				if (IGNORE_PATTERNS.Any(codeFile.Name.Contains)) {
+					_logger.Warning($"Skipping file '{codeFile.FullName}' due to ignore pattern match.");
+					continue;
+				}
+
 				var codeBlock = GenerateCodeBlock_File(codeFile);
 				// 如果不在包含的文件类型列表中，则跳过
 				if (!string.IsNullOrEmpty(codeBlock)) {

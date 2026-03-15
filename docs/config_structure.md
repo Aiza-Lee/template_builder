@@ -49,7 +49,10 @@
 	"PROGRAM": {		// 构建源相关设置
 		"include_file_types": [				// 包含的代码文件类型
 			".cpp", ".c", ".json", ".hpp"
-		]
+		],
+		"ignore_patterns": [				// 构建时忽略的文件或目录,目前不支持模式匹配
+			"[ignore]"
+		],
 	}
 }
 ```
