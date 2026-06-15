@@ -77,6 +77,43 @@ public class CodeBlockGeneratorTests {
 				Directory.Delete(tempDir, true);
 			}
 		}
+
+		[Fact]
+		public void Generate_HonorsIgnorePatterns_AsGlobs() {
+			var tempDir = CreateTempDirectory();
+			try {
+				// 模拟 a.tmp / 目录 build/ 应被排除；keep.txt 保留
+				Directory.CreateDirectory(Path.Combine(tempDir, "build"));
+				File.WriteAllText(Path.Combine(tempDir, "a.tmp"), "ignored by glob");
+				File.WriteAllText(Path.Combine(tempDir, "keep.txt"), "kept");
+				File.WriteAllText(Path.Combine(tempDir, "build", "x.txt"), "ignored by dir glob");
+
+				CommandInfoHelper.SourceFilesDirectoryInfo = new DirectoryInfo(tempDir);
+				var logger = new TestLogger();
+				var programParser = new ConfigParser("PROGRAM", logger);
+				programParser.ParseConfigFile(
+					"""
+					{
+						"PROGRAM": {
+							"include_file_types": [ ".tmp", ".txt" ],
+							"ignore_patterns": [ "*.tmp", "build" ]
+						}
+					}
+					"""
+				);
+				var generator = new CodeBlockGenerator(logger, programParser, 4);
+
+				var output = generator.Generate();
+
+				Assert.Contains(@"\section{keep.txt}", output);
+				Assert.DoesNotContain(@"\section{a.tmp}", output);
+				Assert.DoesNotContain(@"\section{build}", output);
+				Assert.DoesNotContain("ignored by glob", output);
+				Assert.DoesNotContain("ignored by dir glob", output);
+			} finally {
+				Directory.Delete(tempDir, true);
+			}
+		}
 		private static string CreateTempDirectory() {
 			var directoryPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
 			return Directory.CreateDirectory(directoryPath).FullName;

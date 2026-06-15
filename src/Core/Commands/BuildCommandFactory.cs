@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.Runtime.InteropServices.Marshalling;
 using Utils;
 
 namespace Core.Commands {

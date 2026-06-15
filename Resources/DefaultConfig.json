@@ -42,6 +42,6 @@
 	},
 	"PROGRAM": {
 		"include_file_types": [".cpp", ".c", ".json", ".tex", ".hpp", ".h", ".py", ".txt"], 
-		"ignore_patterns": ["[ignore]"]
+		"ignore_patterns": ["*ignore*"]
 	}
 }

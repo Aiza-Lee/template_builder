@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Extensions.FileSystemGlobbing;
 using Utils;
 
 namespace Core {
@@ -14,6 +15,7 @@ namespace Core {
 		private readonly string CODE_BLOCK_TEMPLATE = string.Empty;
 		private readonly string[] INCLUDE_FILE_TYPES = [];
 		private readonly string[] IGNORE_PATTERNS = [];
+		private readonly Matcher _ignoreMatcher = new();
 		private readonly string[] SUB_DIRECTORY_NAMES = [
 			"section", "subsection", "subsubsection",
 			"paragraph", "subparagraph"
@@ -61,6 +63,24 @@ namespace Core {
 			CODE_BLOCK_TEMPLATE = resMgr.GetResourceInString("Templates.CodeBlock.tex");
 			INCLUDE_FILE_TYPES = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
 			IGNORE_PATTERNS = _programConfigParser["IGNORE_PATTERNS"].GetAsStringArray();
+
+			// 把 ignore_patterns 注册到 Matcher 中作为 exclude 模式。
+			// 必须先 AddInclude 一个通配模式，否则 Matcher 会拒绝匹配。
+			// 这里只匹配单段文件名/目录名（不含路径分隔符），所以用 `*` 而不是 `**/*`。
+			_ignoreMatcher.AddInclude("*");
+			foreach (var pattern in IGNORE_PATTERNS) {
+				if (!string.IsNullOrWhiteSpace(pattern)) {
+					_ignoreMatcher.AddExclude(pattern);
+				}
+			}
+		}
+
+		/// <summary>
+		/// 判断给定文件名/目录名是否被 ignore_patterns 命中。提取为 internal static 以便测试。
+		/// </summary>
+		internal static bool IsIgnored(string name, Matcher matcher) {
+			// HasMatches = false 表示被 exclude 命中
+			return !matcher.Match(name).HasMatches;
 		}
 
 
@@ -101,7 +121,7 @@ namespace Core {
 					_logger.Warning($"Skipping hidden directory: {subDir.FullName}");
 					continue;
 				}
-				if (IGNORE_PATTERNS.Any(subDir.Name.Contains)) {
+				if (IsIgnored(subDir.Name, _ignoreMatcher)) {
 					_logger.Warning($"Skipping directory '{subDir.FullName}' due to ignore pattern match.");
 					continue;
 				}
@@ -114,7 +134,7 @@ namespace Core {
 					_logger.Warning($"Skipping hidden file: {codeFile.FullName}");
 					continue;
 				}
-				if (IGNORE_PATTERNS.Any(codeFile.Name.Contains)) {
+				if (IsIgnored(codeFile.Name, _ignoreMatcher)) {
 					_logger.Warning($"Skipping file '{codeFile.FullName}' due to ignore pattern match.");
 					continue;
 				}

@@ -16,18 +16,29 @@ namespace Utils {
 		/// 获取用户配置文件的绝对路径
 		/// </summary>
 		/// <returns></returns>
-		/// <exception cref="PlatformNotSupportedException">没有mac设备，暂时不支持mac系统</exception>
+		/// <exception cref="PlatformNotSupportedException">未识别的操作系统平台</exception>
 		public string GetUserConfigPath() {
-			string basePath;
-			if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
-				basePath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-			} else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) {
-				basePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
-			} else {
-				throw new PlatformNotSupportedException("unsupported platform");
-			}
-
+			string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+			string basePath = ResolveBasePath(RuntimeInformation.IsOSPlatform, userProfile);
 			return Path.Combine(basePath, _organizationName, _appName);
+		}
+
+		/// <summary>
+		/// 根据平台解析用户配置根目录。抽成纯函数便于测试。
+		/// </summary>
+		/// <param name="isOsPlatform">平台判断回调（便于测试时注入）</param>
+		/// <param name="userProfile">当前用户的 home 目录（Windows 上对应 USERPROFILE，*nix 上对应 HOME）</param>
+		internal static string ResolveBasePath(Func<OSPlatform, bool> isOsPlatform, string userProfile) {
+			if (isOsPlatform(OSPlatform.Windows)) {
+				return Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+			}
+			if (isOsPlatform(OSPlatform.Linux)) {
+				return Path.Combine(userProfile, ".config");
+			}
+			if (isOsPlatform(OSPlatform.OSX)) {
+				return Path.Combine(userProfile, "Library", "Application Support");
+			}
+			throw new PlatformNotSupportedException("unsupported platform: " + RuntimeInformation.OSDescription);
 		}
 	}
 }
