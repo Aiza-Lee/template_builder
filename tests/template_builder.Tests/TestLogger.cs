@@ -15,4 +15,6 @@ internal sealed class TestLogger : ILogger {
 	public void Error(string message) => _entries.Enqueue((LogLevel.ERROR, message));
 
 	public void Debug(string message) => _entries.Enqueue((LogLevel.DEBUG, message));
+
+	public void SetLevel(LogLevel level) { }
 }

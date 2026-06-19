@@ -11,6 +11,7 @@ namespace Core {
 		private readonly DirectoryInfo _sourceDirInfo;
 		private readonly IConfigParser _programConfigParser;
 		private readonly int _tabSize;
+		private int _unresolvedPlaceholderCount;
 
 		private readonly string CODE_BLOCK_TEMPLATE = string.Empty;
 		private readonly string[] INCLUDE_FILE_TYPES = [];
@@ -52,15 +53,19 @@ namespace Core {
 			{ '~', @"\textasciitilde{}" }
 		};
 
-		public CodeBlockGenerator(ILogger logger, IConfigParser programConfigParser, int tabSize) {
+		public CodeBlockGenerator(
+			ILogger logger,
+			IConfigParser programConfigParser,
+			int tabSize,
+			DirectoryInfo sourceDir,
+			string codeBlockTemplate
+		) {
 			_logger = logger;
-			_sourceDirInfo = CommandInfoHelper.SourceFilesDirectoryInfo;
+			_sourceDirInfo = sourceDir;
 			_programConfigParser = programConfigParser;
 			_tabSize = tabSize;
 
-			var resMgr = new ManifestResourceManager(_logger);
-
-			CODE_BLOCK_TEMPLATE = resMgr.GetResourceInString("Templates.CodeBlock.tex");
+			CODE_BLOCK_TEMPLATE = codeBlockTemplate;
 			INCLUDE_FILE_TYPES = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
 			IGNORE_PATTERNS = _programConfigParser["IGNORE_PATTERNS"].GetAsStringArray();
 
@@ -89,7 +94,8 @@ namespace Core {
 		/// </summary>
 		/// <returns></returns>
 		public string Generate() {
-			var sourceDirInfo = CommandInfoHelper.SourceFilesDirectoryInfo;
+			_unresolvedPlaceholderCount = 0;
+			var sourceDirInfo = _sourceDirInfo;
 			if (!sourceDirInfo.Exists) {
 				Directory.CreateDirectory(sourceDirInfo.FullName);
 				_logger.Warning($"Source directory '{sourceDirInfo.FullName}' does not exist. Created the directory. Please add source files and rebuild.");
@@ -97,6 +103,11 @@ namespace Core {
 			}
 			return GenerateCodeBlock_Directory(new(), sourceDirInfo).ToString();
 		}
+
+		/// <summary>
+		/// 最近一次 Generate() 调用中发现的未替换占位符数量。供调用方决定退出码。
+		/// </summary>
+		public int UnresolvedPlaceholderCount => _unresolvedPlaceholderCount;
 
 		/// <summary>
 		/// 递归生成目录下所有代码文件的代码块TeX
@@ -171,7 +182,12 @@ namespace Core {
 				var language = ResolveLanguage(extension, codeFile.Name);
 				codeBlock.Replace("<<LANGUAGE>>", language);
 				codeBlock.Replace("<<CODE>>", content);
-				return codeBlock.ToString();
+				var rendered = codeBlock.ToString();
+				foreach (var placeholder in TemplatePlaceholderScanner.FindUnresolved(rendered)) {
+					_logger.Error($"Unresolved placeholder '{placeholder}' in CodeBlock.tex (file: {codeFile.Name}).");
+					_unresolvedPlaceholderCount++;
+				}
+				return rendered;
 			} else {
 				return content;
 			}

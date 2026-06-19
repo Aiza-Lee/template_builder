@@ -8,64 +8,84 @@ namespace Core {
 	/// </summary>
 	internal class PdfBuilder {
 		private readonly ILogger _logger;
+		private readonly BuildOptions _options;
 		private readonly IConfigParser _texConfigParser;
 		private readonly IConfigParser _programConfigParser;
+		private readonly ManifestResourceManager _resMgr;
 		private readonly StringBuilder _xelatexStderr = new();
+		private int _unresolvedPlaceholderCount;
 
+		/// <summary>
+		/// 退出码：0 成功；1 xelatex 编译失败；3 模板存在未替换占位符。
+		/// </summary>
+		public const int ExitSuccess = 0;
+		public const int ExitXelatexFailure = 1;
+		public const int ExitUnresolvedPlaceholders = 3;
 
-		public PdfBuilder(ILogger logger) {
+		public PdfBuilder(
+			ILogger logger,
+			BuildOptions options,
+			IConfigParser texConfigParser,
+			IConfigParser programConfigParser,
+			ManifestResourceManager resMgr
+		) {
 			_logger = logger;
-			_texConfigParser = new ConfigParser("TEX", logger);
-			_programConfigParser = new ConfigParser("PROGRAM", logger);
-
-			_texConfigParser.ParseConfigFile(File.ReadAllText(CommandInfoHelper.ConfigurationFileInfo.FullName));
-			_programConfigParser.ParseConfigFile(File.ReadAllText(CommandInfoHelper.ConfigurationFileInfo.FullName));
+			_options = options;
+			_texConfigParser = texConfigParser;
+			_programConfigParser = programConfigParser;
+			_resMgr = resMgr;
 		}
 
 		/// <summary>
 		/// 执行构建命令。生成tex文件内容，并编译为pdf，输出到配置中的路径。
 		/// </summary>
-		public void Build() {
+		/// <returns>退出码（0 成功；1 xelatex 失败；3 模板存在未替换占位符）</returns>
+		public int Build() {
 			_logger.Info("Build process started...");
-			// 加载用户配置
-			LoadUserConfig();
+			_unresolvedPlaceholderCount = 0;
 
 			// 生成 TeX 正文内容
-			string texContent = GenerateTexContent().ToString();
+			var mainTemplate = GenerateTexContent();
+			if (_unresolvedPlaceholderCount > 0) {
+				return ExitUnresolvedPlaceholders;
+			}
 
 			// 保存 TeX 文件
-			var midTexFileInfo = SaveTexFile(texContent);
+			var midTexFileInfo = SaveTexFile(mainTemplate.ToString());
 
 			// 编译 TeX 文件为 PDF
-			CompileTexToPdf(midTexFileInfo);
+			return CompileTexToPdf(midTexFileInfo);
 		}
 
-		private void CompileTexToPdf(FileInfo midTexFileInfo) {
+		private int CompileTexToPdf(FileInfo midTexFileInfo) {
 			_logger.Info("Starting LaTeX compilation...");
 
 			const int requiredCompilations = 2;
 
 			bool cleanupNeeded = true;
-			_xelatexStderr.Clear();
 
 			for (int pass = 1; pass <= requiredCompilations; pass++) {
 				_logger.Info($"Compilation pass #{pass}...");
 
-				int exitCode = RunXelatex(midTexFileInfo);
+				// 每次 pass 清空 buffer，使最终 dump 时只看到失败 pass 的 stderr。
+				_xelatexStderr.Clear();
+
+				int exitCode = RunXelatex(midTexFileInfo, pass);
 				if (exitCode != 0) {
-					if (CommandInfoHelper.OutputFileInfo.Exists) {
+					if (_options.OutputPdf.Exists) {
 						_logger.Warning("xelatex returned a non-zero exit code, but the PDF was generated. Please check the compilation log for warnings or non-fatal errors.");
 						cleanupNeeded = false; // 保留辅助文件以供调试
 					} else {
 						_logger.Error($"xelatex exited with code {exitCode}. LaTeX compilation failed.");
 						FlushStderrAsError();
-						return;
+						return ExitXelatexFailure;
 					}
 				}
 			}
 			_logger.Info("LaTeX compilation completed successfully.");
 			if (cleanupNeeded)
 				CleanupAuxiliaryFiles();
+			return ExitSuccess;
 		}
 
 		/// <summary>
@@ -82,14 +102,14 @@ namespace Core {
 			}
 		}
 
-		private int RunXelatex(FileInfo midTexFileInfo) {
+		private int RunXelatex(FileInfo midTexFileInfo, int pass) {
 
 			StringBuilder arguments = new();
 			// arguments.Append("-8bit ");
 			arguments.Append("-shell-escape ");
 			arguments.Append("-interaction=nonstopmode ");
-			arguments.Append($"-jobname={Path.GetFileNameWithoutExtension(CommandInfoHelper.OutputFileInfo.Name)} ");
-			arguments.Append($"-output-directory \"{CommandInfoHelper.OutputFileInfo.Directory!.FullName}\" ");
+			arguments.Append($"-jobname={Path.GetFileNameWithoutExtension(_options.OutputPdf.Name)} ");
+			arguments.Append($"-output-directory \"{_options.OutputPdf.Directory!.FullName}\" ");
 			arguments.Append($"\"{midTexFileInfo.FullName}\"");
 
 			// 把 stderr 累积到缓存中，避免 minted / hyperref 的无害提示刷屏；
@@ -132,17 +152,25 @@ namespace Core {
 
 			xelatex.WaitForExit();
 
-			// 把缓存的 stderr 存到一个可以跨 pass 累积的位置（通过实例字段）
-			_xelatexStderr.Append(stderrBuffer);
+			// 给本 pass 的 stderr 打标签，便于在 dump 时区分归属。
+			AppendLabeledStderr(_xelatexStderr, pass, stderrBuffer.ToString());
 			return xelatex.ExitCode;
+		}
+
+		/// <summary>
+		/// 给一次 xelatex pass 的 stderr 打上 `--- pass N stderr ---` 标签并追加到目标 buffer。提取为 internal static 便于测试。
+		/// </summary>
+		internal static void AppendLabeledStderr(StringBuilder buffer, int pass, string stderr) {
+			buffer.AppendLine($"--- pass {pass} stderr ---");
+			buffer.Append(stderr);
 		}
 
 		/// <summary>
 		/// 清理辅助文件
 		/// </summary>
 		private void CleanupAuxiliaryFiles() {
-			var baseName = Path.GetFileNameWithoutExtension(CommandInfoHelper.OutputFileInfo.Name);
-			var outputDir = CommandInfoHelper.OutputFileInfo.Directory!.FullName;
+			var baseName = Path.GetFileNameWithoutExtension(_options.OutputPdf.Name);
+			var outputDir = _options.OutputPdf.Directory!.FullName;
 			Cleanup(outputDir, baseName, _logger);
 		}
 
@@ -175,7 +203,7 @@ namespace Core {
 		/// 保存 TeX 文件
 		/// </summary>
 		private FileInfo SaveTexFile(string texContent) {
-			return new FileInfo(SaveTexFile(texContent, CommandInfoHelper.OutputFileInfo.Directory!.FullName));
+			return new FileInfo(SaveTexFile(texContent, _options.OutputPdf.Directory!.FullName));
 		}
 
 		/// <summary>
@@ -188,36 +216,49 @@ namespace Core {
 		}
 
 		/// <summary>
-		/// 加载用户配置
-		/// </summary>
-		private void LoadUserConfig() {
-			try {
-				var configJson = File.ReadAllText(CommandInfoHelper.ConfigurationFileInfo.FullName);
-				_texConfigParser.ParseConfigFile(configJson ?? string.Empty);
-			} catch (Exception ex) {
-				_logger.Error($"Failed to load user configuration: {ex.Message}");
-			}
-		}
-
-		/// <summary>
 		/// 生成 TeX 正文内容
 		/// </summary>
 		private StringBuilder GenerateTexContent() {
-			var resMgr = new ManifestResourceManager(_logger);
-			var mainTemplate = new StringBuilder(resMgr.GetResourceInString("Templates.Main.tex"));
-	
+			string mainTemplateContent = ResolveTemplateContent("Main.tex");
+			var mainTemplate = new StringBuilder(mainTemplateContent);
+
 			// 设置 minted 的输出目录
-			var outputDir = CommandInfoHelper.OutputFileInfo.Directory!.FullName.Replace("\\", "/");
+			var outputDir = _options.OutputPdf.Directory!.FullName.Replace("\\", "/");
 			mainTemplate.Replace("<<MINTED_OUTPUTDIR>>", outputDir);
 
 			ReplaceMainPlaceholders(mainTemplate);
 
+			// 在 <<CONTENT>> 替换前扫描 Main.tex，避免误报尚未替换的 <<CONTENT>> 标记。
+			foreach (var placeholder in TemplatePlaceholderScanner.FindUnresolved(mainTemplate.ToString())) {
+				if (placeholder == "<<CONTENT>>") continue;
+				_logger.Error($"Unresolved placeholder '{placeholder}' in Main.tex.");
+				_unresolvedPlaceholderCount++;
+			}
+
 			int tabSize = _texConfigParser["CODE_TAB_SIZE"].GetAsInt();
-			var codeBlocks = new CodeBlockGenerator(_logger, _programConfigParser, tabSize).Generate();
+			string codeBlockTemplateContent = ResolveTemplateContent("CodeBlock.tex");
+			var codeBlockGen = new CodeBlockGenerator(_logger, _programConfigParser, tabSize, _options.SourceDir, codeBlockTemplateContent);
+			string codeBlocks = codeBlockGen.Generate();
+			_unresolvedPlaceholderCount += codeBlockGen.UnresolvedPlaceholderCount;
 
 			// 插入正文内容，生成最终的 TeX 内容
 			mainTemplate.Replace("<<CONTENT>>", codeBlocks);
+
 			return mainTemplate;
+		}
+
+		/// <summary>
+		/// 解析模板内容：优先使用 TemplateDir 下的文件，否则落回嵌入资源。
+		/// </summary>
+		private string ResolveTemplateContent(string fileName) {
+			if (_options.TemplateDir != null) {
+				var overridePath = Path.Combine(_options.TemplateDir.FullName, fileName);
+				if (File.Exists(overridePath)) {
+					_logger.Info($"Using external template: {overridePath}");
+					return File.ReadAllText(overridePath);
+				}
+			}
+			return _resMgr.GetResourceInString("Templates." + fileName);
 		}
 
 		/// <summary>

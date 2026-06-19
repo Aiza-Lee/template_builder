@@ -21,10 +21,9 @@ public class CodeBlockGeneratorTests {
 			File.WriteAllText(Path.Combine(tempDir, "Alpha.txt"), "root a");
 			File.WriteAllText(Path.Combine(tempDir, "notes.md"), "should be skipped");
 
-			CommandInfoHelper.SourceFilesDirectoryInfo = new DirectoryInfo(tempDir);
 			var logger = new TestLogger();
 			var programParser = new ConfigParser("PROGRAM", logger);
-			var generator = new CodeBlockGenerator(logger, programParser, 4);
+			var generator = new CodeBlockGenerator(logger, programParser, 4, new DirectoryInfo(tempDir), new ManifestResourceManager(logger).GetResourceInString("Templates.CodeBlock.tex"));
 
 			var output = generator.Generate();
 
@@ -55,7 +54,6 @@ public class CodeBlockGeneratorTests {
 				File.WriteAllText(Path.Combine(tempDir, "config.json"), "{ \"value\": 1 }");
 				File.WriteAllText(Path.Combine(tempDir, "script.ts"), "const value: number = 42;");
 
-				CommandInfoHelper.SourceFilesDirectoryInfo = new DirectoryInfo(tempDir);
 				var logger = new TestLogger();
 				var programParser = new ConfigParser("PROGRAM", logger);
 				programParser.ParseConfigFile(
@@ -67,7 +65,7 @@ public class CodeBlockGeneratorTests {
 					}
 					"""
 				);
-				var generator = new CodeBlockGenerator(logger, programParser, 4);
+				var generator = new CodeBlockGenerator(logger, programParser, 4, new DirectoryInfo(tempDir), new ManifestResourceManager(logger).GetResourceInString("Templates.CodeBlock.tex"));
 
 				var output = generator.Generate();
 
@@ -88,7 +86,6 @@ public class CodeBlockGeneratorTests {
 				File.WriteAllText(Path.Combine(tempDir, "keep.txt"), "kept");
 				File.WriteAllText(Path.Combine(tempDir, "build", "x.txt"), "ignored by dir glob");
 
-				CommandInfoHelper.SourceFilesDirectoryInfo = new DirectoryInfo(tempDir);
 				var logger = new TestLogger();
 				var programParser = new ConfigParser("PROGRAM", logger);
 				programParser.ParseConfigFile(
@@ -101,7 +98,7 @@ public class CodeBlockGeneratorTests {
 					}
 					"""
 				);
-				var generator = new CodeBlockGenerator(logger, programParser, 4);
+				var generator = new CodeBlockGenerator(logger, programParser, 4, new DirectoryInfo(tempDir), new ManifestResourceManager(logger).GetResourceInString("Templates.CodeBlock.tex"));
 
 				var output = generator.Generate();
 

@@ -3,15 +3,15 @@ using Utils;
 
 namespace Core.Commands {
 	/// <summary>
-	/// 
+	///
 	/// “构建命令”工厂类
-	/// 
-	/// <para> 
+	///
+	/// <para>
 	/// build 命令使用方法: <br/>
-	/// <code> 
-	/// template-builder build [source-file-folder] [enable-verbose-log] [configuration] [output-path] 
-	/// 
-	/// source-files-folder-options: 
+	/// <code>
+	/// template-builder build [source-file-folder] [enable-verbose-log] [configuration] [output-path]
+	///
+	/// source-files-folder-options:
 	///   --source-files-folder &lt;SOURCE_FILE_FOLDER&gt; | -s &lt;SOURCE_FILE_FOLDER&gt; # 源文件所在文件夹
 	/// enable-verbose-log-options:
 	///   --verbose | -v # 启用详细日志输出
@@ -20,11 +20,11 @@ namespace Core.Commands {
 	/// configuration-options:
 	///   --config &lt;CONFIG_FILE_PATH&gt; | -c &lt;CONFIG_FILE_PATH&gt; # 配置文件路径
 	/// </code>
-	/// 
+	///
 	/// </para>
-	/// 
+	///
 	/// </summary>
-	/// 
+	///
 	/// <param name="logger">日志器</param>
 	internal class BuildCommandFactory(ILogger logger) {
 		private readonly ILogger _logger = logger;
@@ -81,24 +81,32 @@ namespace Core.Commands {
 			};
 			finalCmd.Options.Add(configOption);
 
-			finalCmd.SetAction((pr) => {
-				/* --source-files-folder -s */
-				var sourceFilesFolder = pr.GetValue(sourceFilesFolderOption);
-				if (sourceFilesFolder == null) {
-					_logger.Error("Invalid source files folder.");
-					return;
-				}
-				if (!sourceFilesFolder.Exists) {
-					_logger.Error($"Source files folder \"{sourceFilesFolder.FullName}\" not found.");
-					return;
-				}
-				CommandInfoHelper.SourceFilesDirectoryInfo = sourceFilesFolder;
+			/* --template-dir -t */
+			var templateDirOption = new Option<DirectoryInfo>("--template-dir", "-t") {
+				Description = "Override embedded LaTeX templates by reading Main.tex and/or CodeBlock.tex from this directory. Files not present fall back to embedded versions.",
+				HelpName = "TEMPLATE_DIR",
+				Required = false,
+			};
+			finalCmd.Options.Add(templateDirOption);
+
+			finalCmd.SetAction((ParseResult pr) => {
+				int ExecuteBuild() {
+					/* --source-files-folder -s */
+					var sourceFilesFolder = pr.GetValue(sourceFilesFolderOption);
+					if (sourceFilesFolder == null) {
+						_logger.Error("Invalid source files folder.");
+						return 2;
+					}
+					if (!sourceFilesFolder.Exists) {
+						_logger.Error($"Source files folder \"{sourceFilesFolder.FullName}\" not found.");
+						return 2;
+					}
 
 				/* --output -o */
 				var output = pr.GetValue(outputOption);
 				if (output == null || output.Directory == null) {
 					_logger.Error("Invalid output file path.");
-					return;
+					return 2;
 				}
 				// 如果目标所在的文件夹不存在，则提前创建
 				if (!output.Directory.Exists) {
@@ -107,26 +115,46 @@ namespace Core.Commands {
 				}
 				// 修正文件后缀为pdf
 				var pdfFileName = Path.GetFileNameWithoutExtension(output.Name) + ".pdf";
-				CommandInfoHelper.OutputFileInfo = new FileInfo(
-					Path.Combine(output.Directory.FullName, pdfFileName)
-				);
+				var outputPdf = new FileInfo(Path.Combine(output.Directory.FullName, pdfFileName));
 
 				/* --verbose -v */
 				var verbose = pr.GetValue(verboseOption);
-				LoggerConfig.GlobalLevel = verbose ? LogLevel.DEBUG : LogLevel.INFO;
-				CommandInfoHelper.IsVerboseEnabled = verbose;
+				_logger.SetLevel(verbose ? LogLevel.DEBUG : LogLevel.INFO);
 
 				/* --config -c */
+				// 检测 -c 是否由用户在命令行显式提供；只有显式提供的配置才走严格模式。
+				bool userProvidedConfig = pr.Tokens.Any(t => t.Value == "--config" || t.Value == "-c");
 				var config = pr.GetValue(configOption);
 				if (!config!.Exists) {
 					_logger.Warning($"Configuration file \"{config.FullName}\" not found, use default configuration instead.");
 					config = configOption.GetDefaultValue() as FileInfo; // 默认值是用户配置目录下的 config.json，此默认值是在创建选项时设置的
+					userProvidedConfig = false; // 退回默认配置不再严格
 				} else {
 					_logger.Info($"Using configuration file at \"{config.FullName}\".");
 				}
-				CommandInfoHelper.ConfigurationFileInfo = config!;
 
-				new PdfBuilder(_logger).Build();
+				/* --template-dir -t */
+				var templateDir = pr.GetValue(templateDirOption);
+
+				// 组合根：构造服务图，读取并解析用户配置一次，然后交给 PdfBuilder。
+				var resMgr = new ManifestResourceManager(_logger);
+				var strictness = userProvidedConfig ? ConfigStrictness.Strict : ConfigStrictness.Lax;
+				var texParser = new ConfigParser("TEX", _logger, strictness);
+				var programParser = new ConfigParser("PROGRAM", _logger, strictness);
+				var configJson = File.ReadAllText(config!.FullName);
+				texParser.ParseConfigFile(configJson);
+				programParser.ParseConfigFile(configJson);
+
+				var options = new BuildOptions(sourceFilesFolder, outputPdf, config!, verbose, templateDir);
+				return new PdfBuilder(_logger, options, texParser, programParser, resMgr).Build();
+				}
+
+				try {
+					return ExecuteBuild();
+				} catch (UnknownConfigKeyException ex) {
+					_logger.Error(ex.Message);
+					return 2;
+				}
 			});
 
 			return finalCmd;

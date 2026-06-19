@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.IO;
 using System.Linq;
 using Core.Commands;
 using Utils;
@@ -33,5 +34,18 @@ public class BuildCommandFactoryTests {
 		Assert.Contains("-v", aliases);
 		Assert.Contains("--config", names);
 		Assert.Contains("-c", aliases);
+		Assert.Contains("--template-dir", names);
+		Assert.Contains("-t", aliases);
+	}
+
+	[Fact]
+	public void Invoke_WithNonExistentSourceFolder_ReturnsNonZero() {
+		var factory = new BuildCommandFactory(new TestLogger());
+		var cmd = factory.CreateCommand();
+		var outputPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".pdf");
+
+		var result = cmd.Parse(new[] { "-s", "/no/such/source/folder", "-o", outputPath }).Invoke();
+
+		Assert.NotEqual(0, result);
 	}
 }

@@ -40,6 +40,23 @@ namespace Utils {
 	}
 
 	/// <summary>
+	/// 配置文件解析器对未知 key 的处理策略。
+	/// </summary>
+	internal enum ConfigStrictness {
+		/// <summary>未知 key 仅以 Warning 记录并跳过。</summary>
+		Lax,
+		/// <summary>未知 key 直接抛 <see cref="UnknownConfigKeyException"/>。</summary>
+		Strict,
+	}
+
+	/// <summary>
+	/// 严格模式下，用户配置中出现 DefaultConfig.json 未注册的 key 时抛出。
+	/// </summary>
+	internal class UnknownConfigKeyException : Exception {
+		public UnknownConfigKeyException(string message) : base(message) { }
+	}
+
+	/// <summary>
 	/// 负责解析配置文件的类
 	/// <para>
 	/// 只有在嵌入式资源的中的默认配置文件中出现过的配置项才能被解析 <br/>
@@ -50,6 +67,7 @@ namespace Utils {
 		private readonly Dictionary<string, ConfigValue> _configValues = [];
 		private readonly ILogger _logger;
 		private readonly string _rootObjectName;
+		private readonly ConfigStrictness _strictness;
 
 		const string DefaultConfigFileName = "DefaultConfig.json";
 
@@ -58,9 +76,11 @@ namespace Utils {
 		/// </summary>
 		/// <param name="rootObjectName">配置文件的根对象名称</param>
 		/// <param name="logger">日志记录器，可选</param>
-		public ConfigParser(string rootObjectName, ILogger logger) {
+		/// <param name="strictness">对未知 key 的处理策略，默认为 Lax</param>
+		public ConfigParser(string rootObjectName, ILogger logger, ConfigStrictness strictness = ConfigStrictness.Lax) {
 			_logger = logger;
 			_rootObjectName = rootObjectName;
+			_strictness = strictness;
 
 			// 此处的默认配置是指在潜入文件中的json配置文件
 			ParseJsonContent(new ManifestResourceManager(logger).GetResourceInString(DefaultConfigFileName), true);
@@ -109,6 +129,8 @@ namespace Utils {
 				}
 			} catch (JsonException ex) {
 				_logger?.Error($"Failed to parse JSON content: {ex.Message}");
+			} catch (UnknownConfigKeyException) {
+				throw;
 			} catch (Exception ex) {
 				_logger?.Error($"An unexpected error occurred while parsing config content: {ex.Message}");
 			}
@@ -166,6 +188,11 @@ namespace Utils {
 			if (_configValues.TryGetValue(key, out var existingConfigValue)) {
 				existingConfigValue.Value = configValue.Value;
 			} else {
+				if (_strictness == ConfigStrictness.Strict) {
+					throw new UnknownConfigKeyException(
+						$"Configuration key '{key}' is not registered in the embedded default configuration. Remove the typo or remove '{key}' from your config file."
+					);
+				}
 				_logger?.Warning($"Key '{key}' is not registered. Skipping.");
 			}
 		}
