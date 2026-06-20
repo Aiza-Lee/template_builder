@@ -1,5 +1,6 @@
 using System;
 using Utils;
+using Utils.Exceptions;
 using Xunit;
 
 namespace template_builder.Tests;
@@ -84,5 +85,29 @@ public class ConfigParserTests {
 
 		Assert.Contains(logger.Entries, entry =>
 			entry.Level == LogLevel.WARNING && entry.Message.Contains("TOTALLY_MADE_UP_KEY"));
+	}
+
+	[Fact]
+	public void ParseConfigFile_InvalidJson_ThrowsMalformedConfigException() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		var ex = Assert.Throws<MalformedConfigException>(() =>
+			parser.ParseConfigFile("""{ "TEX": {""")
+		);
+
+		Assert.Contains("Failed to parse JSON content", ex.Message);
+	}
+
+	[Fact]
+	public void ParseConfigFile_SourcePath_PropagatedToException() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		var ex = Assert.Throws<MalformedConfigException>(() =>
+			parser.ParseConfigFile("""{ "TEX": {""", "/tmp/fake/config.json")
+		);
+
+		Assert.Equal("/tmp/fake/config.json", ex.SourcePath);
 	}
 }

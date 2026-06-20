@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Utils;
+using Utils.Exceptions;
 
 namespace Core.Commands {
 	/// <summary>
@@ -95,18 +96,18 @@ namespace Core.Commands {
 					var sourceFilesFolder = pr.GetValue(sourceFilesFolderOption);
 					if (sourceFilesFolder == null) {
 						_logger.Error("Invalid source files folder.");
-						return 2;
+						return ExitCodes.InvalidArguments;
 					}
 					if (!sourceFilesFolder.Exists) {
 						_logger.Error($"Source files folder \"{sourceFilesFolder.FullName}\" not found.");
-						return 2;
+						return ExitCodes.InvalidArguments;
 					}
 
 				/* --output -o */
 				var output = pr.GetValue(outputOption);
 				if (output == null || output.Directory == null) {
 					_logger.Error("Invalid output file path.");
-					return 2;
+					return ExitCodes.InvalidArguments;
 				}
 				// 如果目标所在的文件夹不存在，则提前创建
 				if (!output.Directory.Exists) {
@@ -142,8 +143,8 @@ namespace Core.Commands {
 				var texParser = new ConfigParser("TEX", _logger, strictness);
 				var programParser = new ConfigParser("PROGRAM", _logger, strictness);
 				var configJson = File.ReadAllText(config!.FullName);
-				texParser.ParseConfigFile(configJson);
-				programParser.ParseConfigFile(configJson);
+				texParser.ParseConfigFile(configJson, config!.FullName);
+				programParser.ParseConfigFile(configJson, config!.FullName);
 
 				var options = new BuildOptions(sourceFilesFolder, outputPdf, config!, verbose, templateDir);
 				return new PdfBuilder(_logger, options, texParser, programParser, resMgr).Build();
@@ -153,7 +154,11 @@ namespace Core.Commands {
 					return ExecuteBuild();
 				} catch (UnknownConfigKeyException ex) {
 					_logger.Error(ex.Message);
-					return 2;
+					return ExitCodes.InvalidArguments;
+				} catch (MalformedConfigException ex) {
+					var where = ex.SourcePath != null ? $" (source: {ex.SourcePath})" : string.Empty;
+					_logger.Error($"{ex.Message}{where}");
+					return ExitCodes.MalformedConfig;
 				}
 			});
 

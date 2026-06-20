@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Utils.Exceptions;
 
 namespace Utils {
 	internal class ConfigValue(JsonElement defaultValue) {
@@ -111,15 +112,16 @@ namespace Utils {
 		/// 传入字符串格式的json文件内容
 		/// </summary>
 		/// <param name="content">字符串形式的json文件内容</param>
-		public void ParseConfigFile(string content) {
+		/// <param name="sourcePath">可选，源文件路径，用于在 <see cref="MalformedConfigException"/> 中提供上下文</param>
+		public void ParseConfigFile(string content, string? sourcePath = null) {
 			if (string.IsNullOrWhiteSpace(content)) {
 				_logger?.Error($"Config file content is empty.");
 				return;
 			}
-			ParseJsonContent(content, false);
+			ParseJsonContent(content, false, sourcePath);
 		}
 
-		private void ParseJsonContent(string jsonContent, bool isDefaultConfig) {
+		private void ParseJsonContent(string jsonContent, bool isDefaultConfig, string? sourcePath = null) {
 			try {
 				var json = JsonDocument.Parse(jsonContent).RootElement;
 				if (json.TryGetProperty(_rootObjectName, out var jsonElement)) {
@@ -128,11 +130,21 @@ namespace Utils {
 					_logger?.Error($"Config content does not contain '{_rootObjectName}' root element.");
 				}
 			} catch (JsonException ex) {
-				_logger?.Error($"Failed to parse JSON content: {ex.Message}");
+				throw new MalformedConfigException(
+					$"Failed to parse JSON content: {ex.Message}",
+					sourcePath,
+					ex
+				);
 			} catch (UnknownConfigKeyException) {
 				throw;
+			} catch (MalformedConfigException) {
+				throw;
 			} catch (Exception ex) {
-				_logger?.Error($"An unexpected error occurred while parsing config content: {ex.Message}");
+				throw new MalformedConfigException(
+					$"An unexpected error occurred while parsing config content: {ex.Message}",
+					sourcePath,
+					ex
+				);
 			}
 		}
 

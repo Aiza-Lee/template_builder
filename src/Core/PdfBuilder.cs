@@ -16,11 +16,11 @@ namespace Core {
 		private int _unresolvedPlaceholderCount;
 
 		/// <summary>
-		/// 退出码：0 成功；1 xelatex 编译失败；3 模板存在未替换占位符。
+		/// 退出码常量转发到 <see cref="ExitCodes"/>，保留旧名以兼容既有调用方。
 		/// </summary>
-		public const int ExitSuccess = 0;
-		public const int ExitXelatexFailure = 1;
-		public const int ExitUnresolvedPlaceholders = 3;
+		public const int ExitSuccess = ExitCodes.Success;
+		public const int ExitXelatexFailure = ExitCodes.XelatexFailure;
+		public const int ExitUnresolvedPlaceholders = ExitCodes.UnresolvedPlaceholders;
 
 		public PdfBuilder(
 			ILogger logger,
