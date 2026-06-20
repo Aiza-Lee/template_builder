@@ -115,6 +115,9 @@ namespace Core.Commands {
 				} catch (InvalidArgumentException ex) {
 					_logger.Error(ex.Message);
 					return ExitCodes.InvalidArguments;
+				} catch (MissingEmbeddedResourceException ex) {
+					_logger.Error(ex.Message);
+					return ExitCodes.MissingEmbeddedResource;
 				}
 			});
 

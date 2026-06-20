@@ -11,9 +11,10 @@ namespace Core.Pipeline {
 		private readonly ManifestResourceManager _resMgr = resMgr;
 
 		/// <summary>
-		/// 执行一次构建。捕获 <see cref="MalformedConfigException"/> 与
-		/// <see cref="UnknownConfigKeyException"/>，分别返回 <see cref="ExitCodes.MalformedConfig"/> 与
-		/// <see cref="ExitCodes.InvalidArguments"/>。
+		/// 执行一次构建。捕获 <see cref="MalformedConfigException"/>、
+		/// <see cref="MissingEmbeddedResourceException"/> 与 <see cref="UnknownConfigKeyException"/>，
+		/// 分别返回 <see cref="ExitCodes.MalformedConfig"/>、
+		/// <see cref="ExitCodes.MissingEmbeddedResource"/> 与 <see cref="ExitCodes.InvalidArguments"/>。
 		/// </summary>
 		public int Run(BuildOptions options, bool userProvidedConfig) {
 			try {
@@ -33,6 +34,9 @@ namespace Core.Pipeline {
 				var where = ex.SourcePath != null ? $" (source: {ex.SourcePath})" : string.Empty;
 				_logger.Error($"{ex.Message}{where}");
 				return ExitCodes.MalformedConfig;
+			} catch (MissingEmbeddedResourceException ex) {
+				_logger.Error(ex.Message);
+				return ExitCodes.MissingEmbeddedResource;
 			}
 		}
 	}
