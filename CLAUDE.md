@@ -34,18 +34,24 @@ CI 流程见 `.github/workflows/build-and-release.yml`：PR 触发 restore/build
 ```
 Program.Main
   └─ BuildCommandFactory.CreateCommand()       // System.CommandLine 解析
-       └─ Command.SetAction(...)               // 校验参数、装配组合根、解析配置并调用 PdfBuilder
-            └─ PdfBuilder.Build()
-                 ├─ LoadUserConfig()           // ConfigParser("TEX" + "PROGRAM")
-                 ├─ GenerateTexContent()       // ManifestResourceManager 读 Main.tex 模板
-                 │    ├─ ReplaceMainPlaceholders()   // ##KEY## 替换
-                 │    └─ CodeBlockGenerator.Generate() // 递归源码目录、生成 <<CONTENT>>
-                 ├─ SaveTexFile()              // 写出 mid-output.tex
-                 └─ CompileTexToPdf()          // 两次 xelatex 进程调用 + 清理 .aux/.log/.toc 等
+       └─ Command.SetAction(...)               // ≤20 行骨架：装配并捕异常映射退出码
+            ├─ OutputPathResolver              // 校验 -s / -o，抛 InvalidArgumentException
+            ├─ ConfigPathResolver              // 处理 -c 回退与严格模式判定
+            └─ BuildPipelineRunner.Run()       // 解析配置并调用 PdfBuilder
+                 └─ PdfBuilder.Build()
+                      ├─ LoadUserConfig()           // ConfigParser("TEX" + "PROGRAM")
+                      ├─ GenerateTexContent()       // ManifestResourceManager 读 Main.tex 模板
+                      │    ├─ ReplaceMainPlaceholders()   // ##KEY## 替换
+                      │    └─ CodeBlockGenerator.Generate() // 递归源码目录、生成 <<CONTENT>>
+                      ├─ SaveTexFile()              // 写出 mid-output.tex
+                      └─ CompileTexToPdf()          // 两次 xelatex 进程调用 + 清理 .aux/.log/.toc 等
 ```
 
 ### 关键模块
 
+- **`src/Core/Pipeline/OutputPathResolver.cs`**：校验并规范化 `-s` / `-o`，建父目录、强制 `.pdf` 后缀；失败抛 `InvalidArgumentException`。
+- **`src/Core/Pipeline/ConfigPathResolver.cs`**：处理 `-c` 路径回退与严格模式判定，返回 `(FileInfo, bool UserProvided)`。
+- **`src/Core/Pipeline/BuildPipelineRunner.cs`**：读取 JSON、构造两个 `ConfigParser`、调用 `PdfBuilder.Build()`，并捕 `MalformedConfigException` / `UnknownConfigKeyException` 映射退出码。
 - **`src/Core/PdfBuilder.cs`**：总编排。两次 `xelatex` 编译（让 `hyperref` 书签/目录稳定）；stderr 累积到 `_xelatexStderr`，仅在失败且未生成 PDF 时升为 Error 输出，避免 `minted` 无害提示刷屏。`Cleanup` 与 `SaveTexFile` 抽成 `internal static` 便于测试。
 - **`src/Core/CodeBlockGenerator.cs`**：递归遍历源目录，按深度插入 `\section` → `\subsection` → `\subsubsection` → `\paragraph` → `\subparagraph`（最大 5 层）。`EXTENSION_TO_LANGUAGE` 映射到 minted 语言名，未知名扩展会退化为 `PlainText` 并 warn 一次（`_warnedExtensions` 防刷屏）。`LATEX_ESCAPES` 处理 11 个 LaTeX 特殊字符。
 - **`src/Utils/ConfigParser.cs`**：JSON 解析时只识别嵌入式 `DefaultConfig.json` 注册过的 key（`isDefaultConfig=true` 时注册；`=false` 时只覆盖值）。路径展开为 `UPPER_SNAKE_CASE`。`IConfigParser["KEY"]` 返回 `ReadonlyConfigValue`。
