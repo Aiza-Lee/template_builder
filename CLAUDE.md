@@ -33,18 +33,23 @@ CI 流程见 `.github/workflows/build-and-release.yml`：PR 触发 restore/build
 
 ```
 Program.Main
-  └─ BuildCommandFactory.CreateCommand()       // System.CommandLine 解析
-       └─ Command.SetAction(...)               // ≤20 行骨架：装配并捕异常映射退出码
-            ├─ OutputPathResolver              // 校验 -s / -o，抛 InvalidArgumentException
-            ├─ ConfigPathResolver              // 处理 -c 回退与严格模式判定
-            └─ BuildPipelineRunner.Run()       // 解析配置并调用 PdfBuilder
-                 └─ PdfBuilder.Build()
-                      ├─ LoadUserConfig()           // ConfigParser("TEX" + "PROGRAM")
-                      ├─ GenerateTexContent()       // ManifestResourceManager 读 Main.tex 模板
-                      │    ├─ ReplaceMainPlaceholders()   // ##KEY## 替换
-                      │    └─ CodeBlockGenerator.Generate() // 递归源码目录、生成 <<CONTENT>>
-                      ├─ SaveTexFile()              // 写出 mid-output.tex
-                      └─ CompileTexToPdf()          // 两次 xelatex 进程调用 + 清理 .aux/.log/.toc 等
+  └─ RootCommandFactory.CreateRootCommand()   // 顶层 RootCommand + 三个 subcommand
+       ├─ build subcommand
+       │    └─ BuildPipelineRunner.Run()       // 解析配置并调用 PdfBuilder
+       │         └─ PdfBuilder.Build()        // 两次 xelatex + 清理
+       ├─ validate subcommand
+       │    └─ ValidationRunner.Run()         // 7 项检查，不调 xelatex
+       └─ init subcommand
+            └─ ConfigInitializer.Run()        // 复制嵌入式 DefaultConfig.jsonc 到 -o
+
+无 subcommand → error: required command not specified → ExitCodes.InvalidArguments (2)
+```
+
+CLI 用法：
+```bash
+template_builder build    -s <src> -o <out.pdf> [-c <cfg>] [-t <template-dir>] [-v]
+template_builder validate -s <src> -c <cfg>     [-t <template-dir>] [--format text|json] [--check-xelatex]
+template_builder init     -o <path>             [--format jsonc|json]
 ```
 
 ### 关键模块
@@ -52,16 +57,19 @@ Program.Main
 - **`src/Core/Pipeline/OutputPathResolver.cs`**：校验并规范化 `-s` / `-o`，建父目录、强制 `.pdf` 后缀；失败抛 `InvalidArgumentException`。
 - **`src/Core/Pipeline/ConfigPathResolver.cs`**：处理 `-c` 路径回退与严格模式判定，返回 `(FileInfo, bool UserProvided)`。
 - **`src/Core/Pipeline/BuildPipelineRunner.cs`**：读取 JSON、构造两个 `ConfigParser`、调用 `PdfBuilder.Build()`，并捕 `MalformedConfigException` / `UnknownConfigKeyException` 映射退出码。
+- **`src/Core/Pipeline/ValidationRunner.cs`**：跑 7 项检查（源目录 / 配置解析 / 严格 key 白名单 / 嵌入式资源 / 源码树可走 + 章节深度 / `Main.tex` 的 `##KEY##` 解析 / 可选 xelatex PATH），不调 xelatex，产出 `ValidationReport`（text / json 两种格式）。
+- **`src/Core/Pipeline/ConfigInitializer.cs`**：把嵌入式 `DefaultConfig.jsonc` 资源复制到 `-o` 路径。`--format json` 走 `JsonDocument` + `JsonCommentHandling.Skip` 剥除注释。
 - **`src/Core/PdfBuilder.cs`**：总编排。两次 `xelatex` 编译（让 `hyperref` 书签/目录稳定）；stderr 累积到 `_xelatexStderr`，仅在失败且未生成 PDF 时升为 Error 输出，避免 `minted` 无害提示刷屏。`Cleanup` 与 `SaveTexFile` 抽成 `internal static` 便于测试。
-- **`src/Core/CodeBlockGenerator.cs`**：递归遍历源目录，按深度插入 `\section` → `\subsection` → `\subsubsection` → `\paragraph` → `\subparagraph`（最大 5 层）。`EXTENSION_TO_LANGUAGE` 映射到 minted 语言名，未知名扩展会退化为 `PlainText` 并 warn 一次（`_warnedExtensions` 防刷屏）。`LATEX_ESCAPES` 处理 11 个 LaTeX 特殊字符。
-- **`src/Utils/ConfigParser.cs`**：JSON 解析时只识别嵌入式 `DefaultConfig.json` 注册过的 key（`isDefaultConfig=true` 时注册；`=false` 时只覆盖值）。路径展开为 `UPPER_SNAKE_CASE`。`IConfigParser["KEY"]` 返回 `ReadonlyConfigValue`。
+- **`src/Core/CodeBlockGenerator.cs`**：通过 `SourceTreeWalker.Walk` 遍历源目录，按深度插入 `\section` → `\subsection` → `\subsubsection` → `\paragraph` → `\subparagraph`（最大 5 层）。`EXTENSION_TO_LANGUAGE` 映射到 minted 语言名，未知名扩展会退化为 `PlainText` 并 warn 一次（`_warnedExtensions` 防刷屏）。`LATEX_ESCAPES` 处理 11 个 LaTeX 特殊字符。
+- **`src/Utils/SourceTreeWalker.cs`**：深度优先遍历源码目录，吐出按 (目录优先 / 字母序) 排序的 `SourceEntry`（`Info` / `Depth` / `IsDirectory`）。隐藏项（以 `.` 开头）和 ignore glob 命中项被跳过。
+- **`src/Utils/ConfigParser.cs`**：JSON 解析时只识别嵌入式 `DefaultConfig.jsonc` 注册过的 key（`isDefaultConfig=true` 时注册；`=false` 时只覆盖值）。路径展开为 `UPPER_SNAKE_CASE`。`IConfigParser["KEY"]` 返回 `ReadonlyConfigValue`。解析走 `JsonDocumentOptions { CommentHandling = Skip, AllowTrailingCommas = true }`，天然支持 JSONC 与尾随逗号。
 - **`src/Utils/ManifestResourceManager.cs`**：通过 `Assembly.GetManifestResourceStream` 读取嵌入资源。资源名在 csproj 中配置为 `LogicalName`。
 - **`src/Utils/UserConfigPath.cs`**：跨平台用户配置目录（Windows: `%APPDATA%`，Linux: `~/.config`，macOS: `~/Library/Application Support`）。`ResolveBasePath` 抽成静态便于测试。
 
 ### 嵌入式资源（`Resources/`）
 
 打包时通过 `<EmbeddedResource>` 编译进 DLL，对应 `LogicalName`：
-- `DefaultConfig.json` → `DefaultConfig.json`
+- `DefaultConfig.jsonc` → `DefaultConfig.jsonc`（内联 `//` 注释，`init` 子命令直接复制此资源）
 - `Resources/Templates/Main.tex` → `Templates.Main.tex`
 - `Resources/Templates/CodeBlock.tex` → `Templates.CodeBlock.tex`
 
@@ -73,7 +81,7 @@ Program.Main
 - 嵌套 key 在 `ConfigParser` 内被合并为大写下划线形式，如 `TEX.geometry.paper_size` → `GEOMETRY_PAPER_SIZE`。
 - `Main.tex` 中的 `##KEY##` 占位符由 `ReplaceMainPlaceholders` 用 `TEX` 段替换。
 - `<<CONTENT>>` / `<<MINTED_OUTPUTDIR>>` / `<<LANGUAGE>>` / `<<CODE>>` 是运行时替换符（大小写敏感的「双尖括号」）。
-- 新增 `TEX` 配置项时：① 在 `DefaultConfig.json` 注册；② 在 `Main.tex` 引用 `##NEW_KEY##`（注意大小写）。
+- 新增 `TEX` 配置项时：① 在 `DefaultConfig.jsonc` 注册；② 在 `Main.tex` 引用 `##NEW_KEY##`（注意大小写）。
 - `PROGRAM` 段的 `ignore_patterns` 使用 .NET glob（`Microsoft.Extensions.FileSystemGlobbing`），`Match(name).HasMatches=false` 表示被 exclude 命中。
 
 ### 测试约定
