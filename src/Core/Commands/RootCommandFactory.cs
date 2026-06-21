@@ -136,7 +136,7 @@ namespace Core.Commands {
 		}
 
 		/// <summary>
-		/// validate 子命令（占位）：检查源码 / 配置 / 模板的完整性，不调 xelatex。
+		/// validate 子命令：检查源码 / 配置 / 模板的完整性，不调 xelatex。
 		/// </summary>
 		private Command CreateValidateSubcommand() {
 			var cmd = new Command("validate", "Validate source tree, config, and templates without invoking xelatex.");
@@ -182,8 +182,29 @@ namespace Core.Commands {
 			cmd.Options.Add(checkXelatexOption);
 
 			cmd.SetAction((ParseResult pr) => {
-				_logger.Error("validate subcommand is not yet implemented.");
-				return ExitCodes.XelatexFailure;
+				try {
+					var src = pr.GetValue(sourceFilesFolderOption)!;
+					var cfg = pr.GetValue(configOption)!;
+					if (!src.Exists) {
+						_logger.Error($"Source directory not found: {src.FullName}");
+						return ExitCodes.InvalidArguments;
+					}
+					if (!cfg.Exists) {
+						_logger.Error($"Config file not found: {cfg.FullName}");
+						return ExitCodes.InvalidArguments;
+					}
+					var options = new ValidateSubcommandOptions(
+						src,
+						cfg,
+						pr.GetValue(templateDirOption),
+						pr.GetValue(formatOption)!,
+						pr.GetValue(checkXelatexOption)
+					);
+					return new ValidationRunner(_logger, new ManifestResourceManager(_logger)).Run(options);
+				} catch (InvalidArgumentException ex) {
+					_logger.Error(ex.Message);
+					return ExitCodes.InvalidArguments;
+				}
 			});
 
 			return cmd;

@@ -11,10 +11,22 @@ namespace Core {
 	/// </summary>
 	internal static class TemplatePlaceholderScanner {
 		private static readonly Regex Pattern = new(@"<<[A-Z_]+>>|##[A-Z_]+##", RegexOptions.Compiled);
+		private static readonly Regex MainPlaceholderPattern = new(@"##[A-Z_]+##", RegexOptions.Compiled);
 
 		public static IEnumerable<string> FindUnresolved(string content) {
 			foreach (Match m in Pattern.Matches(content)) {
 				yield return m.Value;
+			}
+		}
+
+		/// <summary>
+		/// 提取 <c>##KEY##</c> 形式的占位符（去包裹的 <c>##</c>），用于校验 Main.tex 中的占位符
+		/// 是否都能在 TEX 配置段找到映射。
+		/// </summary>
+		public static IEnumerable<string> FindMainPlaceholders(string content) {
+			foreach (Match m in MainPlaceholderPattern.Matches(content)) {
+				// m.Value = "##FOO##" → yield "FOO"
+				yield return m.Value.Substring(2, m.Value.Length - 4);
 			}
 		}
 	}
