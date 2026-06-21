@@ -15,13 +15,6 @@ namespace Core {
 		private readonly StringBuilder _xelatexStderr = new();
 		private int _unresolvedPlaceholderCount;
 
-		/// <summary>
-		/// 退出码常量转发到 <see cref="ExitCodes"/>，保留旧名以兼容既有调用方。
-		/// </summary>
-		public const int ExitSuccess = ExitCodes.Success;
-		public const int ExitXelatexFailure = ExitCodes.XelatexFailure;
-		public const int ExitUnresolvedPlaceholders = ExitCodes.UnresolvedPlaceholders;
-
 		public PdfBuilder(
 			ILogger logger,
 			BuildSubcommandOptions options,
@@ -47,7 +40,7 @@ namespace Core {
 			// 生成 TeX 正文内容
 			var mainTemplate = GenerateTexContent();
 			if (_unresolvedPlaceholderCount > 0) {
-				return ExitUnresolvedPlaceholders;
+				return ExitCodes.UnresolvedPlaceholders;
 			}
 
 			// 保存 TeX 文件
@@ -78,14 +71,14 @@ namespace Core {
 					} else {
 						_logger.Error($"xelatex exited with code {exitCode}. LaTeX compilation failed.");
 						FlushStderrAsError();
-						return ExitXelatexFailure;
+						return ExitCodes.XelatexFailure;
 					}
 				}
 			}
 			_logger.Info("LaTeX compilation completed successfully.");
 			if (cleanupNeeded)
 				CleanupAuxiliaryFiles();
-			return ExitSuccess;
+			return ExitCodes.Success;
 		}
 
 		/// <summary>

@@ -96,7 +96,7 @@ Program.Main
 | `MalformedConfig` | 4 | 用户配置 JSON 损坏（`MalformedConfigException`） |
 | `MissingEmbeddedResource` | 5 | 嵌入式资源缺失（`MissingEmbeddedResourceException`） |
 
-`PdfBuilder` 仍保留 `ExitSuccess` / `ExitXelatexFailure` / `ExitUnresolvedPlaceholders` 旧名作为转发常量，避免破坏外部脚本期望。新增异常类放在 `src/Utils/Exceptions/`。
+新增异常类放在 `src/Utils/Exceptions/`。
 
 ## 代码风格
 
