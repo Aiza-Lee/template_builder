@@ -209,6 +209,13 @@ namespace Core {
 		}
 
 		/// <summary>
+		/// 生成 TeX 正文内容（暴露为 internal 以便单测断言占位符替换结果）。
+		/// </summary>
+		internal string GenerateTexContent_ForTest() {
+			return GenerateTexContent().ToString();
+		}
+
+		/// <summary>
 		/// 生成 TeX 正文内容
 		/// </summary>
 		private StringBuilder GenerateTexContent() {
@@ -259,13 +266,26 @@ namespace Core {
 		}
 
 		/// <summary>
-		/// 替换 MainTeX 模板中的占位符
+		/// 需要做 LaTeX 转义的占位符键（用户可见的文本字段）。
+		/// </summary>
+		private static readonly IReadOnlySet<string> _keysToEscape = new HashSet<string>(StringComparer.Ordinal) {
+			"AUTHOR", "SUBJECT", "TITLE_CONTENT", "TITLE_NOTE"
+		};
+
+		/// <summary>
+		/// 替换 MainTeX 模板中的占位符。对用户可见的文本字段（标题/作者/备注）做 LaTeX
+		/// 转义，防止 `_` / `%` / `&` 等字符破坏编译。可以通过
+		/// <c>TEX.TITLE.ESCAPE_LATEX_SPECIALS=false</c> 关掉。
 		/// </summary>
 		/// <param name="content">要替换的模板内容</param>
 		private void ReplaceMainPlaceholders(StringBuilder content) {
+			var escapeEnabled = _texConfigParser["TITLE_ESCAPE_LATEX_SPECIALS"].GetAsBool();
 			foreach (var kvp in _texConfigParser.GetAllConfigsAsString()) {
 				var placeholder = $"##{kvp.Key}##";
-				content.Replace(placeholder, kvp.Value);
+				var value = escapeEnabled && _keysToEscape.Contains(kvp.Key)
+					? LatexEscaper.Escape(kvp.Value)
+					: kvp.Value;
+				content.Replace(placeholder, value);
 			}
 		}
 	}

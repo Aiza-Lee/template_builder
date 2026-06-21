@@ -42,14 +42,6 @@ namespace Core {
 		};
 		private const string DEFAULT_LANGUAGE = "PlainText";
 		private readonly HashSet<string> _warnedExtensions = new(StringComparer.OrdinalIgnoreCase);
-		private static readonly IReadOnlyDictionary<char, string> LATEX_ESCAPES = new Dictionary<char, string> {
-			{ '\\', @"\textbackslash{}" },
-			{ '{', @"\{" }, { '}', @"\}" },
-			{ '#', @"\#" }, { '$', @"\$" },
-			{ '%', @"\%" }, { '&', @"\&" },
-			{ '_', @"\_" }, { '^', @"\^{}" },
-			{ '~', @"\textasciitilde{}" }
-		};
 
 		public CodeBlockGenerator(
 			ILogger logger,
@@ -177,33 +169,11 @@ namespace Core {
 				_logger.Error($"Invalid section depth: {depth}. Cannot insert section '{sectionName}'.");
 				return;
 			}
-			strBuilder.AppendLine($"\\{SUB_DIRECTORY_NAMES[depth]}{{{EscapeLatexText(sectionName)}}}");
+			strBuilder.AppendLine($"\\{SUB_DIRECTORY_NAMES[depth]}{{{LatexEscaper.Escape(sectionName)}}}");
 			if (depth >= 3) {
 				// 段落和子段落作为标题使用，后添加空行以增加可读性
 				strBuilder.AppendLine(@"\textbf{ } \\");
 			}
-		}
-
-		/// <summary>
-		/// 转义LaTeX特殊字符
-		/// </summary>
-		/// <param name="text">输入的文本字符串</param>
-		/// <returns>转义后的LaTeX安全字符串</returns>
-		private static string EscapeLatexText(string text) {
-			if (string.IsNullOrEmpty(text)) {
-				return string.Empty;
-			}
-			var sb = new StringBuilder(text.Length);
-			foreach (var ch in text) {
-				if (LATEX_ESCAPES.TryGetValue(ch, out var replacement)) {
-					sb.Append(replacement);
-				} else if (char.IsControl(ch)) {
-					continue;
-				} else {
-					sb.Append(ch);
-				}
-			}
-			return sb.ToString();
 		}
 	}
 }

@@ -96,6 +96,96 @@ public class PdfBuilderTests {
 		Assert.Contains("second pass stderr", output);
 	}
 
+	// ============================================================
+	//  Round 2 tests: title escape + metadata keywords + runtime
+	// ============================================================
+
+	private static (string tmpDir, PdfBuilder builder) CreateBuilderFixture(
+		string configJson
+	) {
+		var tmpDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tmpDir);
+		var sourceDir = Directory.CreateDirectory(Path.Combine(tmpDir, "src"));
+		File.WriteAllText(Path.Combine(sourceDir.FullName, "a.cpp"), "int main() { return 0; }");
+		var outputPdf = new FileInfo(Path.Combine(tmpDir, "out.pdf"));
+		var configFile = new FileInfo(Path.Combine(tmpDir, "cfg.json"));
+		File.WriteAllText(configFile.FullName, configJson);
+
+		var logger = new TestLogger();
+		var texParser = new ConfigParser("TEX", logger, ConfigStrictness.Strict);
+		var programParser = new ConfigParser("PROGRAM", logger, ConfigStrictness.Strict);
+		texParser.ParseConfigFile(File.ReadAllText(configFile.FullName), configFile.FullName);
+		programParser.ParseConfigFile(File.ReadAllText(configFile.FullName), configFile.FullName);
+
+		var options = new BuildSubcommandOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
+		var resMgr = new ManifestResourceManager(logger);
+		var builder = new PdfBuilder(logger, options, texParser, programParser, resMgr);
+		return (tmpDir, builder);
+	}
+
+	[Fact]
+	public void GenerateTexContent_TitleContentWithUnderscore_EscapesByDefault() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "title": { "content": "Algorithm_Reference" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"Algorithm\_Reference", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_AuthorWithPercent_EscapesByDefault() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "author": "John Doe, 50% off" } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"50\%", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_EscapeDisabled_PassesThroughUnderscore() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "title": { "content": "raw_underscore", "escape_latex_specials": false } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains("raw_underscore", tex);
+			Assert.DoesNotContain(@"raw\_underscore", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_KeywordsArray_JoinedWithCommaSpace() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "metadata": { "keywords": ["alpha", "beta", "gamma"] } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"pdfkeywords={alpha, beta, gamma}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_DefaultOutput_NoUnresolvedPlaceholders() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.DoesNotContain("<<MINTED_OUTPUTDIR>>", tex);
+			Assert.DoesNotContain("<<METADATA_KEYWORDS>>", tex);
+			Assert.DoesNotContain("<<CONTENT>>", tex);
+			Assert.DoesNotContain("##", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
 	private static string CreateTempDir() =>
 		Directory.CreateDirectory(
 			Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
