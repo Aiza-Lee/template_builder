@@ -8,82 +8,111 @@
 
 运行 `./template_builder init -o template_builder.config.jsonc` 即可获得一份带注释的当前默认配置（含所有 key 与 inline 注释）。这是与内置 `DefaultConfig.jsonc` 同步的权威来源。
 
-## 配置结构示例
+## 配置结构
 
-以下示例与内置默认配置对齐（实际值可能随版本变化，以 `init` 输出的为准）：
+`TEX` 段驱动 LaTeX 文档布局与代码渲染，`PROGRAM` 段控制源码树处理。下表列出全部可配置项（截至 Round 2）。
 
-``` jsonc
-// ===== TEX section: drives the LaTeX document layout & code rendering =====
-"TEX": {
-	"author": "Aiza",
-	"subject": "文档主题",
+### TEX 段
 
-	// 标题页：content 为主标题，note 为副标题/额外说明
-	"title": {
-		"content": "文档标题",
-		"note": "标题页额外内容"
-	},
+| 路径 | 默认值 | 说明 |
+|---|---|---|
+| `TEX.author` | `"Aiza"` | PDF 作者（`pdfauthor` + `\author`）。`escape_latex_specials=true` 时自动转义 `_` `%` `&` 等 |
+| `TEX.subject` | `"文档主题"` | PDF 主题（`pdfsubject`）。自动转义 |
+| `TEX.title.content` | `"文档标题"` | 文档主标题（`\title` + `pdftitle`）。自动转义 |
+| `TEX.title.note` | `"标题页额外内容"` | 标题页额外内容（`\begin{center}...\end{center}`）。自动转义 |
+| `TEX.title.date` | `"\\today"` | `\date{}` 的值 |
+| `TEX.title.escape_latex_specials` | `true` | 是否对 author/subject/title 三个字段做 LaTeX 转义。设 `false` 保留 LaTeX 字面量（如 `$\frac{1}{2}$`） |
+| `TEX.code.minted_style` | `"bw"` | pygments 样式：[https://pygments.org/styles/](https://pygments.org/styles/) |
+| `TEX.code.font_family` | `"Fira Code"` | 等宽字体（`\newfontfamily`） |
+| `TEX.code.font_size` | `"6pt"` | 代码字号 |
+| `TEX.code.line_height` | `"6pt"` | 行高 |
+| `TEX.code.tab_size` | `4` | Tab 展开列数。**双重身份**：被 C# 当 int 读出用于代码展开；同时被 LaTeX 模板当字面量（`tabsize=##CODE_TAB_SIZE##`）。修改时两处效果同步 |
+| `TEX.code.bg_color` | `"gray!3"` | 背景色（`xcolor` 语法） |
+| `TEX.code.break_lines` | `true` | `\setminted{breaklines=...}`：是否自动换行 |
+| `TEX.code.line_numbers` | `true` | `\setminted{linenos=...}`：是否显示行号 |
+| `TEX.code.numbers_sep` | `"2pt"` | `\setminted{numbersep=...}`：行号与代码间距 |
+| `TEX.code.frame` | `"none"` | `\setminted{frame=...}`：`none` / `leftline` / `lines` / `single` |
+| `TEX.code.autogobble` | `false` | `\setminted{autogobble=...}`：自动剥离前导空白 |
+| `TEX.code.highlight_color` | `"yellow!10"` | `\setminted{highlightcolor=...}`：选区高亮色（minted 2.x） |
+| `TEX.hyperref.enable_colorlinks` | `true` | `colorlinks=...` |
+| `TEX.hyperref.link_color` | `"blue"` | 内部链接颜色 |
+| `TEX.hyperref.file_color` | `"magenta"` | 文件链接颜色 |
+| `TEX.hyperref.url_color` | `"cyan"` | URL 颜色 |
+| `TEX.hyperref.numbered_bookmarks` | `true` | 书签显示章节编号 |
+| `TEX.hyperref.open_bookmarks` | `false` | 打开 PDF 时展开书签 |
+| `TEX.hyperref.bookmarks_depth` | `5` | PDF 书签深度 |
+| `TEX.geometry.paper_size` | `"a4paper"` | 纸张大小 |
+| `TEX.geometry.left_margin` | `"1cm"` | 左边距 |
+| `TEX.geometry.right_margin` | `"1cm"` | 右边距 |
+| `TEX.geometry.top_margin` | `"1cm"` | 上边距 |
+| `TEX.geometry.bottom_margin` | `"1.2cm"` | 下边距 |
+| `TEX.geometry.column_sep` | `"1cm"` | 双栏间距 |
+| `TEX.layout.section_depth` | `5` | `\setcounter{secnumdepth}{...}` 编号深度 |
+| `TEX.layout.toc_depth` | `5` | `\setcounter{tocdepth}{...}` 目录深度 |
+| `TEX.layout.columns` | `2` | 1 或 2：正文总列数。`1` 适合演示/草稿，`2` 适合代码密集 |
+| `TEX.layout.toc_in_columns` | `false` | `true` = 目录单栏显示（更宽的章节标题）；`false` = 目录与正文同列数 |
+| `TEX.fancy.head_left` | `""` | 启用 fancy 后，header 左侧文本 |
+| `TEX.fancy.head_center` | `""` | header 中间 |
+| `TEX.fancy.head_right` | `""` | header 右侧 |
+| `TEX.fancy.foot_left` | `""` | footer 左侧 |
+| `TEX.fancy.foot_center` | `""` | footer 中间 |
+| `TEX.fancy.foot_right` | `""` | footer 右侧 |
+| `TEX.fancy.rule_width` | `"0.4pt"` | `\headrulewidth`：header 下分隔线粗细；`0pt` 隐藏 |
+| `TEX.section.format_section` | `""` | `\titleformat{\section}{<this>}{...}`：section 标题格式（`\Large\bfseries\color{blue}` 等） |
+| `TEX.section.format_subsection` | `""` | subsection 格式 |
+| `TEX.section.format_subsubsection` | `""` | subsubsection 格式 |
+| `TEX.section.format_paragraph` | `""` | paragraph 格式 |
+| `TEX.section.format_subparagraph` | `""` | subparagraph 格式 |
+| `TEX.metadata.keywords` | `[]` | PDF 关键词数组。写入 `pdfkeywords={kw1, kw2}` |
+| `TEX.global.main_font` | `"Times New Roman"` | 西文主字体（`\setmainfont`） |
+| `TEX.global.cjk_main_font` | `"SimSun"` | CJK 主字体（`\setCJKmainfont`） |
+| `TEX.global.page_style` | `"plain"` | `\pagestyle{...}`：`plain` / `headings` / `empty` / `fancy` |
 
-	// 代码块（minted）的样式与字体设置
-	"code": {
-		"minted_style": "bw",				// pygments 样式：https://pygments.org/styles/
-		"font_family": "Fira Code",
-		"font_size": "6pt",					// 单位 pt
-		"line_height": "6pt",				// 单位 pt
-		"tab_size": 4,						// Tab 展开为空格的列数
-		"bg_color": "gray!3"				// 背景色（xcolor 语法）
-	},
+### PROGRAM 段
 
-	// hyperref 超链接 / PDF 书签
-	"hyperref": {
-		"enable_colorlinks": true,			// 启用彩色链接
-		"link_color": "blue",				// 内部链接颜色
-		"file_color": "magenta",			// 文件链接颜色
-		"url_color": "cyan",				// URL 颜色
-		"numbered_bookmarks": true,			// 书签显示章节编号
-		"open_bookmarks": false				// 打开 PDF 时展开书签
-	},
+| 路径 | 默认值 | 说明 |
+|---|---|---|
+| `PROGRAM.include_file_types` | `[".cpp", ".c", ...]` | 包含的源文件扩展名（白名单） |
+| `PROGRAM.ignore_patterns` | `["*ignore*"]` | 排除的 glob 模式（`Microsoft.Extensions.FileSystemGlobbing` 语法） |
 
-	// 页面尺寸与边距（geometry 包）
-	"geometry": {
-		"paper_size": "a4paper",			// 纸张大小
-		"left_margin": "1cm",				// 左边距
-		"right_margin": "1cm",				// 右边距
-		"top_margin": "1cm",				// 上边距
-		"bottom_margin": "1.2cm",			// 下边距
-		"column_sep": "1cm"					// 列间距
-	},
+## 启用 fancy 头脚示例
 
-	// 文档级字体与页眉页脚
-	"global": {
-		"main_font": "Times New Roman",		// 主字体
-		"cjk_main_font": "SimSun",			// CJK 字体
-		"page_style": "plain"				// 页面样式：plain / empty / headings
-	}
-},
+```jsonc
+"GLOBAL": { "page_style": "fancy" },
+"FANCY": {
+    "head_right": "Page \\thepage",
+    "foot_center": "Generated by template_builder"
+}
+```
 
-// ===== PROGRAM section: controls source-tree processing =====
-"PROGRAM": {
-	// 包含的源文件扩展名（白名单）
-	"include_file_types": [
-		".cpp", ".c", ".json", ".tex", ".hpp", ".h", ".py", ".txt"
-	],
-	// 排除的 glob 模式（Microsoft.Extensions.FileSystemGlobbing 语法）
-	"ignore_patterns": [
-		"*ignore*"
-	]
+## 自定义 section 标题样式
+
+```jsonc
+"SECTION": {
+    "format_section": "\\Large\\bfseries\\color{blue}",
+    "format_subsection": "\\large\\bfseries\\color{black!70}"
 }
 ```
 
 ## 占位符
 
-- `Main.tex` 中的 `##KEY##` 占位符由 `ReplaceMainPlaceholders` 用 `TEX` 段对应 key 的值替换。
-- `<<CONTENT>>` / `<<MINTED_OUTPUTDIR>>` / `<<LANGUAGE>>` / `<<CODE>>` 是运行时替换符（大小写敏感的「双尖括号」），由 `CodeBlockGenerator` 写入代码块正文。
+模板中的 `##KEY##` 由 `PdfBuilder.ReplaceMainPlaceholders` 用 `TEX` 段对应大写下划线 key 的值替换（如 `TEX.geometry.paper_size` → `##GEOMETRY_PAPER_SIZE##`）。
 
-## 新增配置项
+`<<KEY>>` 是 **runtime** 占位符，由 `PdfBuilder.GenerateTexContent` 在 `ReplaceMainPlaceholders` 之后单独替换：
+- `<<MINTED_OUTPUTDIR>>` → minted 输出目录
+- `<<METADATA_KEYWORDS>>` → `TEX.metadata.keywords` 数组拼接为 `"kw1, kw2"`
+- `<<DOC_CLASS_COLUMNS>>` / `<<LAYOUT_TOC_OPENING>>` / `<<LAYOUT_BODY_OPENING>>` → 来自 `TEX.layout.columns` + `toc_in_columns` 的布局控制
+- `<<CONTENT>>` → CodeBlockGenerator 生成的代码块正文
+
+## 新增配置项 checklist
 
 新增 `TEX` 配置项时需要：
 1. 在 `Resources/DefaultConfig.jsonc` 注册（同时给出注释）
 2. 在 `Resources/Templates/Main.tex` 引用 `##NEW_KEY##`（注意大写）
+3. 跑 `dotnet run -- validate -s <src> -c <your-cfg.jsonc>` 确认无 `unresolved ##NEW_KEY##` 报告
 
 `PROGRAM` 段的 `ignore_patterns` 走 .NET glob（`Microsoft.Extensions.FileSystemGlobbing`）。`Matcher.Match(name).HasMatches = false` 表示被 exclude 命中。
+
+## 覆盖 LaTeX 模板
+
+无需改 C# 代码：在 `build` 时加 `--template-dir <dir>`，把同名 `Main.tex` 和/或 `CodeBlock.tex` 放进该目录即可。`init` 输出的末尾也会提示此用法。

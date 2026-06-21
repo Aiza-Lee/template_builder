@@ -60,7 +60,8 @@ template_builder init     -o <path>             [--format jsonc|json]
 - **`src/Core/Pipeline/ValidationRunner.cs`**：跑 7 项检查（源目录 / 配置解析 / 严格 key 白名单 / 嵌入式资源 / 源码树可走 + 章节深度 / `Main.tex` 的 `##KEY##` 解析 / 可选 xelatex PATH），不调 xelatex，产出 `ValidationReport`（text / json 两种格式）。
 - **`src/Core/Pipeline/ConfigInitializer.cs`**：把嵌入式 `DefaultConfig.jsonc` 资源复制到 `-o` 路径。`--format json` 走 `JsonDocument` + `JsonCommentHandling.Skip` 剥除注释。
 - **`src/Core/PdfBuilder.cs`**：总编排。两次 `xelatex` 编译（让 `hyperref` 书签/目录稳定）；stderr 累积到 `_xelatexStderr`，仅在失败且未生成 PDF 时升为 Error 输出，避免 `minted` 无害提示刷屏。`Cleanup` 与 `SaveTexFile` 抽成 `internal static` 便于测试。
-- **`src/Core/CodeBlockGenerator.cs`**：通过 `SourceTreeWalker.Walk` 遍历源目录，按深度插入 `\section` → `\subsection` → `\subsubsection` → `\paragraph` → `\subparagraph`（最大 5 层）。`EXTENSION_TO_LANGUAGE` 映射到 minted 语言名，未知名扩展会退化为 `PlainText` 并 warn 一次（`_warnedExtensions` 防刷屏）。`LATEX_ESCAPES` 处理 11 个 LaTeX 特殊字符。
+- **`src/Core/CodeBlockGenerator.cs`**：通过 `SourceTreeWalker.Walk` 遍历源目录，按深度插入 `\section` → `\subsection` → `\subsubsection` → `\paragraph` → `\subparagraph`（最大 5 层）。`EXTENSION_TO_LANGUAGE` 映射到 minted 语言名，未知名扩展会退化为 `PlainText` 并 warn 一次（`_warnedExtensions` 防刷屏）。
+- **`src/Utils/LatexEscaper.cs`**：转义 LaTeX 11 个保留字符（`\` `{` `}` `#` `$` `%` `&` `_` `^` `~`），给用户提供的标题/作者/备注/章节名做安全处理。`CodeBlockGenerator` 与 `PdfBuilder` 共用。
 - **`src/Utils/SourceTreeWalker.cs`**：深度优先遍历源码目录，吐出按 (目录优先 / 字母序) 排序的 `SourceEntry`（`Info` / `Depth` / `IsDirectory`）。隐藏项（以 `.` 开头）和 ignore glob 命中项被跳过。
 - **`src/Utils/ConfigParser.cs`**：JSON 解析时只识别嵌入式 `DefaultConfig.jsonc` 注册过的 key（`isDefaultConfig=true` 时注册；`=false` 时只覆盖值）。路径展开为 `UPPER_SNAKE_CASE`。`IConfigParser["KEY"]` 返回 `ReadonlyConfigValue`。解析走 `JsonDocumentOptions { CommentHandling = Skip, AllowTrailingCommas = true }`，天然支持 JSONC 与尾随逗号。
 - **`src/Utils/ManifestResourceManager.cs`**：通过 `Assembly.GetManifestResourceStream` 读取嵌入资源。资源名在 csproj 中配置为 `LogicalName`。

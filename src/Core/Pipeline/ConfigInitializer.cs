@@ -36,6 +36,7 @@ namespace Core.Pipeline {
 
 				File.WriteAllText(options.OutputPath.FullName, outputText, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 				_logger.Info($"Wrote config file to \"{options.OutputPath.FullName}\".");
+				_logger.Info("Tip: you can also override Main.tex and/or CodeBlock.tex per build with --template-dir <dir>.");
 				return ExitCodes.Success;
 			} catch (MissingEmbeddedResourceException ex) {
 				_logger.Error(ex.Message);
