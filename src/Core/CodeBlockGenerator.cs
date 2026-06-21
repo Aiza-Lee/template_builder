@@ -1,5 +1,4 @@
 using System.Text;
-using Microsoft.Extensions.FileSystemGlobbing;
 using Utils;
 
 namespace Core {
@@ -16,7 +15,6 @@ namespace Core {
 		private readonly string CODE_BLOCK_TEMPLATE = string.Empty;
 		private readonly string[] INCLUDE_FILE_TYPES = [];
 		private readonly string[] IGNORE_PATTERNS = [];
-		private readonly Matcher _ignoreMatcher = new();
 		private readonly string[] SUB_DIRECTORY_NAMES = [
 			"section", "subsection", "subsubsection",
 			"paragraph", "subparagraph"
@@ -68,24 +66,6 @@ namespace Core {
 			CODE_BLOCK_TEMPLATE = codeBlockTemplate;
 			INCLUDE_FILE_TYPES = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
 			IGNORE_PATTERNS = _programConfigParser["IGNORE_PATTERNS"].GetAsStringArray();
-
-			// 把 ignore_patterns 注册到 Matcher 中作为 exclude 模式。
-			// 必须先 AddInclude 一个通配模式，否则 Matcher 会拒绝匹配。
-			// 这里只匹配单段文件名/目录名（不含路径分隔符），所以用 `*` 而不是 `**/*`。
-			_ignoreMatcher.AddInclude("*");
-			foreach (var pattern in IGNORE_PATTERNS) {
-				if (!string.IsNullOrWhiteSpace(pattern)) {
-					_ignoreMatcher.AddExclude(pattern);
-				}
-			}
-		}
-
-		/// <summary>
-		/// 判断给定文件名/目录名是否被 ignore_patterns 命中。提取为 internal static 以便测试。
-		/// </summary>
-		internal static bool IsIgnored(string name, Matcher matcher) {
-			// HasMatches = false 表示被 exclude 命中
-			return !matcher.Match(name).HasMatches;
 		}
 
 
@@ -101,64 +81,29 @@ namespace Core {
 				_logger.Warning($"Source directory '{sourceDirInfo.FullName}' does not exist. Created the directory. Please add source files and rebuild.");
 				return string.Empty;
 			}
-			return GenerateCodeBlock_Directory(new(), sourceDirInfo).ToString();
+
+			var strBuilder = new StringBuilder();
+			foreach (var entry in SourceTreeWalker.Walk(sourceDirInfo, IGNORE_PATTERNS, _logger)) {
+				if (entry.Depth >= SUB_DIRECTORY_NAMES.Length) {
+					_logger.Warning($"Directory nesting exceeds supported depth at '{entry.Info.FullName}'. Skipping deeper levels.");
+					continue;
+				}
+				if (entry.IsDirectory) {
+					InsertSection(strBuilder, entry.Info.Name, entry.Depth);
+					continue;
+				}
+				var codeBlock = GenerateCodeBlock_File((FileInfo)entry.Info);
+				if (string.IsNullOrEmpty(codeBlock)) continue;
+				InsertSection(strBuilder, entry.Info.Name, entry.Depth);
+				strBuilder.AppendLine(codeBlock);
+			}
+			return strBuilder.ToString();
 		}
 
 		/// <summary>
 		/// 最近一次 Generate() 调用中发现的未替换占位符数量。供调用方决定退出码。
 		/// </summary>
 		public int UnresolvedPlaceholderCount => _unresolvedPlaceholderCount;
-
-		/// <summary>
-		/// 递归生成目录下所有代码文件的代码块TeX
-		/// </summary>
-		/// <param name="strBuilder">字符串构建器</param>
-		/// <param name="codeDir">目录信息</param>
-		/// <param name="depth">当前深度</param>
-		/// <returns>返回生成的TeX代码（StringBuilder）</returns>
-		private StringBuilder GenerateCodeBlock_Directory(
-			StringBuilder strBuilder,
-			DirectoryInfo codeDir,
-			int depth = 0
-		) {
-			if (depth >= SUB_DIRECTORY_NAMES.Length) {
-				_logger.Warning($"Directory nesting exceeds supported depth at '{codeDir.FullName}'. Skipping deeper levels.");
-				return strBuilder;
-			}
-
-			// 处理子目录
-			foreach (var subDir in codeDir.GetDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)) {
-				if (subDir.Name.StartsWith('.')) {
-					_logger.Warning($"Skipping hidden directory: {subDir.FullName}");
-					continue;
-				}
-				if (IsIgnored(subDir.Name, _ignoreMatcher)) {
-					_logger.Warning($"Skipping directory '{subDir.FullName}' due to ignore pattern match.");
-					continue;
-				}
-				InsertSection(strBuilder, subDir.Name, depth);
-				GenerateCodeBlock_Directory(strBuilder, subDir, depth + 1);
-			}
-			// 处理当前目录下的文件
-			foreach (var codeFile in codeDir.GetFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)) {
-				if (codeFile.Name.StartsWith('.')) {
-					_logger.Warning($"Skipping hidden file: {codeFile.FullName}");
-					continue;
-				}
-				if (IsIgnored(codeFile.Name, _ignoreMatcher)) {
-					_logger.Warning($"Skipping file '{codeFile.FullName}' due to ignore pattern match.");
-					continue;
-				}
-
-				var codeBlock = GenerateCodeBlock_File(codeFile);
-				// 如果不在包含的文件类型列表中，则跳过
-				if (!string.IsNullOrEmpty(codeBlock)) {
-					InsertSection(strBuilder, codeFile.Name, depth);
-					strBuilder.AppendLine(codeBlock);
-				}
-			}
-			return strBuilder;
-		}
 
 		/// <summary>
 		/// 生成单个代码文件的代码块TeX
