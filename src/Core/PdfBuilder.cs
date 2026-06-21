@@ -230,6 +230,13 @@ namespace Core {
 			var keywords = string.Join(", ", _texConfigParser["METADATA_KEYWORDS"].GetAsStringArray());
 			mainTemplate.Replace("<<METADATA_KEYWORDS>>", keywords);
 
+			// Layout runtime: documentclass columns + TOC/body column toggles
+			var columns = _texConfigParser["LAYOUT_COLUMNS"].GetAsInt();
+			var tocInColumns = _texConfigParser["LAYOUT_TOC_IN_COLUMNS"].GetAsBool();
+			mainTemplate.Replace("<<DOC_CLASS_COLUMNS>>", columns == 2 ? "twocolumn" : "");
+			mainTemplate.Replace("<<LAYOUT_TOC_OPENING>>", columns == 2 ? (tocInColumns ? @"\onecolumn" : @"\twocolumn") : "");
+			mainTemplate.Replace("<<LAYOUT_BODY_OPENING>>", columns == 2 && tocInColumns ? @"\twocolumn" : "");
+
 			ReplaceMainPlaceholders(mainTemplate);
 
 			// 在 <<CONTENT>> 替换前扫描 Main.tex，避免误报尚未替换的 <<CONTENT>> 标记。

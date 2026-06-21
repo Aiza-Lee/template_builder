@@ -180,10 +180,91 @@ public class PdfBuilderTests {
 			Assert.DoesNotContain("<<MINTED_OUTPUTDIR>>", tex);
 			Assert.DoesNotContain("<<METADATA_KEYWORDS>>", tex);
 			Assert.DoesNotContain("<<CONTENT>>", tex);
+			Assert.DoesNotContain("<<DOC_CLASS_COLUMNS>>", tex);
+			Assert.DoesNotContain("<<LAYOUT_TOC_OPENING>>", tex);
+			Assert.DoesNotContain("<<LAYOUT_BODY_OPENING>>", tex);
 			Assert.DoesNotContain("##", tex);
 		} finally {
 			Directory.Delete(tmpDir, recursive: true);
 		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_LayoutColumns1_OmitsTwocolumnTokens() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "layout": { "columns": 1 } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\documentclass[10pt,landscape,]{ctexart}", tex);
+			// columns=1 + toc_in_columns 默认 false：DOC_CLASS 空、TOC/BODY opening 都空
+			Assert.DoesNotContain(@"\twocolumn", tex.Substring(tex.IndexOf(@"\begin{document}", StringComparison.Ordinal)));
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_LayoutColumns2TocInColumnsFalse_EmitsTwocolumnBeforeToc() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "layout": { "columns": 2, "toc_in_columns": false } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\documentclass[10pt,landscape,twocolumn]{ctexart}", tex);
+			// body region（\begin{document} 之后）应该有 1 个 \onecolumn（title）+ 1 个 \twocolumn（TOC 前）
+			var body = BodyRegion(tex);
+			var oneCount = CountOccurrences(body, @"\onecolumn");
+			var twoCount = CountOccurrences(body, @"\twocolumn");
+			Assert.Equal(1, oneCount);
+			Assert.Equal(1, twoCount);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_LayoutColumns2TocInColumnsTrue_EmitsOnecolumnBeforeTocAndTwocolumnBeforeBody() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "layout": { "columns": 2, "toc_in_columns": true } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\documentclass[10pt,landscape,twocolumn]{ctexart}", tex);
+			// body region：2 个 \onecolumn（title + TOC 前）+ 1 个 \twocolumn（body 前）
+			var body = BodyRegion(tex);
+			Assert.Equal(2, CountOccurrences(body, @"\onecolumn"));
+			Assert.Equal(1, CountOccurrences(body, @"\twocolumn"));
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_LayoutColumns1_NoColumnTogglesInBody() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "layout": { "columns": 1 } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\documentclass[10pt,landscape,]{ctexart}", tex);
+			var body = BodyRegion(tex);
+			// columns=1: body 区域只有 1 个 \onecolumn（title），没有 \twocolumn
+			Assert.Equal(1, CountOccurrences(body, @"\onecolumn"));
+			Assert.Equal(0, CountOccurrences(body, @"\twocolumn"));
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	private static string BodyRegion(string tex) {
+		var start = tex.IndexOf(@"\begin{document}", StringComparison.Ordinal);
+		return start >= 0 ? tex.Substring(start) : tex;
+	}
+
+	private static int CountOccurrences(string haystack, string needle) {
+		int count = 0, idx = 0;
+		while ((idx = haystack.IndexOf(needle, idx, StringComparison.Ordinal)) >= 0) {
+			count++;
+			idx += needle.Length;
+		}
+		return count;
 	}
 
 	private static string CreateTempDir() =>

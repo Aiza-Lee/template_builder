@@ -1,4 +1,4 @@
-\documentclass[10pt,landscape,twocolumn]{ctexart} % ctexart支持中文排版
+\documentclass[10pt,landscape,<<DOC_CLASS_COLUMNS>>]{ctexart} % ctexart支持中文排版
 
 \usepackage{geometry}		% 页面布局设置
 \usepackage[outputdir=<<MINTED_OUTPUTDIR>>]{minted}			% 代码高亮显示
@@ -104,10 +104,11 @@
 	\end{center}
 
 	\newpage
-	\twocolumn			% 目录和正文为双栏格式
+	<<LAYOUT_TOC_OPENING>>	% 目录前布局切换（runtime，根据 columns / toc_in_columns 决定）
 	\tableofcontents	% 生成目录
 
 	\newpage
+	<<LAYOUT_BODY_OPENING>>	% 正文前布局切换（runtime，仅 columns=2 + toc_in_columns=true 时需要）
 	<<CONTENT>>			% 正文内容
 
 \end{document}
