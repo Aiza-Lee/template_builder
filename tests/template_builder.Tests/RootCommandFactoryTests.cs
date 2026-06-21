@@ -75,13 +75,19 @@ public class RootCommandFactoryTests {
 	}
 
 	[Fact]
-	public void Invoke_Init_IsWiredUpToStub() {
+	public void Invoke_Init_WritesConfigFileAndReturnsSuccess() {
 		var factory = new RootCommandFactory(new TestLogger());
 		var root = factory.CreateRootCommand();
+		var tmpDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tmpDir);
+		var outputPath = Path.Combine(tmpDir, "cfg.jsonc");
+		try {
+			var result = root.Parse(new[] { "init", "-o", outputPath }).Invoke();
 
-		var result = root.Parse(new[] { "init", "-o", "/tmp/cfg.jsonc" }).Invoke();
-
-		// stub: not yet implemented → non-zero
-		Assert.NotEqual(0, result);
+			Assert.Equal(0, result);
+			Assert.True(File.Exists(outputPath));
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
 	}
 }

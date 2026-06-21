@@ -211,7 +211,7 @@ namespace Core.Commands {
 		}
 
 		/// <summary>
-		/// init 子命令（占位）：写出带注释的默认配置骨架。
+		/// init 子命令：写出带注释的默认配置骨架。
 		/// </summary>
 		private Command CreateInitSubcommand() {
 			var cmd = new Command("init", "Emit a starter config file with default values and inline comments.");
@@ -233,8 +233,13 @@ namespace Core.Commands {
 			cmd.Options.Add(formatOption);
 
 			cmd.SetAction((ParseResult pr) => {
-				_logger.Error("init subcommand is not yet implemented.");
-				return ExitCodes.XelatexFailure;
+				var outputPath = pr.GetValue(outputOption)!;
+				// 确保父目录存在
+				if (outputPath.Directory is { } parent && !parent.Exists) {
+					parent.Create();
+				}
+				var options = new InitSubcommandOptions(outputPath, pr.GetValue(formatOption)!);
+				return new ConfigInitializer(_logger, new ManifestResourceManager(_logger)).Run(options);
 			});
 
 			return cmd;
