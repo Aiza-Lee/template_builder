@@ -9,18 +9,11 @@ namespace Core.Commands {
 	/// 根命令工厂：构造顶层 <see cref="RootCommand"/> 及其子命令。
 	///
 	/// <para>
-	/// build 子命令使用方法: <br/>
+	/// 用法: <br/>
 	/// <code>
-	/// template-builder build [source-file-folder] [enable-verbose-log] [configuration] [output-path]
-	///
-	/// source-files-folder-options:
-	///   --source-files-folder &lt;SOURCE_FILE_FOLDER&gt; | -s &lt;SOURCE_FILE_FOLDER&gt; # 源文件所在文件夹
-	/// enable-verbose-log-options:
-	///   --verbose | -v # 启用详细日志输出
-	/// output-path-options:
-	///   --output &lt;OUTPUT_PATH&gt; | -o &lt;OUTPUT_PATH&gt; # 输出文件路径
-	/// configuration-options:
-	///   --config &lt;CONFIG_FILE_PATH&gt; | -c &lt;CONFIG_FILE_PATH&gt; # 配置文件路径
+	/// template-builder build    [options]   # 编译源目录为 PDF（默认行为改为必须显式指定）
+	/// template-builder validate [options]   # 校验源目录 / 配置 / 模板，不调 xelatex
+	/// template-builder init     [options]   # 生成带注释的默认配置骨架
 	/// </code>
 	///
 	/// </para>
@@ -31,9 +24,27 @@ namespace Core.Commands {
 	internal class RootCommandFactory(ILogger logger) {
 		private readonly ILogger _logger = logger;
 
-		public Command CreateCommand() {
+		public RootCommand CreateRootCommand() {
+			var root = new RootCommand("Compile algorithm/code template directories into PDF.");
 
-			var finalCmd = new Command("build", "Build pdf file from source files.");
+			root.Add(CreateBuildSubcommand());
+			root.Add(CreateValidateSubcommand());
+			root.Add(CreateInitSubcommand());
+
+			// 无子命令时给出 usage 提示并返回 InvalidArguments
+			root.SetAction((ParseResult pr) => {
+				_logger.Error("required command not specified. Usage: template_builder <build|validate|init> [...]");
+				return ExitCodes.InvalidArguments;
+			});
+
+			return root;
+		}
+
+		/// <summary>
+		/// build 子命令：编译源目录为 PDF。
+		/// </summary>
+		private Command CreateBuildSubcommand() {
+			var cmd = new Command("build", "Build pdf file from source files.");
 
 			/* --source-files-folder -s */
 			var sourceFilesFolderOption = new Option<DirectoryInfo>("--source-files-folder", "-s") {
@@ -41,7 +52,7 @@ namespace Core.Commands {
 				HelpName = "SOURCE_FILES_FOLDER",
 				Required = true,
 			};
-			finalCmd.Options.Add(sourceFilesFolderOption);
+			cmd.Options.Add(sourceFilesFolderOption);
 
 			/* --output -o */
 			var outputOption = new Option<FileInfo>("--output", "-o") {
@@ -49,7 +60,7 @@ namespace Core.Commands {
 				HelpName = "OUTPUT_PATH",
 				Required = true,
 			};
-			finalCmd.Options.Add(outputOption);
+			cmd.Options.Add(outputOption);
 
 			/* --verbose -v */
 			var verboseOption = new Option<bool>("--verbose", "-v") {
@@ -57,7 +68,7 @@ namespace Core.Commands {
 				HelpName = "VERBOSE",
 				DefaultValueFactory = (_) => false,
 			};
-			finalCmd.Options.Add(verboseOption);
+			cmd.Options.Add(verboseOption);
 
 			/* --config -c */
 			var configOption = new Option<FileInfo>("--config", "-c") {
@@ -81,7 +92,7 @@ namespace Core.Commands {
 					return configFileInfo;
 				}
 			};
-			finalCmd.Options.Add(configOption);
+			cmd.Options.Add(configOption);
 
 			/* --template-dir -t */
 			var templateDirOption = new Option<DirectoryInfo>("--template-dir", "-t") {
@@ -89,9 +100,9 @@ namespace Core.Commands {
 				HelpName = "TEMPLATE_DIR",
 				Required = false,
 			};
-			finalCmd.Options.Add(templateDirOption);
+			cmd.Options.Add(templateDirOption);
 
-			finalCmd.SetAction((ParseResult pr) => {
+			cmd.SetAction((ParseResult pr) => {
 				_logger.SetLevel(pr.GetValue(verboseOption) ? LogLevel.DEBUG : LogLevel.INFO);
 				try {
 					var resolver = new OutputPathResolver(_logger);
@@ -121,7 +132,91 @@ namespace Core.Commands {
 				}
 			});
 
-			return finalCmd;
+			return cmd;
+		}
+
+		/// <summary>
+		/// validate 子命令（占位）：检查源码 / 配置 / 模板的完整性，不调 xelatex。
+		/// </summary>
+		private Command CreateValidateSubcommand() {
+			var cmd = new Command("validate", "Validate source tree, config, and templates without invoking xelatex.");
+
+			/* --source-files-folder -s */
+			var sourceFilesFolderOption = new Option<DirectoryInfo>("--source-files-folder", "-s") {
+				Description = "Set the folder path of source files.",
+				HelpName = "SOURCE_FILES_FOLDER",
+				Required = true,
+			};
+			cmd.Options.Add(sourceFilesFolderOption);
+
+			/* --config -c */
+			var configOption = new Option<FileInfo>("--config", "-c") {
+				Description = "Set the path of configuration file.",
+				HelpName = "CONFIG",
+				Required = true,
+			};
+			cmd.Options.Add(configOption);
+
+			/* --template-dir -t */
+			var templateDirOption = new Option<DirectoryInfo>("--template-dir", "-t") {
+				Description = "Override embedded LaTeX templates by reading Main.tex and/or CodeBlock.tex from this directory.",
+				HelpName = "TEMPLATE_DIR",
+				Required = false,
+			};
+			cmd.Options.Add(templateDirOption);
+
+			/* --format */
+			var formatOption = new Option<string>("--format") {
+				Description = "Output format: text (default) or json.",
+				HelpName = "FORMAT",
+				DefaultValueFactory = (_) => "text",
+			};
+			cmd.Options.Add(formatOption);
+
+			/* --check-xelatex */
+			var checkXelatexOption = new Option<bool>("--check-xelatex") {
+				Description = "Also verify xelatex is on PATH.",
+				HelpName = "CHECK_XELATEX",
+				DefaultValueFactory = (_) => false,
+			};
+			cmd.Options.Add(checkXelatexOption);
+
+			cmd.SetAction((ParseResult pr) => {
+				_logger.Error("validate subcommand is not yet implemented.");
+				return ExitCodes.XelatexFailure;
+			});
+
+			return cmd;
+		}
+
+		/// <summary>
+		/// init 子命令（占位）：写出带注释的默认配置骨架。
+		/// </summary>
+		private Command CreateInitSubcommand() {
+			var cmd = new Command("init", "Emit a starter config file with default values and inline comments.");
+
+			/* --output -o */
+			var outputOption = new Option<FileInfo>("--output", "-o") {
+				Description = "Output path for the generated config file.",
+				HelpName = "OUTPUT_PATH",
+				Required = true,
+			};
+			cmd.Options.Add(outputOption);
+
+			/* --format */
+			var formatOption = new Option<string>("--format") {
+				Description = "Output format: jsonc (default) or json.",
+				HelpName = "FORMAT",
+				DefaultValueFactory = (_) => "jsonc",
+			};
+			cmd.Options.Add(formatOption);
+
+			cmd.SetAction((ParseResult pr) => {
+				_logger.Error("init subcommand is not yet implemented.");
+				return ExitCodes.XelatexFailure;
+			});
+
+			return cmd;
 		}
 	}
 }
