@@ -9,30 +9,41 @@
 		"author": "Aiza",
 		"subject": "文档主题",
 
-		// 标题页：content 为主标题，note 为副标题/额外说明
+		// 标题页：content 为主标题，note 为副标题/额外说明，date 默认 \today
 		"title": {
 			"content": "文档标题",
-			"note": "标题页额外内容"
+			"note": "标题页额外内容",
+			"date": "\\today",
+			// 是否对 AUTHOR / SUBJECT / TITLE_CONTENT / TITLE_NOTE 中的 LaTeX 特殊字符（_ % & \ $ # { } ^ ~）做转义
+			"escape_latex_specials": true
 		},
 
 		// 代码块（minted）的样式与字体设置
 		"code": {
-			"minted_style": "bw",
+			"minted_style": "bw",			// pygments 样式：https://pygments.org/styles/
 			"font_family": "Fira Code",
 			"font_size": "6pt",
 			"line_height": "6pt",
 			"tab_size": 4,
-			"bg_color": "gray!3"
+			"bg_color": "gray!3",
+			// 以下 6 个键参数化 \setminted 中原本硬编码的选项
+			"break_lines": true,			// \setminted{breaklines=...}
+			"line_numbers": true,			// \setminted{linenos=...}
+			"numbers_sep": "2pt",			// \setminted{numbersep=...}
+			"frame": "none",				// \setminted{frame=...} - none/leftline/lines/single
+			"autogobble": false,			// \setminted{autogobble=...}
+			"highlight_color": "yellow!10"	// \setminted{highlightcolor=...}
 		},
 
 		// hyperref 超链接 / PDF 书签
 		"hyperref": {
-			"enable_colorlinks": true,
-			"link_color": "blue",
-			"file_color": "magenta",
-			"url_color": "cyan",
-			"numbered_bookmarks": true,
-			"open_bookmarks": false
+			"enable_colorlinks": true,		// 启用彩色链接
+			"link_color": "blue",			// 内部链接颜色
+			"file_color": "magenta",		// 文件链接颜色
+			"url_color": "cyan",			// URL 颜色
+			"numbered_bookmarks": true,		// 书签显示章节编号
+			"open_bookmarks": false,		// 打开 PDF 时展开书签
+			"bookmarks_depth": 5			// PDF 书签深度（\hypersetup{bookmarksdepth}）
 		},
 
 		// 页面尺寸与边距（geometry 包）
@@ -45,11 +56,44 @@
 			"column_sep": "1cm"
 		},
 
+		// 文档级布局：列数 / 目录深度
+		"layout": {
+			"section_depth": 5,			// \setcounter{secnumdepth}{...} 编号深度
+			"toc_depth": 5,				// \setcounter{tocdepth}{...} 目录深度
+			"columns": 2,				// 1 或 2：正文总列数
+			"toc_in_columns": false		// true = 目录单栏显示（默认 false = 与正文同列数）
+		},
+
+		// fancy 头脚：使用前需设 GLOBAL.PAGE_STYLE = "fancy"
+		"fancy": {
+			"head_left": "",
+			"head_center": "",
+			"head_right": "",
+			"foot_left": "",
+			"foot_center": "",
+			"foot_right": "",
+			"rule_width": "0.4pt"
+		},
+
+		// titlesec section 标题格式：留空 = 使用 LaTeX 默认；填入格式串（如 "\Large\bfseries\color{blue}"）覆盖
+		"section": {
+			"format_section": "",
+			"format_subsection": "",
+			"format_subsubsection": "",
+			"format_paragraph": "",
+			"format_subparagraph": ""
+		},
+
+		// PDF 元数据：hypersetup 的 pdfkeywords 字段
+		"metadata": {
+			"keywords": []				// 数组，会被拼接为 "kw1, kw2, kw3" 写入 pdfkeywords={...}
+		},
+
 		// 文档级字体与页眉页脚
 		"global": {
 			"main_font": "Times New Roman",
 			"cjk_main_font": "SimSun",
-			"page_style": "plain"
+			"page_style": "plain"		// plain/headings/empty/fancy
 		},
 	},
 

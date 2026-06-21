@@ -7,9 +7,11 @@
 \usepackage{xcolor}			% 颜色支持
 \usepackage{hyperref}		% 超链接和PDF书签
 \usepackage{amsmath}		% 数学公式扩展
+\usepackage{fancyhdr}		% 头脚自定义（启用前需设 GLOBAL.PAGE_STYLE = "fancy"）
+\usepackage{titlesec}		% section 标题格式自定义
 
-\setcounter{secnumdepth}{5}
-\setcounter{tocdepth}{5}
+\setcounter{secnumdepth}{##LAYOUT_SECTION_DEPTH##}
+\setcounter{tocdepth}{##LAYOUT_TOC_DEPTH##}
 
 % Geometry / Page - 页面布局设置
 \geometry{
@@ -34,16 +36,17 @@
 
 % Hyperref configuration - PDF导航、书签和元数据设置
 \hypersetup{
-	bookmarksdepth=5									% 最深目录层级
+	bookmarksdepth=##HYPERREF_BOOKMARKS_DEPTH##,			% 最深目录层级
 	colorlinks=##HYPERREF_ENABLE_COLORLINKS##,			% 是否使用彩色链接: true/false
 	linkcolor=##HYPERREF_LINK_COLOR##,					% 内部链接颜色名称，如: blue
 	filecolor=##HYPERREF_FILE_COLOR##,					% 文件链接颜色名称，如: magenta
-	urlcolor=##HYPERREF_URL_COLOR##,					% URL链接颜色名称，如: cyan
+	urlcolor=##HYPERREF_URL_COLOR##,						% URL链接颜色名称，如: cyan
 	bookmarksnumbered=##HYPERREF_NUMBERED_BOOKMARKS##,	% 书签是否包含编号: true/false
 	bookmarksopen=##HYPERREF_OPEN_BOOKMARKS##,			% 是否默认展开书签: true/false
 	pdftitle={##TITLE_CONTENT##},						% PDF文档标题
 	pdfauthor={##AUTHOR##},								% PDF文档作者
-	pdfsubject={##SUBJECT##}							% PDF文档主题
+	pdfsubject={##SUBJECT##},							% PDF文档主题
+	pdfkeywords={<<METADATA_KEYWORDS>>}					% PDF文档关键词（runtime 拼接）
 }
 
 \newfontfamily{\customcodefontfamily}{##CODE_FONT_FAMILY##}[		% Fira Code 字体设置
@@ -57,21 +60,40 @@
 	style=##CODE_MINTED_STYLE##,
 	fontfamily=CustomCodeFont,
 	fontsize=\fontsize{##CODE_FONT_SIZE##}{##CODE_LINE_HEIGHT##}\selectfont,
-	breaklines=true,
+	breaklines=##CODE_BREAK_LINES##,
 	tabsize=##CODE_TAB_SIZE##,
-	linenos=true,
-	numbersep=2pt,
+	linenos=##CODE_LINE_NUMBERS##,
+	numbersep=##CODE_NUMBERS_SEP##,
 	bgcolor=##CODE_BG_COLOR##,
-	frame=none,
+	frame=##CODE_FRAME##,
+	autogobble=##CODE_AUTOGOBBLE##,
+	highlightcolor=##CODE_HIGHLIGHT_COLOR##,
 }
 
 % 页面样式设置
-\pagestyle{##GLOBAL_PAGE_STYLE##}  % 页面风格: plain（只有页码）, headings（页眉带章节，页脚带页码）, empty（无页眉页脚）
+\pagestyle{##GLOBAL_PAGE_STYLE##}  % 页面风格: plain（只有页码）, headings（页眉带章节，页脚带页码）, empty（无页眉页脚）, fancy（自定义头脚）
+
+% fancy 头脚：fill ##FANCY_*_LEFT/CENTER/RIGHT## with desired content
+\fancyhf{}
+\fancyhead[L]{##FANCY_HEAD_LEFT##}
+\fancyhead[C]{##FANCY_HEAD_CENTER##}
+\fancyhead[R]{##FANCY_HEAD_RIGHT##}
+\fancyfoot[L]{##FANCY_FOOT_LEFT##}
+\fancyfoot[C]{##FANCY_FOOT_CENTER##}
+\fancyfoot[R]{##FANCY_FOOT_RIGHT##}
+\renewcommand{\headrulewidth}{##FANCY_RULE_WIDTH##}
+
+% titlesec section 标题格式：留空使用 LaTeX 默认
+\titleformat{\section}{##SECTION_FORMAT_SECTION##}{\thesection}{1em}{}
+\titleformat{\subsection}{##SECTION_FORMAT_SUBSECTION##}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{##SECTION_FORMAT_SUBSUBSECTION##}{\thesubsubsection}{1em}{}
+\titleformat{\paragraph}{##SECTION_FORMAT_PARAGRAPH##}{\theparagraph}{1em}{}
+\titleformat{\subparagraph}{##SECTION_FORMAT_SUBPARAGRAPH##}{\thesubparagraph}{1em}{}
 
 % 文档标题元数据设置
 \title{\Large\bfseries{##TITLE_CONTENT##}}			% 文档标题
 \author{##AUTHOR##}			% 作者名称
-\date{\today}
+\date{##TITLE_DATE##}
 
 \begin{document}
 

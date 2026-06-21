@@ -219,6 +219,10 @@ namespace Core {
 			var outputDir = _options.OutputPdf.Directory!.FullName.Replace("\\", "/");
 			mainTemplate.Replace("<<MINTED_OUTPUTDIR>>", outputDir);
 
+			// PDF 元数据：keywords 数组 → "kw1, kw2, kw3"
+			var keywords = string.Join(", ", _texConfigParser["METADATA_KEYWORDS"].GetAsStringArray());
+			mainTemplate.Replace("<<METADATA_KEYWORDS>>", keywords);
+
 			ReplaceMainPlaceholders(mainTemplate);
 
 			// 在 <<CONTENT>> 替换前扫描 Main.tex，避免误报尚未替换的 <<CONTENT>> 标记。
