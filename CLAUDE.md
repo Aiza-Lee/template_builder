@@ -34,19 +34,24 @@ CI 流程见 `.github/workflows/build-and-release.yml`：PR 触发 restore/build
 ```
 Program.Main
   └─ BuildCommandFactory.CreateCommand()       // System.CommandLine 解析
-       └─ Command.SetAction(...)               // 校验参数、设置 CommandInfoHelper
-            └─ PdfBuilder.Build()
-                 ├─ LoadUserConfig()           // ConfigParser("TEX" + "PROGRAM")
-                 ├─ GenerateTexContent()       // ManifestResourceManager 读 Main.tex 模板
-                 │    ├─ ReplaceMainPlaceholders()   // ##KEY## 替换
-                 │    └─ CodeBlockGenerator.Generate() // 递归源码目录、生成 <<CONTENT>>
-                 ├─ SaveTexFile()              // 写出 mid-output.tex
-                 └─ CompileTexToPdf()          // 两次 xelatex 进程调用 + 清理 .aux/.log/.toc 等
+       └─ Command.SetAction(...)               // ≤20 行骨架：装配并捕异常映射退出码
+            ├─ OutputPathResolver              // 校验 -s / -o，抛 InvalidArgumentException
+            ├─ ConfigPathResolver              // 处理 -c 回退与严格模式判定
+            └─ BuildPipelineRunner.Run()       // 解析配置并调用 PdfBuilder
+                 └─ PdfBuilder.Build()
+                      ├─ LoadUserConfig()           // ConfigParser("TEX" + "PROGRAM")
+                      ├─ GenerateTexContent()       // ManifestResourceManager 读 Main.tex 模板
+                      │    ├─ ReplaceMainPlaceholders()   // ##KEY## 替换
+                      │    └─ CodeBlockGenerator.Generate() // 递归源码目录、生成 <<CONTENT>>
+                      ├─ SaveTexFile()              // 写出 mid-output.tex
+                      └─ CompileTexToPdf()          // 两次 xelatex 进程调用 + 清理 .aux/.log/.toc 等
 ```
 
 ### 关键模块
 
-- **`src/Core/Commands/CommandInfoHelper.cs`**：静态类，保存已校验的配置/源目录/输出文件路径。在 `BuildCommandFactory` 的 `SetAction` 内赋值，被 `PdfBuilder`、`CodeBlockGenerator` 读取。是模块间的隐式共享状态。
+- **`src/Core/Pipeline/OutputPathResolver.cs`**：校验并规范化 `-s` / `-o`，建父目录、强制 `.pdf` 后缀；失败抛 `InvalidArgumentException`。
+- **`src/Core/Pipeline/ConfigPathResolver.cs`**：处理 `-c` 路径回退与严格模式判定，返回 `(FileInfo, bool UserProvided)`。
+- **`src/Core/Pipeline/BuildPipelineRunner.cs`**：读取 JSON、构造两个 `ConfigParser`、调用 `PdfBuilder.Build()`，并捕 `MalformedConfigException` / `UnknownConfigKeyException` 映射退出码。
 - **`src/Core/PdfBuilder.cs`**：总编排。两次 `xelatex` 编译（让 `hyperref` 书签/目录稳定）；stderr 累积到 `_xelatexStderr`，仅在失败且未生成 PDF 时升为 Error 输出，避免 `minted` 无害提示刷屏。`Cleanup` 与 `SaveTexFile` 抽成 `internal static` 便于测试。
 - **`src/Core/CodeBlockGenerator.cs`**：递归遍历源目录，按深度插入 `\section` → `\subsection` → `\subsubsection` → `\paragraph` → `\subparagraph`（最大 5 层）。`EXTENSION_TO_LANGUAGE` 映射到 minted 语言名，未知名扩展会退化为 `PlainText` 并 warn 一次（`_warnedExtensions` 防刷屏）。`LATEX_ESCAPES` 处理 11 个 LaTeX 特殊字符。
 - **`src/Utils/ConfigParser.cs`**：JSON 解析时只识别嵌入式 `DefaultConfig.json` 注册过的 key（`isDefaultConfig=true` 时注册；`=false` 时只覆盖值）。路径展开为 `UPPER_SNAKE_CASE`。`IConfigParser["KEY"]` 返回 `ReadonlyConfigValue`。
@@ -75,9 +80,23 @@ Program.Main
 
 - 测试框架：xUnit 2.9.2，coverlet 收集覆盖率。
 - `TestLogger`：实现 `ILogger` 并把消息入 `ConcurrentQueue`，供断言使用。
-- `CommandInfoHelper` 是静态的——`CodeBlockGeneratorTests` 等会直接对其赋值。
 - 内部可见性已通过 `<InternalsVisibleTo Include="template_builder.Tests" />` 暴露给测试项目，便于断言 `internal static` 工具方法（如 `PdfBuilder.Cleanup`、`CodeBlockGenerator.IsIgnored`）。
 - 测试用 `Path.GetTempPath() + Guid.NewGuid().ToString("N")` 建临时目录，`finally` 里 `Directory.Delete(..., recursive: true)`。
+
+### 退出码与异常约定
+
+退出码统一定义在 `src/Core/ExitCodes.cs`（`internal static class ExitCodes`）：
+
+| 常量 | 值 | 触发场景 |
+|---|:---:|---|
+| `Success` | 0 | 构建成功 |
+| `XelatexFailure` | 1 | `xelatex` 子进程返回非零 |
+| `InvalidArguments` | 2 | CLI 参数错误或严格模式下 `UnknownConfigKeyException` |
+| `UnresolvedPlaceholders` | 3 | 模板存在未替换的 `##KEY##` / `<<KEY>>` |
+| `MalformedConfig` | 4 | 用户配置 JSON 损坏（`MalformedConfigException`） |
+| `MissingEmbeddedResource` | 5 | 嵌入式资源缺失（`MissingEmbeddedResourceException`） |
+
+`PdfBuilder` 仍保留 `ExitSuccess` / `ExitXelatexFailure` / `ExitUnresolvedPlaceholders` 旧名作为转发常量，避免破坏外部脚本期望。新增异常类放在 `src/Utils/Exceptions/`。
 
 ## 代码风格
 

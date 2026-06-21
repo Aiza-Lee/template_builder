@@ -5,29 +5,22 @@ using Utils;
 namespace Program {
 	public class Program {
 
-		private static readonly Logger _logger;
-
-		static Program() {
-			_logger = new Logger();
-		}
-
 		public static int Main(string[] args) {
-			_logger.Info("Application started...");
+			ILogger logger = new Logger();
+			logger.Info("Application started...");
 
-			var rootCommand = CreateRootCommand();
+			var rootCommand = CreateRootCommand(logger);
 			return rootCommand.Parse(args).Invoke();
 		}
 
-		private static RootCommand CreateRootCommand() {
+		internal static RootCommand CreateRootCommand(ILogger logger) {
 			var rootCommand = new RootCommand("Config Parser Application");
 
-			var buildCommand = new BuildCommandFactory(_logger).CreateCommand();
+			var buildCommand = new BuildCommandFactory(logger).CreateCommand();
 			rootCommand.Add(buildCommand);
 
 			return rootCommand;
 		}
-
-		
 
 	}
 }

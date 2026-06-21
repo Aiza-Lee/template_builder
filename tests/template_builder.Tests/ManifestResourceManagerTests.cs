@@ -1,4 +1,5 @@
 using Utils;
+using Utils.Exceptions;
 using Xunit;
 
 namespace template_builder.Tests;
@@ -27,14 +28,14 @@ public class ManifestResourceManagerTests {
 	}
 
 	[Fact]
-	public void GetResourceInString_UnknownResource_ReturnsEmptyAndLogsError() {
+	public void GetResourceInString_UnknownResource_ThrowsMissingEmbeddedResourceException() {
 		var logger = new TestLogger();
 		var mgr = new ManifestResourceManager(logger);
 
-		var content = mgr.GetResourceInString("NonExistent.Resource");
-
-		Assert.Equal(string.Empty, content);
-		Assert.Contains(logger.Entries, e => e.Level == LogLevel.ERROR);
+		var ex = Assert.Throws<MissingEmbeddedResourceException>(
+			() => mgr.GetResourceInString("NonExistent.Resource")
+		);
+		Assert.Equal("NonExistent.Resource", ex.ResourceName);
 	}
 
 	[Fact]
@@ -48,5 +49,16 @@ public class ManifestResourceManagerTests {
 
 		Assert.NotEmpty(content);
 		Assert.Contains("<<CONTENT>>", content);
+	}
+
+	[Fact]
+	public void GetResourceAsStream_UnknownResource_ThrowsMissingEmbeddedResourceException() {
+		var logger = new TestLogger();
+		var mgr = new ManifestResourceManager(logger);
+
+		var ex = Assert.Throws<MissingEmbeddedResourceException>(
+			() => mgr.GetResourceAsStream("NonExistent.Resource")
+		);
+		Assert.Equal("NonExistent.Resource", ex.ResourceName);
 	}
 }

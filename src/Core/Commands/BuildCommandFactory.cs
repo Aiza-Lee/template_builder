@@ -1,5 +1,7 @@
 using System.CommandLine;
+using Core.Pipeline;
 using Utils;
+using Utils.Exceptions;
 
 namespace Core.Commands {
 	/// <summary>
@@ -90,70 +92,32 @@ namespace Core.Commands {
 			finalCmd.Options.Add(templateDirOption);
 
 			finalCmd.SetAction((ParseResult pr) => {
-				int ExecuteBuild() {
-					/* --source-files-folder -s */
-					var sourceFilesFolder = pr.GetValue(sourceFilesFolderOption);
-					if (sourceFilesFolder == null) {
-						_logger.Error("Invalid source files folder.");
-						return 2;
-					}
-					if (!sourceFilesFolder.Exists) {
-						_logger.Error($"Source files folder \"{sourceFilesFolder.FullName}\" not found.");
-						return 2;
-					}
-
-				/* --output -o */
-				var output = pr.GetValue(outputOption);
-				if (output == null || output.Directory == null) {
-					_logger.Error("Invalid output file path.");
-					return 2;
-				}
-				// 如果目标所在的文件夹不存在，则提前创建
-				if (!output.Directory.Exists) {
-					_logger.Warning($"Output directory \"{output.Directory.FullName}\" not found, created by the program.");
-					output.Directory.Create();
-				}
-				// 修正文件后缀为pdf
-				var pdfFileName = Path.GetFileNameWithoutExtension(output.Name) + ".pdf";
-				var outputPdf = new FileInfo(Path.Combine(output.Directory.FullName, pdfFileName));
-
-				/* --verbose -v */
-				var verbose = pr.GetValue(verboseOption);
-				_logger.SetLevel(verbose ? LogLevel.DEBUG : LogLevel.INFO);
-
-				/* --config -c */
-				// 检测 -c 是否由用户在命令行显式提供；只有显式提供的配置才走严格模式。
-				bool userProvidedConfig = pr.Tokens.Any(t => t.Value == "--config" || t.Value == "-c");
-				var config = pr.GetValue(configOption);
-				if (!config!.Exists) {
-					_logger.Warning($"Configuration file \"{config.FullName}\" not found, use default configuration instead.");
-					config = configOption.GetDefaultValue() as FileInfo; // 默认值是用户配置目录下的 config.json，此默认值是在创建选项时设置的
-					userProvidedConfig = false; // 退回默认配置不再严格
-				} else {
-					_logger.Info($"Using configuration file at \"{config.FullName}\".");
-				}
-
-				/* --template-dir -t */
-				var templateDir = pr.GetValue(templateDirOption);
-
-				// 组合根：构造服务图，读取并解析用户配置一次，然后交给 PdfBuilder。
-				var resMgr = new ManifestResourceManager(_logger);
-				var strictness = userProvidedConfig ? ConfigStrictness.Strict : ConfigStrictness.Lax;
-				var texParser = new ConfigParser("TEX", _logger, strictness);
-				var programParser = new ConfigParser("PROGRAM", _logger, strictness);
-				var configJson = File.ReadAllText(config!.FullName);
-				texParser.ParseConfigFile(configJson);
-				programParser.ParseConfigFile(configJson);
-
-				var options = new BuildOptions(sourceFilesFolder, outputPdf, config!, verbose, templateDir);
-				return new PdfBuilder(_logger, options, texParser, programParser, resMgr).Build();
-				}
-
+				_logger.SetLevel(pr.GetValue(verboseOption) ? LogLevel.DEBUG : LogLevel.INFO);
 				try {
-					return ExecuteBuild();
-				} catch (UnknownConfigKeyException ex) {
+					var resolver = new OutputPathResolver(_logger);
+					var src = resolver.ResolveSourceDir(pr.GetValue(sourceFilesFolderOption));
+					var outPdf = resolver.ResolveOutputPdf(pr.GetValue(outputOption));
+
+					bool userProvidedAtCli = pr.Tokens.Any(t => t.Value == "--config" || t.Value == "-c");
+					var (cfg, userProvided) = new ConfigPathResolver(_logger).Resolve(
+						pr.GetValue(configOption),
+						userProvidedAtCli,
+						configOption.GetDefaultValue() as FileInfo
+					);
+
+					var options = new BuildOptions(
+						src, outPdf, cfg,
+						pr.GetValue(verboseOption),
+						pr.GetValue(templateDirOption)
+					);
+					return new BuildPipelineRunner(_logger, new ManifestResourceManager(_logger))
+						.Run(options, userProvided);
+				} catch (InvalidArgumentException ex) {
 					_logger.Error(ex.Message);
-					return 2;
+					return ExitCodes.InvalidArguments;
+				} catch (MissingEmbeddedResourceException ex) {
+					_logger.Error(ex.Message);
+					return ExitCodes.MissingEmbeddedResource;
 				}
 			});
 

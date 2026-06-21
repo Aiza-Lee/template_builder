@@ -36,6 +36,17 @@ bash ./build.sh
 ./template_builder build -s "path/to/your/code/templates/folder" -o "output/file" [-c "path/to/config.json"]
 ```
 
+### 退出码
+
+| 退出码 | 含义 |
+|:---:|---|
+| 0 | 构建成功 |
+| 1 | `xelatex` 编译失败 |
+| 2 | 命令行参数错误（缺源目录、输出路径无效、严格模式下未注册的配置 key 等） |
+| 3 | 模板中存在未替换的占位符（`##KEY##` 或 `<<KEY>>`） |
+| 4 | 用户配置文件 JSON 损坏或解析时发生意外异常 |
+| 5 | 嵌入式资源缺失（理论上不会发生在发行包中，属编译期错误） |
+
 ---
 
 ## 贡献
