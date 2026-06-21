@@ -70,7 +70,13 @@ namespace Utils {
 		private readonly string _rootObjectName;
 		private readonly ConfigStrictness _strictness;
 
-		const string DefaultConfigFileName = "DefaultConfig.json";
+		const string DefaultConfigFileName = "DefaultConfig.jsonc";
+
+		// JSONC (含 // 注释) + 允许尾随逗号
+		static readonly JsonDocumentOptions _jsonDocumentOptions = new() {
+			CommentHandling = JsonCommentHandling.Skip,
+			AllowTrailingCommas = true,
+		};
 
 		/// <summary>
 		/// 构造函数
@@ -123,7 +129,7 @@ namespace Utils {
 
 		private void ParseJsonContent(string jsonContent, bool isDefaultConfig, string? sourcePath = null) {
 			try {
-				var json = JsonDocument.Parse(jsonContent).RootElement;
+				var json = JsonDocument.Parse(jsonContent, _jsonDocumentOptions).RootElement;
 				if (json.TryGetProperty(_rootObjectName, out var jsonElement)) {
 					ParseJsonElement_R(jsonElement, [], isDefaultConfig);
 				} else {

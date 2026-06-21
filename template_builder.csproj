@@ -11,8 +11,8 @@
 	<ItemGroup>
 		<PackageReference Include="System.CommandLine" Version="2.0.0-rc.1.25451.107" />
 		<PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="9.0.0" />
-		<EmbeddedResource Include="Resources\DefaultConfig.json">
-			<LogicalName>DefaultConfig.json</LogicalName>
+		<EmbeddedResource Include="Resources\DefaultConfig.jsonc">
+			<LogicalName>DefaultConfig.jsonc</LogicalName>
 		</EmbeddedResource>
 		<EmbeddedResource Include="Resources\Templates\Main.tex">
 			<LogicalName>Templates.Main.tex</LogicalName>

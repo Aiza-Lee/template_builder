@@ -73,7 +73,7 @@ namespace Core.Commands {
 							configFileInfo.Directory.Create();
 						}
 						// 从嵌入式资源中复制默认配置文件到该路径
-						using var fs = new ManifestResourceManager(_logger).GetResourceAsStream("DefaultConfig.json");
+						using var fs = new ManifestResourceManager(_logger).GetResourceAsStream("DefaultConfig.jsonc");
 						using var outFs = configFileInfo.Create();
 						fs.CopyTo(outFs);
 						_logger.Info($"Default configuration file created at \"{configFileInfo.FullName}\".");

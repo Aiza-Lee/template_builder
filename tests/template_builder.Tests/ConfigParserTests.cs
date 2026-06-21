@@ -110,4 +110,51 @@ public class ConfigParserTests {
 
 		Assert.Equal("/tmp/fake/config.json", ex.SourcePath);
 	}
+
+	[Fact]
+	public void ParseConfigFile_JsoncWithComments_Accepted() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile(
+			"""
+			{
+				// single-line comment at top
+				"TEX": {
+					/* block comment */
+					"author": "JsonC Tester",
+					"code": {
+						"font_family": "JsonCFont" // trailing comment
+					}
+				}
+			}
+			"""
+		);
+
+		Assert.Equal("JsonC Tester", parser["AUTHOR"].GetAsString());
+		Assert.Equal("JsonCFont", parser["CODE_FONT_FAMILY"].GetAsString());
+	}
+
+	[Fact]
+	public void ParseConfigFile_TrailingComma_Accepted() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile(
+			"""
+			{
+				"TEX": {
+					"author": "Trailing Comma",
+					"code": {
+						"font_family": "F1",
+						"tab_size": 8,
+					},
+				}
+			}
+			"""
+		);
+
+		Assert.Equal("Trailing Comma", parser["AUTHOR"].GetAsString());
+		Assert.Equal(8, parser["CODE_TAB_SIZE"].GetAsInt());
+	}
 }
