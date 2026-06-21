@@ -29,7 +29,7 @@ public class BuildPipelineRunnerTests {
 			var configFile = new FileInfo(Path.Combine(tmpDir.FullName, "bad.json"));
 			File.WriteAllText(configFile.FullName, "{ \"TEX\": {");
 
-			var options = new BuildOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
+			var options = new BuildSubcommandOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
 
 			var exitCode = runner.Run(options, userProvidedConfig: true);
 
@@ -53,7 +53,7 @@ public class BuildPipelineRunnerTests {
 			var configFile = new FileInfo(Path.Combine(tmpDir.FullName, "config.json"));
 			File.WriteAllText(configFile.FullName, """{ "TEX": { "totally_made_up_key": "oops" } }""");
 
-			var options = new BuildOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
+			var options = new BuildSubcommandOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
 
 			var exitCode = runner.Run(options, userProvidedConfig: true);
 
@@ -77,7 +77,7 @@ public class BuildPipelineRunnerTests {
 			var configFile = new FileInfo(Path.Combine(tmpDir.FullName, "config.json"));
 			File.WriteAllText(configFile.FullName, "{}");
 
-			var options = new BuildOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
+			var options = new BuildSubcommandOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
 
 			var exitCode = runner.Run(options, userProvidedConfig: false);
 

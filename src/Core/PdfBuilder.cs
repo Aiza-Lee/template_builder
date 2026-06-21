@@ -8,7 +8,7 @@ namespace Core {
 	/// </summary>
 	internal class PdfBuilder {
 		private readonly ILogger _logger;
-		private readonly BuildOptions _options;
+		private readonly BuildSubcommandOptions _options;
 		private readonly IConfigParser _texConfigParser;
 		private readonly IConfigParser _programConfigParser;
 		private readonly ManifestResourceManager _resMgr;
@@ -24,7 +24,7 @@ namespace Core {
 
 		public PdfBuilder(
 			ILogger logger,
-			BuildOptions options,
+			BuildSubcommandOptions options,
 			IConfigParser texConfigParser,
 			IConfigParser programConfigParser,
 			ManifestResourceManager resMgr

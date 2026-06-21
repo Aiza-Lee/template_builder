@@ -6,10 +6,10 @@ using Utils.Exceptions;
 namespace Core.Commands {
 	/// <summary>
 	///
-	/// “构建命令”工厂类
+	/// 根命令工厂：构造顶层 <see cref="RootCommand"/> 及其子命令。
 	///
 	/// <para>
-	/// build 命令使用方法: <br/>
+	/// build 子命令使用方法: <br/>
 	/// <code>
 	/// template-builder build [source-file-folder] [enable-verbose-log] [configuration] [output-path]
 	///
@@ -28,7 +28,7 @@ namespace Core.Commands {
 	/// </summary>
 	///
 	/// <param name="logger">日志器</param>
-	internal class BuildCommandFactory(ILogger logger) {
+	internal class RootCommandFactory(ILogger logger) {
 		private readonly ILogger _logger = logger;
 
 		public Command CreateCommand() {
@@ -105,7 +105,7 @@ namespace Core.Commands {
 						configOption.GetDefaultValue() as FileInfo
 					);
 
-					var options = new BuildOptions(
+					var options = new BuildSubcommandOptions(
 						src, outPdf, cfg,
 						pr.GetValue(verboseOption),
 						pr.GetValue(templateDirOption)

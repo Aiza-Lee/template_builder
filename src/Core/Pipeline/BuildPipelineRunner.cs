@@ -16,7 +16,7 @@ namespace Core.Pipeline {
 		/// 分别返回 <see cref="ExitCodes.MalformedConfig"/>、
 		/// <see cref="ExitCodes.MissingEmbeddedResource"/> 与 <see cref="ExitCodes.InvalidArguments"/>。
 		/// </summary>
-		public int Run(BuildOptions options, bool userProvidedConfig) {
+		public int Run(BuildSubcommandOptions options, bool userProvidedConfig) {
 			try {
 				var strictness = userProvidedConfig ? ConfigStrictness.Strict : ConfigStrictness.Lax;
 				var texParser = new ConfigParser("TEX", _logger, strictness);

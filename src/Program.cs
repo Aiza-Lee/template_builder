@@ -16,7 +16,7 @@ namespace Program {
 		internal static RootCommand CreateRootCommand(ILogger logger) {
 			var rootCommand = new RootCommand("Config Parser Application");
 
-			var buildCommand = new BuildCommandFactory(logger).CreateCommand();
+			var buildCommand = new RootCommandFactory(logger).CreateCommand();
 			rootCommand.Add(buildCommand);
 
 			return rootCommand;

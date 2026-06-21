@@ -7,10 +7,10 @@ using Xunit;
 
 namespace template_builder.Tests;
 
-public class BuildCommandFactoryTests {
+public class RootCommandFactoryTests {
 	[Fact]
 	public void CreateCommand_ReturnsBuildCommandWithExpectedName() {
-		var factory = new BuildCommandFactory(new TestLogger());
+		var factory = new RootCommandFactory(new TestLogger());
 
 		var cmd = factory.CreateCommand();
 
@@ -19,7 +19,7 @@ public class BuildCommandFactoryTests {
 
 	[Fact]
 	public void CreateCommand_ExposesAllExpectedOptions() {
-		var factory = new BuildCommandFactory(new TestLogger());
+		var factory = new RootCommandFactory(new TestLogger());
 
 		var cmd = factory.CreateCommand();
 		// System.CommandLine 把第一个位置参数当作 Name，剩余为 Aliases
@@ -40,7 +40,7 @@ public class BuildCommandFactoryTests {
 
 	[Fact]
 	public void Invoke_WithNonExistentSourceFolder_ReturnsNonZero() {
-		var factory = new BuildCommandFactory(new TestLogger());
+		var factory = new RootCommandFactory(new TestLogger());
 		var cmd = factory.CreateCommand();
 		var outputPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".pdf");
 

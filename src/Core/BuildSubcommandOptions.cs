@@ -9,7 +9,7 @@ namespace Core {
 	/// <param name="ConfigFile">配置文件路径</param>
 	/// <param name="Verbose">是否启用 DEBUG 日志</param>
 	/// <param name="TemplateDir">外部模板目录（可选）。若提供，Main.tex / CodeBlock.tex 在该目录存在时优先使用，否则落回嵌入资源</param>
-	internal sealed record BuildOptions(
+	internal sealed record BuildSubcommandOptions(
 		DirectoryInfo SourceDir,
 		FileInfo OutputPdf,
 		FileInfo ConfigFile,
