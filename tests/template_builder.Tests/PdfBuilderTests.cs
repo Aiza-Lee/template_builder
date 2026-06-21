@@ -267,6 +267,75 @@ public class PdfBuilderTests {
 		return count;
 	}
 
+	[Fact]
+	public void GenerateTexContent_FancyConfigSet_EmitsFancyheadTokens() {
+		var (tmpDir, builder) = CreateBuilderFixture("""
+			{
+				"TEX": {
+					"fancy": {
+						"head_right": "Page \\thepage",
+						"foot_center": "footer text"
+					}
+				}
+			}
+			""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\fancyhf{}", tex);
+			Assert.Contains(@"\fancyhead[L]{}", tex);
+			Assert.Contains(@"\fancyfoot[C]{footer text}", tex);
+			Assert.Contains(@"\fancyhead[R]{Page \thepage}", tex);
+			Assert.Contains(@"\headrulewidth", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_FancyConfigEmpty_EmitsEmptyFancyheadArgs() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			// 默认 config 下 fancy 块全空，输出 \fancyhead[L]{} 形式（合法 LaTeX）
+			Assert.Contains(@"\fancyhead[L]{}", tex);
+			Assert.Contains(@"\fancyhead[C]{}", tex);
+			Assert.Contains(@"\fancyhead[R]{}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_SectionFormatSet_EmitsTitleformat() {
+		var (tmpDir, builder) = CreateBuilderFixture("""
+			{
+				"TEX": {
+					"section": {
+						"format_section": "\\Large\\bfseries\\color{blue}"
+					}
+				}
+			}
+			""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\titleformat{\section}{\Large\bfseries\color{blue}}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_SectionFormatEmpty_EmitsEmptyTitleformatArg() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\titleformat{\section}{}", tex);
+			Assert.Contains(@"\titleformat{\subsection}{}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
 	private static string CreateTempDir() =>
 		Directory.CreateDirectory(
 			Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
