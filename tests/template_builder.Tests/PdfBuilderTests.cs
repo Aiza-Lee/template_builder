@@ -513,4 +513,71 @@ public class PdfBuilderTests {
 			Directory.Delete(tmpDir, recursive: true);
 		}
 	}
+
+	// ============================================================
+	//  Round 3a tests: geometry headheight/headsep/footskip/columnrule
+	// ============================================================
+
+	[Fact]
+	public void GenerateTexContent_GeometryDefaults_EmitsAllFourNewOptions() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"headheight=12pt", tex);
+			Assert.Contains(@"headsep=20pt", tex);
+			Assert.Contains(@"footskip=30pt", tex);
+			Assert.Contains(@"columnrule=false", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_GeometryHeadheightSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "geometry": { "headheight": "15pt" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"headheight=15pt", tex);
+			Assert.DoesNotContain(@"headheight=12pt", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_GeometryHeadsepSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "geometry": { "headsep": "25pt" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"headsep=25pt", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_GeometryFootskipSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "geometry": { "footskip": "40pt" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"footskip=40pt", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_GeometryColumnRuleTrue_EmitsColumnruleTrue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "geometry": { "column_rule": true } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"columnrule=true", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
 }
