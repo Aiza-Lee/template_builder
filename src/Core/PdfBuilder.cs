@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using Utils;
 
@@ -12,6 +11,7 @@ namespace Core {
 		private readonly IConfigParser _texConfigParser;
 		private readonly IConfigParser _programConfigParser;
 		private readonly ManifestResourceManager _resMgr;
+		private readonly IXelatexRunner _xelatexRunner;
 		private readonly StringBuilder _xelatexStderr = new();
 		private int _unresolvedPlaceholderCount;
 
@@ -20,13 +20,15 @@ namespace Core {
 			BuildSubcommandOptions options,
 			IConfigParser texConfigParser,
 			IConfigParser programConfigParser,
-			ManifestResourceManager resMgr
+			ManifestResourceManager resMgr,
+			IXelatexRunner? xelatexRunner = null
 		) {
 			_logger = logger;
 			_options = options;
 			_texConfigParser = texConfigParser;
 			_programConfigParser = programConfigParser;
 			_resMgr = resMgr;
+			_xelatexRunner = xelatexRunner ?? new XelatexRunner(logger);
 		}
 
 		/// <summary>
@@ -63,7 +65,7 @@ namespace Core {
 				// 每次 pass 清空 buffer，使最终 dump 时只看到失败 pass 的 stderr。
 				_xelatexStderr.Clear();
 
-				int exitCode = RunXelatex(midTexFileInfo, pass);
+				int exitCode = RunXelatex(midTexFileInfo, pass, timeoutSeconds: 0);
 				if (exitCode != 0) {
 					if (_options.OutputPdf.Exists) {
 						_logger.Warning("xelatex returned a non-zero exit code, but the PDF was generated. Please check the compilation log for warnings or non-fatal errors.");
@@ -95,59 +97,28 @@ namespace Core {
 			}
 		}
 
-		private int RunXelatex(FileInfo midTexFileInfo, int pass) {
+		private int RunXelatex(FileInfo midTexFileInfo, int pass, int timeoutSeconds) {
+			var arguments = BuildXelatexArguments(midTexFileInfo);
 
-			StringBuilder arguments = new();
-			// arguments.Append("-8bit ");
-			arguments.Append("-shell-escape ");
-			arguments.Append("-interaction=nonstopmode ");
-			arguments.Append($"-jobname={Path.GetFileNameWithoutExtension(_options.OutputPdf.Name)} ");
-			arguments.Append($"-output-directory \"{_options.OutputPdf.Directory!.FullName}\" ");
-			arguments.Append($"\"{midTexFileInfo.FullName}\"");
-
-			// 把 stderr 累积到缓存中，避免 minted / hyperref 的无害提示刷屏；
-			// 仅在编译失败且未生成 PDF 时再把它作为 Error 一次性输出。
-			var stderrBuffer = new StringBuilder();
-
-			using var xelatex = new Process {
-				StartInfo = new ProcessStartInfo {
-					FileName = "xelatex",
-					Arguments = arguments.ToString(),
-					RedirectStandardOutput = true,
-					RedirectStandardError = true,
-					UseShellExecute = false,
-					CreateNoWindow = true,
-					WorkingDirectory = AppContext.BaseDirectory
-				},
-			};
-
-			xelatex.OutputDataReceived += (_, args) => {
-				if (args.Data != null) {
-					_logger.Debug(args.Data);
-				}
-			};
-
-			xelatex.ErrorDataReceived += (_, args) => {
-				if (args.Data != null) {
-					// 先按 Debug 缓冲，便于 -v 时观察；调用方在编译失败时再决定是否升级
-					_logger.Debug(args.Data);
-					stderrBuffer.AppendLine(args.Data);
-				}
-			};
-
-			if (!xelatex.Start()) {
-				_logger.Error("Failed to start xelatex process.");
-				return -1;
-			}
-
-			xelatex.BeginOutputReadLine();
-			xelatex.BeginErrorReadLine();
-
-			xelatex.WaitForExit();
+			// 通过 IXelatexRunner 抽象 spawn xelatex；返回 XelatexResult 包含合并的 stderr 与超时标记。
+			var result = _xelatexRunner.Run(AppContext.BaseDirectory, arguments, timeoutSeconds);
 
 			// 给本 pass 的 stderr 打标签，便于在 dump 时区分归属。
-			AppendLabeledStderr(_xelatexStderr, pass, stderrBuffer.ToString());
-			return xelatex.ExitCode;
+			AppendLabeledStderr(_xelatexStderr, pass, result.Stderr);
+			return result.ExitCode;
+		}
+
+		/// <summary>
+		/// 构造 xelatex 命令行参数串。提取为 internal static 便于单测断言参数内容（无需 mock Process）。
+		/// </summary>
+		internal static string BuildXelatexArguments(FileInfo midTexFileInfo) {
+			var sb = new StringBuilder();
+			sb.Append("-shell-escape ");
+			sb.Append("-interaction=nonstopmode ");
+			sb.Append($"-jobname={Path.GetFileNameWithoutExtension(midTexFileInfo.Name)} ");
+			sb.Append($"-output-directory \"{midTexFileInfo.DirectoryName}\" ");
+			sb.Append($"\"{midTexFileInfo.FullName}\"");
+			return sb.ToString();
 		}
 
 		/// <summary>
