@@ -56,6 +56,7 @@ namespace Core {
 			_logger.Info("Starting LaTeX compilation...");
 
 			const int requiredCompilations = 2;
+			var timeoutSeconds = Math.Clamp(_programConfigParser["BUILD_TIMEOUT_SECONDS"].GetAsInt(), 0, 600);
 
 			bool cleanupNeeded = true;
 
@@ -65,13 +66,18 @@ namespace Core {
 				// 每次 pass 清空 buffer，使最终 dump 时只看到失败 pass 的 stderr。
 				_xelatexStderr.Clear();
 
-				int exitCode = RunXelatex(midTexFileInfo, pass, timeoutSeconds: 0);
-				if (exitCode != 0) {
+				var result = RunXelatex(midTexFileInfo, pass, timeoutSeconds);
+				if (result.TimedOut) {
+					_logger.Error($"xelatex pass #{pass} timed out after {timeoutSeconds}s. Aborting build.");
+					FlushStderrAsError();
+					return ExitCodes.XelatexFailure;
+				}
+				if (result.ExitCode != 0) {
 					if (_options.OutputPdf.Exists) {
 						_logger.Warning("xelatex returned a non-zero exit code, but the PDF was generated. Please check the compilation log for warnings or non-fatal errors.");
 						cleanupNeeded = false; // 保留辅助文件以供调试
 					} else {
-						_logger.Error($"xelatex exited with code {exitCode}. LaTeX compilation failed.");
+						_logger.Error($"xelatex exited with code {result.ExitCode}. LaTeX compilation failed.");
 						FlushStderrAsError();
 						return ExitCodes.XelatexFailure;
 					}
@@ -97,7 +103,7 @@ namespace Core {
 			}
 		}
 
-		private int RunXelatex(FileInfo midTexFileInfo, int pass, int timeoutSeconds) {
+		private XelatexResult RunXelatex(FileInfo midTexFileInfo, int pass, int timeoutSeconds) {
 			var arguments = BuildXelatexArguments(midTexFileInfo);
 
 			// 通过 IXelatexRunner 抽象 spawn xelatex；返回 XelatexResult 包含合并的 stderr 与超时标记。
@@ -105,7 +111,7 @@ namespace Core {
 
 			// 给本 pass 的 stderr 打标签，便于在 dump 时区分归属。
 			AppendLabeledStderr(_xelatexStderr, pass, result.Stderr);
-			return result.ExitCode;
+			return result;
 		}
 
 		/// <summary>

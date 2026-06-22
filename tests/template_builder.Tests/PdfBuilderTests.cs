@@ -4,6 +4,7 @@ using System.Text;
 using Core;
 using Utils;
 using Xunit;
+using template_builder.Tests.Fixtures;
 
 namespace template_builder.Tests;
 
@@ -121,6 +122,33 @@ public class PdfBuilderTests {
 		var resMgr = new ManifestResourceManager(logger);
 		var builder = new PdfBuilder(logger, options, texParser, programParser, resMgr);
 		return (tmpDir, builder);
+	}
+
+	/// <summary>
+	/// Round 3b: fixture 注入 FakeXelatexRunner，返回 runner 实例供断言调用计数/参数。
+	/// </summary>
+	private static (string tmpDir, PdfBuilder builder, FakeXelatexRunner runner) CreateBuilderFixtureWithFakeRunner(
+		string configJson
+	) {
+		var tmpDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tmpDir);
+		var sourceDir = Directory.CreateDirectory(Path.Combine(tmpDir, "src"));
+		File.WriteAllText(Path.Combine(sourceDir.FullName, "a.cpp"), "int main() { return 0; }");
+		var outputPdf = new FileInfo(Path.Combine(tmpDir, "out.pdf"));
+		var configFile = new FileInfo(Path.Combine(tmpDir, "cfg.json"));
+		File.WriteAllText(configFile.FullName, configJson);
+
+		var logger = new TestLogger();
+		var texParser = new ConfigParser("TEX", logger, ConfigStrictness.Strict);
+		var programParser = new ConfigParser("PROGRAM", logger, ConfigStrictness.Strict);
+		texParser.ParseConfigFile(File.ReadAllText(configFile.FullName), configFile.FullName);
+		programParser.ParseConfigFile(File.ReadAllText(configFile.FullName), configFile.FullName);
+
+		var options = new BuildSubcommandOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
+		var resMgr = new ManifestResourceManager(logger);
+		var runner = new FakeXelatexRunner();
+		var builder = new PdfBuilder(logger, options, texParser, programParser, resMgr, runner);
+		return (tmpDir, builder, runner);
 	}
 
 	[Fact]
@@ -903,5 +931,103 @@ public class PdfBuilderTests {
 		} finally {
 			Directory.Delete(tmpDir, recursive: true);
 		}
+	}
+
+	// ============================================================
+	//  Round 3b tests: timeout (via FakeXelatexRunner)
+	// ============================================================
+
+	[Fact]
+	public void Build_TimeoutSecondsDefault_Is120() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+		try {
+			builder.Build();
+			Assert.NotEmpty(runner.Calls);
+			Assert.All(runner.Calls, c => Assert.Equal(120, c.TimeoutSeconds));
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void Build_TimeoutFromConfig_PassedToRunner() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner(
+			"""{ "PROGRAM": { "build": { "timeout_seconds": 30 } } }""");
+		try {
+			builder.Build();
+			Assert.All(runner.Calls, c => Assert.Equal(30, c.TimeoutSeconds));
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void Build_TimeoutZero_PassedAsZero() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner(
+			"""{ "PROGRAM": { "build": { "timeout_seconds": 0 } } }""");
+		try {
+			builder.Build();
+			Assert.All(runner.Calls, c => Assert.Equal(0, c.TimeoutSeconds));
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void Build_TimeoutClampedToMax600() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner(
+			"""{ "PROGRAM": { "build": { "timeout_seconds": 9999 } } }""");
+		try {
+			builder.Build();
+			Assert.All(runner.Calls, c => Assert.Equal(600, c.TimeoutSeconds));
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void Build_TimeoutNegative_ClampedToZero() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner(
+			"""{ "PROGRAM": { "build": { "timeout_seconds": -5 } } }""");
+		try {
+			builder.Build();
+			Assert.All(runner.Calls, c => Assert.Equal(0, c.TimeoutSeconds));
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void Build_RunnerTimedOut_ReturnsXelatexFailure() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+		runner.Results.Enqueue(new XelatexResult(-1, "killed: timeout", true));
+		try {
+			var exitCode = builder.Build();
+			Assert.Equal(ExitCodes.XelatexFailure, exitCode);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void Build_RunnerExitCode1_StillReturnsXelatexFailure() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+		runner.Results.Enqueue(new XelatexResult(1, "some error", false));
+		try {
+			var exitCode = builder.Build();
+			Assert.Equal(ExitCodes.XelatexFailure, exitCode);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void BuildXelatexArguments_EmitsExpectedFlags() {
+		var midTex = new FileInfo(Path.Combine(Path.GetTempPath(), "jobname.tex"));
+		var args = PdfBuilder.BuildXelatexArguments(midTex);
+		Assert.Contains("-shell-escape", args);
+		Assert.Contains("-interaction=nonstopmode", args);
+		Assert.Contains("-jobname=jobname", args);
+		Assert.Contains("\"" + midTex.FullName + "\"", args);
 	}
 }
