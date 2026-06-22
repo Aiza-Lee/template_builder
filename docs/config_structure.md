@@ -97,6 +97,10 @@
 | `TEX.global.page_style` | `"plain"` | `\pagestyle{...}`：`plain` / `headings` / `empty` / `fancy` |
 | `TEX.docclass.base_font_size` | `"10pt"` | **Round 3a**：`\documentclass[<this>,...]{ctexart}` 主字号 |
 | `TEX.docclass.orientation` | `"landscape"` | **Round 3a**：`\documentclass[...,<this>,...]{ctexart}` 与 `\geometry{...}`：landscape / portrait |
+| `TEX.typesetting.microtype.protrusion` | `true` | **Round 3c**：`microtype` 字符伸出（标点悬挂到 margin 外）。代码密集文档（minted blocks）受益最明显 |
+| `TEX.typesetting.microtype.expansion` | `true` | **Round 3c**：`microtype` 字体微扩展（改善断行、减少 underfull `\hbox` 警告） |
+| `TEX.typesetting.microtype.kerning` | `true` | **Round 3c**：`microtype` 字偶距增强（XeLaTeX 下对部分字体生效） |
+| `TEX.typesetting.parskip.enabled` | `false` | **Round 3c**：true 时插入 `\usepackage{parskip}`，段间用垂直空白替代 LaTeX 默认的段首缩进（modern 风格） |
 
 ### PROGRAM 段
 
@@ -148,6 +152,38 @@
 ```
 
 注：扩展名必须同时存在于内置 `CODE_LANGUAGES_EXTENSIONS` 白名单（26 种）才会走 minted 高亮；白名单外的扩展名仅作为 raw text 输出。
+
+## 排版与设计刷新（Round 3c）
+
+### 关闭 microtype（恢复 LaTeX 默认排版）
+
+microtype 默认三选项全开。如需彻底关闭以避免某些老 TeX Live 的兼容问题：
+
+```jsonc
+"TYPESETTING": {
+    "microtype": {
+        "protrusion": false,
+        "expansion": false,
+        "kerning": false
+    }
+}
+```
+
+三选项全 `false` 时 `\usepackage[false,false,false]{microtype}` 仍会发出（LaTeX 合法 no-op），任意一项改回 `true` 即激活对应功能。
+
+### 现代段间空白（parskip）
+
+启用后 LaTeX 段首缩进改为段间垂直空白，对代码速查表特别友好：
+
+```jsonc
+"TYPESETTING": {
+    "parskip": {
+        "enabled": true
+    }
+}
+```
+
+注：parskip 是「激进」选项，会改变文档整体节奏；与 ctexart 章节间距可能有视觉重叠，建议对实际文档预览后再决定。
 
 ## 占位符
 
