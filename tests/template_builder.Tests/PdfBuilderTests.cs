@@ -1081,4 +1081,78 @@ public class PdfBuilderTests {
 			Directory.Delete(tmpDir, recursive: true);
 		}
 	}
+
+	// ============================================================
+	//  Round 3c tests: microtype + parskip
+	// ============================================================
+
+	[Fact]
+	public void GenerateTexContent_MicrotypeDefaults_AllThreeOptionsTrue() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\usepackage[true,true,true]{microtype}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MicrotypeProtrusionDisabled_EmitsFalse() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "typesetting": { "microtype": { "protrusion": false } } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\usepackage[false,true,true]{microtype}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MicrotypeExpansionDisabled_EmitsFalse() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "typesetting": { "microtype": { "expansion": false } } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\usepackage[true,false,true]{microtype}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MicrotypeKerningDisabled_EmitsFalse() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "typesetting": { "microtype": { "kerning": false } } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\usepackage[true,true,false]{microtype}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_AllMicrotypeOptionsFalse_StillIncludesPackage() {
+		var (tmpDir, builder) = CreateBuilderFixture("""
+			{
+				"TEX": {
+					"typesetting": {
+						"microtype": {
+							"protrusion": false,
+							"expansion": false,
+							"kerning": false
+						}
+					}
+				}
+			}
+			""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\usepackage[false,false,false]{microtype}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
 }

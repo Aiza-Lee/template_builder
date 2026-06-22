@@ -101,6 +101,22 @@
 			"rule_width": "0.4pt"
 		},
 
+		// Round 3c 新增：排版与设计刷新（microtype + parskip）
+		"typesetting": {
+			"microtype": {
+				// microtype 字符伸出（标点悬挂到 margin 外，对代码密集文档尤其有用）
+				"protrusion": true,
+				// 字体微扩展（改善断行，减少 overfull/underfull \hbox 警告）
+				"expansion": true,
+				// 字偶距增强（XeLaTeX 下对部分字体生效）
+				"kerning": true
+			},
+			"parskip": {
+				// 段间垂直空白替代段首缩进；默认 false（保留 LaTeX 经典缩进外观）
+				"enabled": false
+			}
+		},
+
 		// titlesec section 标题格式：留空 = 使用 LaTeX 默认；填入格式串（如 "\Large\bfseries\color{blue}"）覆盖
 		"section": {
 			"format_section": "",
