@@ -340,4 +340,134 @@ public class PdfBuilderTests {
 		Directory.CreateDirectory(
 			Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
 		).FullName;
+
+	// ============================================================
+	//  Round 3a tests: CJK font block (BoldFont/ItalicFont/AutoFake)
+	// ============================================================
+
+	[Fact]
+	public void GenerateTexContent_CjkDefaults_EmitsAutoFakeTrueWithoutBoldItalic() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\setCJKmainfont{SimSun}[", tex);
+			Assert.Contains(@"AutoFakeBold=true", tex);
+			Assert.Contains(@"AutoFakeSlant=true", tex);
+			Assert.DoesNotContain(@"BoldFont=", tex);
+			Assert.DoesNotContain(@"ItalicFont=", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_CjkBoldFontSet_EmitsBoldFontOption() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "global": { "cjk_main_bold_font": "SimHei Bold" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"BoldFont=SimHei Bold", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_CjkItalicFontSet_EmitsItalicFontOption() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "global": { "cjk_main_italic_font": "KaiTi Italic" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"ItalicFont=KaiTi Italic", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_CjkAutoFakeBoldFalse_EmitsAutoFakeBoldFalse() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "global": { "cjk_auto_fake_bold": false } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"AutoFakeBold=false", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_CjkAutoFakeSlantFalse_EmitsAutoFakeSlantFalse() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "global": { "cjk_auto_fake_slant": false } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"AutoFakeSlant=false", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_CjkEmptyBoldFont_OmitsBoldFontOption() {
+		// cjk_main_bold_font 默认 "" → 不应输出 BoldFont=, 行
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.DoesNotContain(@"BoldFont=", tex);
+			Assert.DoesNotContain(@"ItalicFont=", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_CjkAllOptionsSet_EmitsAllFourLines() {
+		var (tmpDir, builder) = CreateBuilderFixture("""
+			{
+				"TEX": {
+					"global": {
+						"cjk_main_font": "SimSun",
+						"cjk_main_bold_font": "SimHei",
+						"cjk_main_italic_font": "KaiTi",
+						"cjk_auto_fake_bold": false,
+						"cjk_auto_fake_slant": false
+					}
+				}
+			}
+			""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\setCJKmainfont{SimSun}[", tex);
+			Assert.Contains(@"BoldFont=SimHei", tex);
+			Assert.Contains(@"ItalicFont=KaiTi", tex);
+			Assert.Contains(@"AutoFakeBold=false", tex);
+			Assert.Contains(@"AutoFakeSlant=false", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_DefaultCjkSansFont_IsSimHei() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\setsansfont{SimHei}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_CjkSansFontSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "global": { "cjk_sans_font": "Microsoft YaHei" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\setsansfont{Microsoft YaHei}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
 }

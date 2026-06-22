@@ -27,12 +27,8 @@
 
 % Fonts - 字体设置
 \setmainfont{##GLOBAL_MAIN_FONT##}  % 西文主字体名称，如：Times New Roman
-\setCJKmainfont{##GLOBAL_CJK_MAIN_FONT##}[  % 中文主字体名称
-	% BoldFont=##GLOBAL_CJK_MAIN_FONT## Bold,
-	% ItalicFont=##GLOBAL_CJK_MAIN_FONT## Italic,
-	AutoFakeBold=true,
-	AutoFakeSlant=true
-]
+<<CJK_FONT_BLOCK>>  % runtime: \setCJKmainfont{...}[...] 由 PdfBuilder 动态拼装（BoldFont/ItalicFont 空值剔除 + AutoFake 开关）
+\setsansfont{##GLOBAL_CJK_SANS_FONT##}  % CJK sans 字体
 
 % Hyperref configuration - PDF导航、书签和元数据设置
 \hypersetup{

@@ -237,6 +237,10 @@ namespace Core {
 			mainTemplate.Replace("<<LAYOUT_TOC_OPENING>>", columns == 2 ? (tocInColumns ? @"\onecolumn" : @"\twocolumn") : "");
 			mainTemplate.Replace("<<LAYOUT_BODY_OPENING>>", columns == 2 && tocInColumns ? @"\twocolumn" : "");
 
+			// CJK font block (runtime): 动态拼装 \setCJKmainfont{...}[...]，
+			// BoldFont/ItalicFont 空值时跳过该选项（避免 LaTeX 非法语法 BoldFont=,）。
+			mainTemplate.Replace("<<CJK_FONT_BLOCK>>", BuildCjkFontBlock());
+
 			ReplaceMainPlaceholders(mainTemplate);
 
 			// 在 <<CONTENT>> 替换前扫描 Main.tex，避免误报尚未替换的 <<CONTENT>> 标记。
@@ -270,6 +274,32 @@ namespace Core {
 				}
 			}
 			return _resMgr.GetResourceInString("Templates." + fileName);
+		}
+
+		/// <summary>
+		/// 动态拼装 CJK 主字体块。BoldFont/ItalicFont 为空字符串时跳过对应选项（避免
+		/// LaTeX 收到 BoldFont=, 非法语法）。AutoFake* 始终输出（默认 true）。
+		/// 提取为 private 方法以便未来加 unit test 时直接覆盖。
+		/// </summary>
+		private string BuildCjkFontBlock() {
+			var main = _texConfigParser["GLOBAL_CJK_MAIN_FONT"].GetAsString();
+			var bold = _texConfigParser["GLOBAL_CJK_MAIN_BOLD_FONT"].GetAsString();
+			var italic = _texConfigParser["GLOBAL_CJK_MAIN_ITALIC_FONT"].GetAsString();
+			var autoBold = _texConfigParser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(true);
+			var autoSlant = _texConfigParser["GLOBAL_CJK_AUTO_FAKE_SLANT"].GetAsBool(true);
+
+			var sb = new StringBuilder();
+			sb.Append($"\\setCJKmainfont{{{main}}}[\n");
+			if (!string.IsNullOrEmpty(bold)) {
+				sb.Append($"    BoldFont={bold},\n");
+			}
+			if (!string.IsNullOrEmpty(italic)) {
+				sb.Append($"    ItalicFont={italic},\n");
+			}
+			sb.Append($"    AutoFakeBold={(autoBold ? "true" : "false")},\n");
+			sb.Append($"    AutoFakeSlant={(autoSlant ? "true" : "false")}\n");
+			sb.Append(']');
+			return sb.ToString();
 		}
 
 		/// <summary>
