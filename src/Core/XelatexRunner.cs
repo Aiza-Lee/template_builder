@@ -59,8 +59,14 @@ namespace Core {
 				}
 			};
 
-			if (!proc.Start()) {
-				return new XelatexResult(-1, stderr.ToString(), false);
+			// .NET 9 的 Process.Start() 实例方法在失败时抛 Win32Exception
+			// （如 xelatex 不在 PATH），不再返回 false。把异常包成 XelatexResult
+			// 让上层 PdfBuilder.CompileTexToPdf 走 XelatexFailure 路径。
+			try {
+				proc.Start();
+			} catch (Exception ex) {
+				_logger.Error($"Failed to start xelatex: {ex.Message}");
+				return new XelatexResult(-1, stderr.ToString() + $"[failed to start: {ex.Message}]\n", false);
 			}
 
 			proc.BeginErrorReadLine();
