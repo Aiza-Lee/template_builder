@@ -61,7 +61,7 @@
 			// Round 3a 新增：补齐 hyperref 剩余旋钮
 			"cite_color": "green",			// \hypersetup{citecolor=...}
 			"anchor_color": "black",		// \hypersetup{anchorcolor=...}
-			"pdf_border": "{0 0 0}",		// \hypersetup{pdfborder=...}
+			"pdf_border": "{0 0 0}",		// \hypersetup{pdfborder=...}；值需自带 {}（如 "{0 0 0}"），模板不重复包裹
 			"pdf_lang": "zh-CN"				// \hypersetup{pdflang=...}
 		},
 
