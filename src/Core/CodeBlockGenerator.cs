@@ -15,22 +15,20 @@ namespace Core {
 		private readonly string CODE_BLOCK_TEMPLATE = string.Empty;
 		private readonly string[] INCLUDE_FILE_TYPES = [];
 		private readonly string[] IGNORE_PATTERNS = [];
-		private readonly string[] SUB_DIRECTORY_NAMES = [
-			"section", "subsection", "subsubsection",
-			"paragraph", "subparagraph"
-		];
+
 		/// <summary>
-		/// 作为代码块处理的文件扩展名列表
+		/// 全部可用的章节命令（深度 0..4 对应 section..subparagraph）。代码内置硬编码 5 个；
+		/// 实际使用时通过 <c>sectionDepth</c> 截取前 N 项（用户在 TEX.layout.section_depth 配置）。
 		/// </summary>
-		private readonly HashSet<string> CODE_LANGUAGES_EXTENSIONS = [
-			"cpp", "c", "hpp", "h", "cs", "rs", "ts", "js", "java",
-			"py", "rb", "go", "php", "html", "css", "xml", "json",
-			"sh", "bat", "ps1", "swift", "kt", "m", "sql", "yaml", "yml"
+		private static readonly string[] _allSectionCommands = [
+			"section", "subsection", "subsubsection", "paragraph", "subparagraph"
 		];
+
 		/// <summary>
-		/// 文件扩展名到Listings语言的映射
+		/// 24 条扩展名→minted 语言名默认映射。代码内置；用户在 PROGRAM.code_language_overrides
+		/// 中写增量覆盖（如 {".md": "markdown"}），运行时合并到 <see cref="_languageMap"/>。
 		/// </summary>
-		private readonly Dictionary<string, string> EXTENSION_TO_LANGUAGE = new() {
+		private static readonly Dictionary<string, string> _defaultExtMap = new(StringComparer.OrdinalIgnoreCase) {
 			{ "cpp", "cpp" }, { "hpp", "cpp" }, { "h", "c" },
 			{ "cs", "csharp" }, { "rs", "rust" }, { "ts", "typescript" },
 			{ "js", "javascript" }, { "py", "python" }, { "rb", "ruby" },
@@ -40,7 +38,24 @@ namespace Core {
 			{ "swift", "swift" }, { "kt", "kotlin" }, { "m", "objective-c" },
 			{ "sql", "sql" }, { "yaml", "yaml" }, { "yml", "yaml" }
 		};
+
+		/// <summary>
+		/// 作为代码块处理的文件扩展名列表（白名单由用户配置 PROGRAM.include_file_types）。
+		/// </summary>
+		private readonly HashSet<string> CODE_LANGUAGES_EXTENSIONS = [
+			"cpp", "c", "hpp", "h", "cs", "rs", "ts", "js", "java",
+			"py", "rb", "go", "php", "html", "css", "xml", "json",
+			"sh", "bat", "ps1", "swift", "kt", "m", "sql", "yaml", "yml"
+		];
 		private const string DEFAULT_LANGUAGE = "PlainText";
+
+		// === Round 3a: 实例字段（替代原 readonly 字段）===
+		/// <summary>合并默认 + 用户覆盖后的扩展名→语言映射。</summary>
+		private readonly Dictionary<string, string> _languageMap;
+		/// <summary>截取自 <see cref="_allSectionCommands"/> 的前 N 项（深度 [1,5]）。</summary>
+		private readonly string[] _sectionCommands;
+		/// <summary>章节名是否走 LatexEscaper；用户可在 TEX.layout.escape_section_names 关闭。</summary>
+		private readonly bool _escapeSectionNames;
 		private readonly HashSet<string> _warnedExtensions = new(StringComparer.OrdinalIgnoreCase);
 
 		public CodeBlockGenerator(
@@ -48,16 +63,48 @@ namespace Core {
 			IConfigParser programConfigParser,
 			int tabSize,
 			DirectoryInfo sourceDir,
-			string codeBlockTemplate
+			string codeBlockTemplate,
+			int sectionDepth,
+			bool escapeSectionNames
 		) {
 			_logger = logger;
 			_sourceDirInfo = sourceDir;
 			_programConfigParser = programConfigParser;
 			_tabSize = tabSize;
+			_escapeSectionNames = escapeSectionNames;
 
 			CODE_BLOCK_TEMPLATE = codeBlockTemplate;
 			INCLUDE_FILE_TYPES = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
 			IGNORE_PATTERNS = _programConfigParser["IGNORE_PATTERNS"].GetAsStringArray();
+
+			// 章节深度 clamp 到 [1, _allSectionCommands.Length]
+			var depth = Math.Clamp(sectionDepth, 1, _allSectionCommands.Length);
+			_sectionCommands = _allSectionCommands.Take(depth).ToArray();
+
+			// 语言映射：默认表 + 用户增量覆盖（PROGRAM.code_language_overrides）
+			_languageMap = new Dictionary<string, string>(_defaultExtMap, StringComparer.OrdinalIgnoreCase);
+			var overrides = _programConfigParser["CODE_LANGUAGE_OVERRIDES"].GetAsStringArray();
+			foreach (var pair in overrides) {
+				ParseAndApplyOverride(pair);
+			}
+		}
+
+		/// <summary>
+		/// 解析一对 "ext:lang" 字符串并合入 <see cref="_languageMap"/>。非法条目跳过（缺冒号 /
+		/// 非 . 前缀 / 字段空）；非法条目通过 ILogger 一次性 warn（与 _warnedExtensions 同风格）。
+		/// </summary>
+		private void ParseAndApplyOverride(string pair) {
+			var idx = pair.IndexOf(':');
+			if (idx <= 0 || idx >= pair.Length - 1) return; // 缺冒号或空字段，静默跳过
+			var ext = pair[..idx].Trim();
+			var lang = pair[(idx + 1)..].Trim();
+			if (!ext.StartsWith('.')) {
+				if (_warnedExtensions.Add($"override:{pair}")) {
+					_logger.Warning($"code_language_overrides entry '{pair}' has no '.' prefix on extension. Skipping.");
+				}
+				return;
+			}
+			_languageMap[ext[1..]] = lang;
 		}
 
 
@@ -75,18 +122,17 @@ namespace Core {
 			}
 
 			var strBuilder = new StringBuilder();
+			var lastIndex = _sectionCommands.Length - 1;
 			foreach (var entry in SourceTreeWalker.Walk(sourceDirInfo, IGNORE_PATTERNS, _logger)) {
-				if (entry.Depth >= SUB_DIRECTORY_NAMES.Length) {
-					_logger.Warning($"Directory nesting exceeds supported depth at '{entry.Info.FullName}'. Skipping deeper levels.");
-					continue;
-				}
+				// Round 3a: 深度超过章节层级时 clamp 到最后一层（不报错不跳过）。
+				var effectiveDepth = entry.Depth >= _sectionCommands.Length ? lastIndex : entry.Depth;
 				if (entry.IsDirectory) {
-					InsertSection(strBuilder, entry.Info.Name, entry.Depth);
+					InsertSection(strBuilder, entry.Info.Name, effectiveDepth);
 					continue;
 				}
 				var codeBlock = GenerateCodeBlock_File((FileInfo)entry.Info);
 				if (string.IsNullOrEmpty(codeBlock)) continue;
-				InsertSection(strBuilder, entry.Info.Name, entry.Depth);
+				InsertSection(strBuilder, entry.Info.Name, effectiveDepth);
 				strBuilder.AppendLine(codeBlock);
 			}
 			return strBuilder.ToString();
@@ -104,8 +150,6 @@ namespace Core {
 		/// <returns>返回生成的tex代码</returns>
 		private string GenerateCodeBlock_File(FileInfo codeFile) {
 			var extension = codeFile.Extension.TrimStart('.').ToLowerInvariant();
-			// _logger.Info($"Processing file: {codeFile.FullName} with language: {language}");
-			// _logger.Info($"Included file types: {string.Join(", ", _includeFileTypes)}");
 			// 检查文件类型是否在包含列表中
 			if (Array.IndexOf(INCLUDE_FILE_TYPES, "." + extension) == -1) {
 				_logger.Warning($"File type '{extension}' is not in the include list. Skipping file '{codeFile.FullName}'.");
@@ -152,7 +196,7 @@ namespace Core {
 		}
 
 		private string ResolveLanguage(string extension, string fileName) {
-			if (EXTENSION_TO_LANGUAGE.TryGetValue(extension, out var mappedLanguage)) {
+			if (_languageMap.TryGetValue(extension, out var mappedLanguage)) {
 				return mappedLanguage;
 			}
 			if (_warnedExtensions.Add(extension)) {
@@ -165,11 +209,13 @@ namespace Core {
 		/// 插入章节标题，根据深度选择合适的章节命令
 		/// </summary>
 		private void InsertSection(StringBuilder strBuilder, string sectionName, int depth) {
-			if (depth < 0 || depth >= SUB_DIRECTORY_NAMES.Length) {
+			if (depth < 0 || depth >= _sectionCommands.Length) {
 				_logger.Error($"Invalid section depth: {depth}. Cannot insert section '{sectionName}'.");
 				return;
 			}
-			strBuilder.AppendLine($"\\{SUB_DIRECTORY_NAMES[depth]}{{{LatexEscaper.Escape(sectionName)}}}");
+			var sectionCmd = _sectionCommands[depth];
+			var displayName = _escapeSectionNames ? LatexEscaper.Escape(sectionName) : sectionName;
+			strBuilder.AppendLine($"\\{sectionCmd}{{{displayName}}}");
 			if (depth >= 3) {
 				// 段落和子段落作为标题使用，后添加空行以增加可读性
 				strBuilder.AppendLine(@"\textbf{ } \\");

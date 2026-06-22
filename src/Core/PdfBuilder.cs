@@ -256,8 +256,12 @@ namespace Core {
 			}
 
 			int tabSize = _texConfigParser["CODE_TAB_SIZE"].GetAsInt();
+			int sectionDepth = _texConfigParser["LAYOUT_SECTION_DEPTH"].GetAsInt();
+			bool escapeSectionNames = _texConfigParser["LAYOUT_ESCAPE_SECTION_NAMES"].GetAsBool(true);
 			string codeBlockTemplateContent = ResolveTemplateContent("CodeBlock.tex");
-			var codeBlockGen = new CodeBlockGenerator(_logger, _programConfigParser, tabSize, _options.SourceDir, codeBlockTemplateContent);
+			var codeBlockGen = new CodeBlockGenerator(
+				_logger, _programConfigParser, tabSize, _options.SourceDir,
+				codeBlockTemplateContent, sectionDepth, escapeSectionNames);
 			string codeBlocks = codeBlockGen.Generate();
 			_unresolvedPlaceholderCount += codeBlockGen.UnresolvedPlaceholderCount;
 
