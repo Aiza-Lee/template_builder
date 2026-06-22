@@ -1155,4 +1155,27 @@ public class PdfBuilderTests {
 			Directory.Delete(tmpDir, recursive: true);
 		}
 	}
+
+	[Fact]
+	public void GenerateTexContent_ParskipDefault_OmitsPackage() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.DoesNotContain(@"\usepackage{parskip}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_ParskipEnabled_EmitsPackage() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "typesetting": { "parskip": { "enabled": true } } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\usepackage{parskip}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
 }
