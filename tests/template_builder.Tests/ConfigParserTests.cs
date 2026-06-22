@@ -157,4 +157,119 @@ public class ConfigParserTests {
 		Assert.Equal("Trailing Comma", parser["AUTHOR"].GetAsString());
 		Assert.Equal(8, parser["CODE_TAB_SIZE"].GetAsInt());
 	}
+
+	// ----- GetAsBool(fallback) -----
+
+	[Fact]
+	public void GetAsBool_TrueLiteral_ReturnsTrue() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile("""{ "TEX": { "global": { "cjk_auto_fake_bold": true } } }""");
+
+		Assert.True(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(false));
+	}
+
+	[Fact]
+	public void GetAsBool_FalseLiteral_ReturnsFalse() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile("""{ "TEX": { "global": { "cjk_auto_fake_bold": false } } }""");
+
+		Assert.False(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(true));
+	}
+
+	[Fact]
+	public void GetAsBool_StringTrue_ParsesToTrue() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile("""{ "TEX": { "global": { "cjk_auto_fake_bold": "true" } } }""");
+
+		Assert.True(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(false));
+	}
+
+	[Fact]
+	public void GetAsBool_StringFalse_ParsesToFalse() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile("""{ "TEX": { "global": { "cjk_auto_fake_bold": "false" } } }""");
+
+		Assert.False(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(true));
+	}
+
+	[Fact]
+	public void GetAsBool_StringOne_ParsesToTrue() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile("""{ "TEX": { "global": { "cjk_auto_fake_bold": "1" } } }""");
+
+		Assert.True(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(false));
+	}
+
+	[Fact]
+	public void GetAsBool_StringZero_ParsesToFalse() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile("""{ "TEX": { "global": { "cjk_auto_fake_bold": "0" } } }""");
+
+		Assert.False(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(true));
+	}
+
+	[Fact]
+	public void GetAsBool_EmptyString_ReturnsFallback() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile("""{ "TEX": { "global": { "cjk_auto_fake_bold": "" } } }""");
+
+		Assert.True(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(true));
+		Assert.False(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(false));
+	}
+
+	[Fact]
+	public void GetAsBool_UnparseableString_ReturnsFallback() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile("""{ "TEX": { "global": { "cjk_auto_fake_bold": "maybe" } } }""");
+
+		Assert.True(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(true));
+		Assert.False(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(false));
+	}
+
+	[Fact]
+	public void GetAsBool_MissingKey_ReturnsFallback() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		// 用未注册的 key：DefaultConfig.jsonc 没注册 TOTALLY_MADE_UP_BOOL，
+		// ConfigParser.this[key] 返回空对象占位 → GetAsBool 走 fallback 路径。
+		Assert.True(parser["TOTALLY_MADE_UP_BOOL"].GetAsBool(true));
+		Assert.False(parser["TOTALLY_MADE_UP_BOOL"].GetAsBool(false));
+	}
+
+	[Fact]
+	public void GetAsBool_RegisteredDefault_OverridesFallback() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		// GLOBAL_CJK_AUTO_FAKE_BOLD 已在 DefaultConfig.jsonc 注册默认值 true。
+		// 即使调用 fallback=false，GetAsBool 也应返回默认值 true（已注册 key 优先于 fallback）。
+		Assert.True(parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(false));
+	}
+
+	[Fact]
+	public void GetAsBool_NoFallback_ThrowsOnUnparseable() {
+		var logger = new TestLogger();
+		var parser = new ConfigParser("TEX", logger);
+
+		parser.ParseConfigFile("""{ "TEX": { "global": { "cjk_auto_fake_bold": "maybe" } } }""");
+
+		Assert.Throws<InvalidCastException>(() => parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool());
+	}
 }

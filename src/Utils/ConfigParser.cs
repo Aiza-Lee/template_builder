@@ -30,6 +30,23 @@ namespace Utils {
 			if (Value.ValueKind == JsonValueKind.String && bool.TryParse(Value.GetString(), out bool boolValue)) { return boolValue; }
 			throw new InvalidCastException($"Cannot convert config value '{GetAsString()}' to bool.");
 		}
+		/// <summary>
+		/// 容错版 bool 读取：JSON true/false 字面量 → 直接返回；字符串 "true"/"false"/"1"/"0" → 解析；
+		/// 其余（含缺失键、未注册键、非可解析字符串）一律返回 <paramref name="fallback"/>。
+		/// 与无参 <see cref="GetAsBool()"/> 的区别：无参版本在无法转换时抛 InvalidCastException，
+		/// 此版本用于「默认值兜底」场景（如全局开关类配置项）。
+		/// </summary>
+		public bool GetAsBool(bool fallback) {
+			if (Value.ValueKind == JsonValueKind.True) { return true; }
+			if (Value.ValueKind == JsonValueKind.False) { return false; }
+			if (Value.ValueKind == JsonValueKind.String) {
+				var s = Value.GetString();
+				if (bool.TryParse(s, out bool boolValue)) { return boolValue; }
+				if (s == "1") { return true; }
+				if (s == "0") { return false; }
+			}
+			return fallback;
+		}
 	}
 
 	internal class ReadonlyConfigValue(ConfigValue configValue) {
@@ -38,6 +55,7 @@ namespace Utils {
 		public string[] GetAsStringArray() => ConfigValue.GetAsStringArray();
 		public int GetAsInt() => ConfigValue.GetAsInt();
 		public bool GetAsBool() => ConfigValue.GetAsBool();
+		public bool GetAsBool(bool fallback) => ConfigValue.GetAsBool(fallback);
 	}
 
 	/// <summary>
