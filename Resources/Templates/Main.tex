@@ -41,6 +41,10 @@
 	linkcolor=##HYPERREF_LINK_COLOR##,					% 内部链接颜色名称，如: blue
 	filecolor=##HYPERREF_FILE_COLOR##,					% 文件链接颜色名称，如: magenta
 	urlcolor=##HYPERREF_URL_COLOR##,						% URL链接颜色名称，如: cyan
+	citecolor=##HYPERREF_CITE_COLOR##,					% 引用链接颜色，如: green
+	anchorcolor=##HYPERREF_ANCHOR_COLOR##,				% 锚点链接颜色，如: black
+	pdfborder=##HYPERREF_PDF_BORDER##,					% 链接边框（如 "{0 0 0}" 表示无边）
+	pdflang=##HYPERREF_PDF_LANG##,						% PDF 语言标识，如: zh-CN
 	bookmarksnumbered=##HYPERREF_NUMBERED_BOOKMARKS##,	% 书签是否包含编号: true/false
 	bookmarksopen=##HYPERREF_OPEN_BOOKMARKS##,			% 是否默认展开书签: true/false
 	pdftitle={##TITLE_CONTENT##},						% PDF文档标题
@@ -68,6 +72,15 @@
 	frame=##CODE_FRAME##,
 	autogobble=##CODE_AUTOGOBBLE##,
 	highlightcolor=##CODE_HIGHLIGHT_COLOR##,
+	mathescape=##CODE_MATHESCAPE##,
+	escapeinside=##CODE_ESCAPEINSIDE##,
+	xleftmargin=##CODE_XLEFTMARGIN##,
+	xrightmargin=##CODE_XRIGHTMARGIN##,
+	firstnumber=##CODE_FIRSTNUMBER##,
+	stepnumber=##CODE_STEPNUMBER##,
+	numberstyle=##CODE_NUMBERSTYLE##,
+	showspaces=##CODE_SHOWSPACES##,
+	showtabs=##CODE_SHOWTABS##,
 }
 
 % 页面样式设置
@@ -84,11 +97,11 @@
 \renewcommand{\headrulewidth}{##FANCY_RULE_WIDTH##}
 
 % titlesec section 标题格式：留空使用 LaTeX 默认
-\titleformat{\section}{##SECTION_FORMAT_SECTION##}{\thesection}{1em}{}
-\titleformat{\subsection}{##SECTION_FORMAT_SUBSECTION##}{\thesubsection}{1em}{}
-\titleformat{\subsubsection}{##SECTION_FORMAT_SUBSUBSECTION##}{\thesubsubsection}{1em}{}
-\titleformat{\paragraph}{##SECTION_FORMAT_PARAGRAPH##}{\theparagraph}{1em}{}
-\titleformat{\subparagraph}{##SECTION_FORMAT_SUBPARAGRAPH##}{\thesubparagraph}{1em}{}
+\titleformat{\section}{##SECTION_FORMAT_SECTION##}{\thesection}{##SECTION_FORMAT_SEPARATOR##}{}
+\titleformat{\subsection}{##SECTION_FORMAT_SUBSECTION##}{\thesubsection}{##SECTION_FORMAT_SEPARATOR##}{}
+\titleformat{\subsubsection}{##SECTION_FORMAT_SUBSUBSECTION##}{\thesubsubsection}{##SECTION_FORMAT_SEPARATOR##}{}
+\titleformat{\paragraph}{##SECTION_FORMAT_PARAGRAPH##}{\theparagraph}{##SECTION_FORMAT_SEPARATOR##}{}
+\titleformat{\subparagraph}{##SECTION_FORMAT_SUBPARAGRAPH##}{\thesubparagraph}{##SECTION_FORMAT_SEPARATOR##}{}
 
 % 文档标题元数据设置
 \title{##TITLE_FONT_SIZE_CMD####TITLE_CONTENT##}			% 文档标题

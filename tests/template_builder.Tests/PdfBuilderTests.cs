@@ -692,4 +692,216 @@ public class PdfBuilderTests {
 			Directory.Delete(tmpDir, recursive: true);
 		}
 	}
+
+	// ============================================================
+	//  Round 3a tests: minted / hyperref / titlesec extra knobs
+	// ============================================================
+
+	[Fact]
+	public void GenerateTexContent_MintedDefaults_EmitsAllNineNewOptions() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"mathescape=false", tex);
+			Assert.Contains(@"escapeinside=", tex);
+			Assert.Contains(@"xleftmargin=", tex);
+			Assert.Contains(@"xrightmargin=", tex);
+			Assert.Contains(@"firstnumber=auto", tex);
+			Assert.Contains(@"stepnumber=1", tex);
+			Assert.Contains(@"numberstyle=", tex);
+			Assert.Contains(@"showspaces=false", tex);
+			Assert.Contains(@"showtabs=false", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MintedMathescapeTrue_EmitsMathescapeTrue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "code": { "mathescape": true } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"mathescape=true", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MintedEscapeinsideSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "code": { "escapeinside": "||" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"escapeinside=||", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MintedFirstnumberSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "code": { "firstnumber": "42" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"firstnumber=42", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MintedStepnumberSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "code": { "stepnumber": "5" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"stepnumber=5", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MintedShowspacesTrue_EmitsShowspacesTrue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "code": { "showspaces": true } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"showspaces=true", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MintedShowtabsTrue_EmitsShowtabsTrue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "code": { "showtabs": true } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"showtabs=true", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MintedXLeftMarginSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "code": { "xleftmargin": "10pt" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"xleftmargin=10pt", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_MintedNumberstyleSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "code": { "numberstyle": "\\tiny\\color{red}" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"numberstyle=\tiny\color{red}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_HyperrefDefaults_EmitsAllFourNewOptions() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"citecolor=green", tex);
+			Assert.Contains(@"anchorcolor=black", tex);
+			Assert.Contains(@"pdfborder={0 0 0}", tex);
+			Assert.Contains(@"pdflang=zh-CN", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_HyperrefCiteColorSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "hyperref": { "cite_color": "red" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"citecolor=red", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_HyperrefAnchorColorSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "hyperref": { "anchor_color": "blue" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"anchorcolor=blue", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_HyperrefPdfBorderSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "hyperref": { "pdf_border": "{1 1 1}" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"pdfborder={1 1 1}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_HyperrefPdfLangSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "hyperref": { "pdf_lang": "en-US" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"pdflang=en-US", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_TitlesecSeparatorDefault_Is1em() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\titleformat{\section}{}{\thesection}{1em}{}", tex);
+			Assert.Contains(@"\titleformat{\subsection}{}{\thesubsection}{1em}{}", tex);
+			Assert.Contains(@"\titleformat{\subsubsection}{}{\thesubsubsection}{1em}{}", tex);
+			Assert.Contains(@"\titleformat{\paragraph}{}{\theparagraph}{1em}{}", tex);
+			Assert.Contains(@"\titleformat{\subparagraph}{}{\thesubparagraph}{1em}{}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_TitlesecSeparatorSet_AppliesToAllLevels() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "section": { "format_separator": "2em" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\titleformat{\section}{}{\thesection}{2em}{}", tex);
+			Assert.Contains(@"\titleformat{\subsection}{}{\thesubsection}{2em}{}", tex);
+			Assert.Contains(@"\titleformat{\subsubsection}{}{\thesubsubsection}{2em}{}", tex);
+			Assert.Contains(@"\titleformat{\paragraph}{}{\theparagraph}{2em}{}", tex);
+			Assert.Contains(@"\titleformat{\subparagraph}{}{\thesubparagraph}{2em}{}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
 }
