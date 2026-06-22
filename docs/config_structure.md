@@ -105,6 +105,8 @@
 | `PROGRAM.include_file_types` | `[".cpp", ".c", ...]` | 包含的源文件扩展名（白名单） |
 | `PROGRAM.ignore_patterns` | `["*ignore*"]` | 排除的 glob 模式（`Microsoft.Extensions.FileSystemGlobbing` 语法） |
 | `PROGRAM.code_language_overrides` | `[]` | **Round 3a**：扩展名→minted 语言映射的增量覆盖。字符串对数组 `["ext:lang"]`（如 `[".md:markdown", ".cpp:cpp"]`）。合并到代码内置 24 条默认映射上；非法条目（缺 `:` / 非 `.` 前缀 / 字段空）会被跳过 |
+| `PROGRAM.build.timeout_seconds` | `120` | **Round 3b**：单次 xelatex pass 的超时秒数。超时则 Kill 整个进程树（防 minted/pygmentize 子进程残留）+ 报 `XelatexFailure` 退出。`0` = 不限时（pass 0 给 `WaitForExit`，等同 Round 2 行为）。值会被 clamp 到 `[0, 600]` |
+| `PROGRAM.build.pass_count` | `2` | **Round 3b**：xelatex 编译 pass 数（clamp 到 `[1, 5]`）。`1` 可省 ~50% xelatex 时间，但若保留 `\tableofcontents` 会导致页码显示 "?"（xelatex 自然行为，需 pass 2 解析交叉引用）。**用户责任**：选 1 时需自行确认能接受不完整的 ToC |
 
 ## 启用 fancy 头脚示例
 
@@ -158,6 +160,36 @@
 - `<<CJK_FONT_BLOCK>>` → **Round 3a**：动态拼装的 `\setCJKmainfont{...}[...]` 块（含 BoldFont/ItalicFont 空值剔除 + AutoFake 开关）
 - `<<TOC_DOT_LEADERS_LINE>>` → **Round 3a**：默认空；`TEX.toc.dot_leaders=false` 时替换为 `\def\@dotsep{10000}`
 - `<<CONTENT>>` → CodeBlockGenerator 生成的代码块正文（在 `ReplaceMainPlaceholders` 之后才替换）
+
+## 性能调优（Round 3b）
+
+### 单 pass 加速（pass_count=1）
+
+去掉 ToC 时的最快构建路径：
+
+```jsonc
+"PROGRAM": {
+    "build": {
+        "pass_count": 1   // 跳过 pass 2，省 ~50% xelatex 时间
+    }
+}
+```
+
+适用场景：草稿 / 快速预览 / 不需要 ToC 的代码速查表。**注意**：xelatex 自然需要两次 pass 来解析 `\tableofcontents` 与 hyperref 书签；设为 1 时保留 `\tableofcontents` 会导致 ToC 页码显示 "?"。如需 ToC 仍正常工作，请同时移除 Main.tex 中的 `\tableofcontents` 行（可通过 `--template-dir` 覆盖 Main.tex）。
+
+### 进程超时保护
+
+大文档场景下 xelatex 偶尔会 hang（如字体解析死锁）：
+
+```jsonc
+"PROGRAM": {
+    "build": {
+        "timeout_seconds": 600   // 10 分钟硬上限；超时则 Kill 整个进程树 + 报 XelatexFailure
+    }
+}
+```
+
+`timeout_seconds=0` 等同「不限时」（Round 2 行为），仅在调试场景使用。值会自动 clamp 到 `[0, 600]`。
 
 ## 新增配置项 checklist
 
