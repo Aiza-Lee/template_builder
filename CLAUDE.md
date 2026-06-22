@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-`template_builder` 是一个 C# 命令行工具，将算法/代码模板目录编译成 PDF 文档。它递归遍历源文件夹，按文件类型过滤并生成 LaTeX（minted 代码块），最后调用系统的 `xelatex` 编译两次生成最终的 PDF。
+`template_builder` 是一个 C# 命令行工具，将算法/代码模板目录编译成 PDF 文档。它递归遍历源文件夹，按文件类型过滤并生成 LaTeX（minted 代码块），最后调用系统的 `xelatex` 编译（默认 2 pass，可通过 `PROGRAM.build.pass_count` 降到 1）生成最终的 PDF。
 
 **版本与依赖**：`.NET 9.0`（`net9.0`）；运行时依赖系统的 `xelatex`（TeX Live）。核心 NuGet：`System.CommandLine 2.0.0-rc.1`、`Microsoft.Extensions.FileSystemGlobbing 9.0.0`。
 
@@ -36,7 +36,7 @@ Program.Main
   └─ RootCommandFactory.CreateRootCommand()   // 顶层 RootCommand + 三个 subcommand
        ├─ build subcommand
        │    └─ BuildPipelineRunner.Run()       // 解析配置并调用 PdfBuilder
-       │         └─ PdfBuilder.Build()        // 两次 xelatex + 清理
+       │         └─ PdfBuilder.Build()        // 2 xelatex pass（可配 1）+ 清理
        ├─ validate subcommand
        │    └─ ValidationRunner.Run()         // 7 项检查，不调 xelatex
        └─ init subcommand
@@ -59,8 +59,9 @@ template_builder init     -o <path>             [--format jsonc|json]
 - **`src/Core/Pipeline/BuildPipelineRunner.cs`**：读取 JSON、构造两个 `ConfigParser`、调用 `PdfBuilder.Build()`，并捕 `MalformedConfigException` / `UnknownConfigKeyException` 映射退出码。
 - **`src/Core/Pipeline/ValidationRunner.cs`**：跑 7 项检查（源目录 / 配置解析 / 严格 key 白名单 / 嵌入式资源 / 源码树可走 + 章节深度 / `Main.tex` 的 `##KEY##` 解析 / 可选 xelatex PATH），不调 xelatex，产出 `ValidationReport`（text / json 两种格式）。
 - **`src/Core/Pipeline/ConfigInitializer.cs`**：把嵌入式 `DefaultConfig.jsonc` 资源复制到 `-o` 路径。`--format json` 走 `JsonDocument` + `JsonCommentHandling.Skip` 剥除注释。
-- **`src/Core/PdfBuilder.cs`**：总编排。两次 `xelatex` 编译（让 `hyperref` 书签/目录稳定）；stderr 累积到 `_xelatexStderr`，仅在失败且未生成 PDF 时升为 Error 输出，避免 `minted` 无害提示刷屏。`Cleanup` 与 `SaveTexFile` 抽成 `internal static` 便于测试。
-- **`src/Core/CodeBlockGenerator.cs`**：通过 `SourceTreeWalker.Walk` 遍历源目录，按深度插入 `\section` → `\subsection` → `\subsubsection` → `\paragraph` → `\subparagraph`（最大 5 层）。`EXTENSION_TO_LANGUAGE` 映射到 minted 语言名，未知名扩展会退化为 `PlainText` 并 warn 一次（`_warnedExtensions` 防刷屏）。
+- **`src/Core/PdfBuilder.cs`**：总编排。`pass_count` 次 `xelatex` 编译（默认 2；让 `hyperref` 书签/目录稳定）；stderr 累积到 `_xelatexStderr`，仅在失败且未生成 PDF 时升为 Error 输出，避免 `minted` 无害提示刷屏。`Cleanup` 与 `SaveTexFile` 抽成 `internal static` 便于测试。Round 3b 后 ctor 接受可选 `IXelatexRunner`（默认 real `XelatexRunner`），便于测试注入 fake。
+- **`src/Core/XelatexRunner.cs`**：Round 3b 抽象。`IXelatexRunner.Run(workingDir, arguments, timeoutSeconds)` → `XelatexResult(ExitCode, Stderr, TimedOut)`。真实实现用 `Process.Start` + `WaitForExit(timeoutMs)` + `Kill(entireProcessTree=true)` 防 hang。
+- **`src/Core/CodeBlockGenerator.cs`**：通过 `SourceTreeWalker.Walk` 遍历源目录，按深度插入 `\section` → `\subsection` → `\subsubsection` → `\paragraph` → `\subparagraph`（深度由 `LAYOUT_SECTION_DEPTH` 截断，clamp [1, 5]，超出 clamp 到最后一层而非报错）。Round 3a 重构：24 条扩展名→语言默认映射从硬编码提取为 `_defaultExtMap`（static）+ 实例 `_languageMap`（合并 `PROGRAM.code_language_overrides` 增量覆盖）；未知名扩展退化为 `PlainText` 并 warn 一次（`_warnedExtensions` 防刷屏）。`LAYOUT_ESCAPE_SECTION_NAMES` toggle 控制章节名 LatexEscaper。
 - **`src/Utils/LatexEscaper.cs`**：转义 LaTeX 11 个保留字符（`\` `{` `}` `#` `$` `%` `&` `_` `^` `~`），给用户提供的标题/作者/备注/章节名做安全处理。`CodeBlockGenerator` 与 `PdfBuilder` 共用。
 - **`src/Utils/SourceTreeWalker.cs`**：深度优先遍历源码目录，吐出按 (目录优先 / 字母序) 排序的 `SourceEntry`（`Info` / `Depth` / `IsDirectory`）。隐藏项（以 `.` 开头）和 ignore glob 命中项被跳过。
 - **`src/Utils/ConfigParser.cs`**：JSON 解析时只识别嵌入式 `DefaultConfig.jsonc` 注册过的 key（`isDefaultConfig=true` 时注册；`=false` 时只覆盖值）。路径展开为 `UPPER_SNAKE_CASE`。`IConfigParser["KEY"]` 返回 `ReadonlyConfigValue`。解析走 `JsonDocumentOptions { CommentHandling = Skip, AllowTrailingCommas = true }`，天然支持 JSONC 与尾随逗号。
@@ -81,7 +82,7 @@ template_builder init     -o <path>             [--format jsonc|json]
 - JSON 配置分两个根对象：`TEX`（驱动 LaTeX 文档）和 `PROGRAM`（控制源码处理）。详见 `docs/config_structure.md`。
 - 嵌套 key 在 `ConfigParser` 内被合并为大写下划线形式，如 `TEX.geometry.paper_size` → `GEOMETRY_PAPER_SIZE`。
 - `Main.tex` 中的 `##KEY##` 占位符由 `ReplaceMainPlaceholders` 用 `TEX` 段替换。
-- `<<CONTENT>>` / `<<MINTED_OUTPUTDIR>>` / `<<LANGUAGE>>` / `<<CODE>>` 是运行时替换符（大小写敏感的「双尖括号」）。
+- `<<CONTENT>>` / `<<MINTED_OUTPUTDIR>>` / `<<METADATA_KEYWORDS>>` / `<<DOC_CLASS_COLUMNS>>` / `<<LAYOUT_TOC_OPENING>>` / `<<LAYOUT_BODY_OPENING>>` / `<<CJK_FONT_BLOCK>>` / `<<TOC_DOT_LEADERS_LINE>>` / `<<TYPESETTING_PARSKIP_LINE>>` / `<<LANGUAGE>>` / `<<CODE>>` 是运行时替换符（大小写敏感的「双尖括号」），由 `PdfBuilder.GenerateTexContent` 在 `ReplaceMainPlaceholders` 之前单独替换。
 - 新增 `TEX` 配置项时：① 在 `DefaultConfig.jsonc` 注册；② 在 `Main.tex` 引用 `##NEW_KEY##`（注意大小写）。
 - `PROGRAM` 段的 `ignore_patterns` 使用 .NET glob（`Microsoft.Extensions.FileSystemGlobbing`），`Match(name).HasMatches=false` 表示被 exclude 命中。
 
@@ -89,7 +90,8 @@ template_builder init     -o <path>             [--format jsonc|json]
 
 - 测试框架：xUnit 2.9.2，coverlet 收集覆盖率。
 - `TestLogger`：实现 `ILogger` 并把消息入 `ConcurrentQueue`，供断言使用。
-- 内部可见性已通过 `<InternalsVisibleTo Include="template_builder.Tests" />` 暴露给测试项目，便于断言 `internal static` 工具方法（如 `PdfBuilder.Cleanup`、`CodeBlockGenerator.IsIgnored`）。
+- 内部可见性已通过 `<InternalsVisibleTo Include="template_builder.Tests" />` 暴露给测试项目，便于断言 `internal static` 工具方法（如 `PdfBuilder.Cleanup`、`PdfBuilder.BuildXelatexArguments`、`XelatexRunner` 的 stderr 累积逻辑）。
+- `tests/template_builder.Tests/Fixtures/FakeXelatexRunner.cs`（Round 3b）：记录所有 xelatex 调用的 fake runner，单测 PdfBuilder 的 xelatex 路径无需真的 spawn 进程。
 - 测试用 `Path.GetTempPath() + Guid.NewGuid().ToString("N")` 建临时目录，`finally` 里 `Directory.Delete(..., recursive: true)`。
 
 ### 退出码与异常约定
@@ -99,11 +101,12 @@ template_builder init     -o <path>             [--format jsonc|json]
 | 常量 | 值 | 触发场景 |
 |---|:---:|---|
 | `Success` | 0 | 构建成功 |
-| `XelatexFailure` | 1 | `xelatex` 子进程返回非零 |
+| `XelatexFailure` | 1 | `xelatex` 子进程返回非零 / 超时被 Kill / 启动失败 |
 | `InvalidArguments` | 2 | CLI 参数错误或严格模式下 `UnknownConfigKeyException` |
 | `UnresolvedPlaceholders` | 3 | 模板存在未替换的 `##KEY##` / `<<KEY>>` |
 | `MalformedConfig` | 4 | 用户配置 JSON 损坏（`MalformedConfigException`） |
 | `MissingEmbeddedResource` | 5 | 嵌入式资源缺失（`MissingEmbeddedResourceException`） |
+| `ValidationFailed` | 6 | `validate` 子命令自身检查失败（如 xelatex PATH 不可达） |
 
 新增异常类放在 `src/Utils/Exceptions/`。
 
@@ -115,5 +118,5 @@ template_builder init     -o <path>             [--format jsonc|json]
 
 - 项目没有 `dotnet format` 配置或 lint 工具——CI 只跑 `dotnet build` + `dotnet test`，靠 `.editorconfig` 保证风格。
 - `obj/`、`bin/`、`publish/` 已 `.gitignore`，不要提交。
-- 修改 `Resources/DefaultConfig.json` 或 `Resources/Templates/*.tex` 后需要 `dotnet build`（嵌入式资源会被编译进 DLL），运行测试或重新发布才能生效。
+- 修改 `Resources/DefaultConfig.jsonc` 或 `Resources/Templates/*.tex` 后需要 `dotnet build`（嵌入式资源会被编译进 DLL），运行测试或重新发布才能生效。
 - 不要绕过 `xelatex` 进程直接生成 PDF——所有 LaTeX 编译都通过 `Process` 子进程完成，错误信息依赖其 stderr。
