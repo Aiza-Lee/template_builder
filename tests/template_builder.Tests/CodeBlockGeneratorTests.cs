@@ -406,5 +406,27 @@ public class CodeBlockGeneratorTests {
 				Directory.Delete(tempDir, true);
 			}
 		}
+
+		// Round 3d: tab_size=0 不应触发 DivideByZero；fallback 到 tab_size=1。
+		[Fact]
+		public void ExpandTabs_TabSizeZero_DoesNotCrash() {
+			var tempDir = CreateTempDirectory();
+			try {
+				File.WriteAllText(Path.Combine(tempDir, "a.txt"), "\thello");
+				var logger = new TestLogger();
+				var parser = new ConfigParser("PROGRAM", logger);
+				var generator = new CodeBlockGenerator(
+					logger, parser, tabSize: 0, new DirectoryInfo(tempDir),
+					new ManifestResourceManager(logger).GetResourceInString("Templates.CodeBlock.tex"),
+					sectionDepth: 5, escapeSectionNames: true);
+				var output = generator.Generate();
+				Assert.NotNull(output);
+				Assert.NotEmpty(output);
+				// tab_size=0 fallback 到 1 → \t 展开为 1 个空格 → " hello"
+				Assert.Contains(" hello", output);
+			} finally {
+				Directory.Delete(tempDir, true);
+			}
+		}
 	}
 

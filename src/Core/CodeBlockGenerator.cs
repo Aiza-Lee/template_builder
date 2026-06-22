@@ -181,7 +181,9 @@ namespace Core {
 			int column = 0;
 			foreach (char c in content) {
 				if (c == '\t') {
-					int spaces = _tabSize - (column % _tabSize);
+					// 防 tab_size ≤ 0 时除零；fallback 到 1（最小有效列宽）
+					var effectiveTabSize = _tabSize <= 0 ? 1 : _tabSize;
+					int spaces = effectiveTabSize - (column % effectiveTabSize);
 					sb.Append(' ', spaces);
 					column += spaces;
 				} else if (c == '\n' || c == '\r') {
