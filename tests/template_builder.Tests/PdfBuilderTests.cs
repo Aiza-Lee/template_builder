@@ -580,4 +580,116 @@ public class PdfBuilderTests {
 			Directory.Delete(tmpDir, recursive: true);
 		}
 	}
+
+	// ============================================================
+	//  Round 3a tests: title font_size_cmd/alignment + toc title/dot_leaders
+	// ============================================================
+
+	[Fact]
+	public void GenerateTexContent_TitleFontSizeDefault_EmitsLargeBfseries() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\title{\Large\bfseries", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_TitleFontSizeSet_EmitsUserCommand() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "title": { "font_size_cmd": "\\Huge\\itshape" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\title{\Huge\itshape", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_TitleAlignmentFlushleft_EmitsFlushleftEnv() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "title": { "alignment": "flushleft" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\begin{flushleft}", tex);
+			Assert.Contains(@"\end{flushleft}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_TitleAlignmentFlushright_EmitsFlushrightEnv() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "title": { "alignment": "flushright" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\begin{flushright}", tex);
+			Assert.Contains(@"\end{flushright}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_TitleAlignmentDefault_IsCenter() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\begin{center}", tex);
+			Assert.Contains(@"\end{center}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_TocTitleDefault_IsMuLu() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\renewcommand{\contentsname}{目录}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_TocTitleSet_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "toc": { "title": "Table of Contents" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\renewcommand{\contentsname}{Table of Contents}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_TocDotLeadersDefault_OmitsDotsepDef() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			// 默认 dot_leaders=true → LaTeX 自然有点引导 → 不输出 \def\@dotsep{10000}
+			Assert.DoesNotContain(@"\@dotsep", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_TocDotLeadersFalse_EmitsDotsepSuppress() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "toc": { "dot_leaders": false } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\def\@dotsep{10000}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
 }

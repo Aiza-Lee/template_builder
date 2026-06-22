@@ -91,7 +91,7 @@
 \titleformat{\subparagraph}{##SECTION_FORMAT_SUBPARAGRAPH##}{\thesubparagraph}{1em}{}
 
 % 文档标题元数据设置
-\title{\Large\bfseries{##TITLE_CONTENT##}}			% 文档标题
+\title{##TITLE_FONT_SIZE_CMD####TITLE_CONTENT##}			% 文档标题
 \author{##AUTHOR##}			% 作者名称
 \date{##TITLE_DATE##}
 
@@ -99,11 +99,13 @@
 
 	\onecolumn			% 标题页和目录为单栏格式
 	\maketitle			% 生成标题页
-	\begin{center}
+	\begin{##TITLE_ALIGNMENT##}
 		##TITLE_NOTE##	% 标题页额外内容
-	\end{center}
+	\end{##TITLE_ALIGNMENT##}
 
 	\newpage
+	\renewcommand{\contentsname}{##TOC_TITLE##}	% 目录标题
+	<<TOC_DOT_LEADERS_LINE>>	% runtime: dot leaders 开关（默认空；dot_leaders=false 时取消引导点）
 	<<LAYOUT_TOC_OPENING>>	% 目录前布局切换（runtime，根据 columns / toc_in_columns 决定）
 	\tableofcontents	% 生成目录
 

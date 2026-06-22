@@ -241,6 +241,11 @@ namespace Core {
 			// BoldFont/ItalicFont 空值时跳过该选项（避免 LaTeX 非法语法 BoldFont=,）。
 			mainTemplate.Replace("<<CJK_FONT_BLOCK>>", BuildCjkFontBlock());
 
+			// TOC dot leaders (runtime): 默认 true → 空（LaTeX 自然有点引导），
+			// false → \def\@dotsep{10000} 取消引导点。
+			var tocDotLeaders = _texConfigParser["TOC_DOT_LEADERS"].GetAsBool(true);
+			mainTemplate.Replace("<<TOC_DOT_LEADERS_LINE>>", tocDotLeaders ? "" : @"\def\@dotsep{10000}");
+
 			ReplaceMainPlaceholders(mainTemplate);
 
 			// 在 <<CONTENT>> 替换前扫描 Main.tex，避免误报尚未替换的 <<CONTENT>> 标记。
