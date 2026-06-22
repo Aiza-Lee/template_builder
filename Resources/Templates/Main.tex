@@ -1,4 +1,4 @@
-\documentclass[10pt,landscape,<<DOC_CLASS_COLUMNS>>]{ctexart} % ctexart支持中文排版
+\documentclass[##DOCCLASS_BASE_FONT_SIZE##,##DOCCLASS_ORIENTATION##,<<DOC_CLASS_COLUMNS>>]{ctexart} % ctexart支持中文排版
 
 \usepackage{geometry}		% 页面布局设置
 \usepackage[outputdir=<<MINTED_OUTPUTDIR>>]{minted}			% 代码高亮显示
@@ -16,7 +16,7 @@
 % Geometry / Page - 页面布局设置
 \geometry{
 	##GEOMETRY_PAPER_SIZE##,				% 纸张大小，如: a4paper, letterpaper
-	landscape,								% landscape
+	##DOCCLASS_ORIENTATION##,								% landscape
 	left=##GEOMETRY_LEFT_MARGIN##,			% 左边距值，如: 2cm
 	right=##GEOMETRY_RIGHT_MARGIN##,		% 右边距值，如: 2cm
 	top=##GEOMETRY_TOP_MARGIN##,			% 上边距值，如: 2.5cm

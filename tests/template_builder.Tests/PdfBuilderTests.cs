@@ -470,4 +470,47 @@ public class PdfBuilderTests {
 			Directory.Delete(tmpDir, recursive: true);
 		}
 	}
+
+	// ============================================================
+	//  Round 3a tests: docclass orientation + base font size
+	// ============================================================
+
+	[Fact]
+	public void GenerateTexContent_DocclassDefaults_EmitsLandscape10pt() {
+		var (tmpDir, builder) = CreateBuilderFixture("{}");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			// 默认 columns=2 → docclass 末尾带 twocolumn
+			Assert.Contains(@"\documentclass[10pt,landscape,twocolumn]{ctexart}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_DocclassPortrait_EmitsPortraitInBothPlaces() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "docclass": { "orientation": "portrait" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\documentclass[10pt,portrait,twocolumn]{ctexart}", tex);
+			// \geometry 块中的 orientation 占位符应同步替换
+			Assert.Contains(@"portrait,", tex);
+			Assert.DoesNotContain(@"landscape,", tex.Substring(tex.IndexOf(@"\geometry", StringComparison.Ordinal)));
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void GenerateTexContent_DocclassBaseFontSize_EmitsUserValue() {
+		var (tmpDir, builder) = CreateBuilderFixture(
+			"""{ "TEX": { "docclass": { "base_font_size": "12pt" } } }""");
+		try {
+			var tex = builder.GenerateTexContent_ForTest();
+			Assert.Contains(@"\documentclass[12pt,landscape,twocolumn]{ctexart}", tex);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
 }
