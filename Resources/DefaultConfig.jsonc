@@ -14,6 +14,10 @@
 			"content": "文档标题",
 			"note": "标题页额外内容",
 			"date": "\\today",
+			// \title 命令内嵌的字号/字重命令；默认与 Round 2 行为一致（\Large\bfseries）
+			"font_size_cmd": "\\Large\\bfseries",
+			// 标题页 note 区域的对齐环境：center/flushleft/flushright
+			"alignment": "center",
 			// 是否对 AUTHOR / SUBJECT / TITLE_CONTENT / TITLE_NOTE 中的 LaTeX 特殊字符（_ % & \ $ # { } ^ ~）做转义
 			"escape_latex_specials": true
 		},
@@ -32,7 +36,17 @@
 			"numbers_sep": "2pt",			// \setminted{numbersep=...}
 			"frame": "none",				// \setminted{frame=...} - none/leftline/lines/single
 			"autogobble": false,			// \setminted{autogobble=...}
-			"highlight_color": "yellow!10"	// \setminted{highlightcolor=...}
+			"highlight_color": "yellow!10",	// \setminted{highlightcolor=...}
+			// Round 3a 新增：minted 进一步暴露的旋钮（默认值与原 \setminted{} 行为一致）
+			"mathescape": false,			// \setminted{mathescape=...}
+			"escapeinside": "",				// \setminted{escapeinside=...} 如 "|_"（空 = 不输出选项）
+			"xleftmargin": "",				// \setminted{xleftmargin=...} 如 "10pt"
+			"xrightmargin": "",				// \setminted{xrightmargin=...}
+			"firstnumber": "auto",			// \setminted{firstnumber=...} "auto" 或数字字符串
+			"stepnumber": "1",				// \setminted{stepnumber=...}
+			"numberstyle": "",				// \setminted{numberstyle=...} 如 "\\tiny\\color{red}"
+			"showspaces": false,			// \setminted{showspaces=...}
+			"showtabs": false				// \setminted{showtabs=...}
 		},
 
 		// hyperref 超链接 / PDF 书签
@@ -43,7 +57,12 @@
 			"url_color": "cyan",			// URL 颜色
 			"numbered_bookmarks": true,		// 书签显示章节编号
 			"open_bookmarks": false,		// 打开 PDF 时展开书签
-			"bookmarks_depth": 5			// PDF 书签深度（\hypersetup{bookmarksdepth}）
+			"bookmarks_depth": 5,			// PDF 书签深度（\hypersetup{bookmarksdepth}）
+			// Round 3a 新增：补齐 hyperref 剩余旋钮
+			"cite_color": "green",			// \hypersetup{citecolor=...}
+			"anchor_color": "black",		// \hypersetup{anchorcolor=...}
+			"pdf_border": "{0 0 0}",		// \hypersetup{pdfborder=...}
+			"pdf_lang": "zh-CN"				// \hypersetup{pdflang=...}
 		},
 
 		// 页面尺寸与边距（geometry 包）
@@ -53,15 +72,22 @@
 			"right_margin": "1cm",
 			"top_margin": "1cm",
 			"bottom_margin": "1.2cm",
-			"column_sep": "1cm"
+			"column_sep": "1cm",
+			// Round 3a 新增：版心边距与列分隔线
+			"headheight": "12pt",			// \geometry{headheight=...}
+			"headsep": "20pt",				// \geometry{headsep=...}
+			"footskip": "30pt",				// \geometry{footskip=...}
+			"column_rule": false			// \geometry{columnrule=...} 仅在 twocolumn 时生效
 		},
 
 		// 文档级布局：列数 / 目录深度
 		"layout": {
-			"section_depth": 5,			// \setcounter{secnumdepth}{...} 编号深度
+			"section_depth": 5,			// \setcounter{secnumdepth}{...} 编号深度（同时决定 CodeBlockGenerator 截断章节层数）
 			"toc_depth": 5,				// \setcounter{tocdepth}{...} 目录深度
 			"columns": 2,				// 1 或 2：正文总列数
-			"toc_in_columns": false		// true = 目录单栏显示（默认 false = 与正文同列数）
+			"toc_in_columns": false,		// true = 目录单栏显示（默认 false = 与正文同列数）
+			// Round 3a 新增：CodeBlockGenerator 是否对章节名（目录名）做 LatexEscaper 转义
+			"escape_section_names": true
 		},
 
 		// fancy 头脚：使用前需设 GLOBAL.PAGE_STYLE = "fancy"
@@ -81,7 +107,9 @@
 			"format_subsection": "",
 			"format_subsubsection": "",
 			"format_paragraph": "",
-			"format_subparagraph": ""
+			"format_subparagraph": "",
+			// Round 3a 新增：\titleformat 的第 4 个参数（标题与编号之间的水平间距），原硬编码 "1em"
+			"format_separator": "1em"
 		},
 
 		// PDF 元数据：hypersetup 的 pdfkeywords 字段
@@ -93,8 +121,26 @@
 		"global": {
 			"main_font": "Times New Roman",
 			"cjk_main_font": "SimSun",
+			// Round 3a 新增：CJK 字体家族扩展
+			"cjk_sans_font": "SimHei",		// \setsansfont{...}
+			"cjk_main_bold_font": "",		// \setCJKmainfont{...}[BoldFont=...]（空 = 不输出该选项，避免 LaTeX 非法语法）
+			"cjk_main_italic_font": "",		// \setCJKmainfont{...}[ItalicFont=...]（空 = 不输出）
+			"cjk_auto_fake_bold": true,		// \setCJKmainfont{...}[AutoFakeBold=...]（原硬编码 true）
+			"cjk_auto_fake_slant": true,	// \setCJKmainfont{...}[AutoFakeSlant=...]（原硬编码 true）
 			"page_style": "plain"		// plain/headings/empty/fancy
 		},
+
+		// Round 3a 新增：目录标题与引导符
+		"toc": {
+			"title": "目录",			// \renewcommand{\contentsname}{...}
+			"dot_leaders": true		// true = 保留引导点（默认行为）；false = 关掉 dot leaders
+		},
+
+		// Round 3a 新增：\documentclass[] 选项（与 geometry 协同）
+		"docclass": {
+			"base_font_size": "10pt",	// \documentclass[...pt,...] 主字号
+			"orientation": "landscape"	// landscape / portrait
+		}
 	},
 
 	// ===== PROGRAM section: controls source-tree processing =====
@@ -102,6 +148,10 @@
 		// 包含的源文件扩展名（白名单）
 		"include_file_types": [".cpp", ".c", ".json", ".tex", ".hpp", ".h", ".py", ".txt"],
 		// 排除的 glob 模式（Microsoft.Extensions.FileSystemGlobbing 语法）
-		"ignore_patterns": ["*ignore*"]
+		"ignore_patterns": ["*ignore*"],
+		// Round 3a 新增：扩展名→minted 语言映射的增量覆盖
+		// 字符串对数组："ext:lang"，与 CodeBlockGenerator._defaultExtMap 中 24 条默认映射合并
+		// 例：[".md:markdown", ".myext:cpp"]；非法条目（缺 : / 非 . 前缀 / 字段空）会被静默跳过
+		"code_language_overrides": []
 	},
 }
