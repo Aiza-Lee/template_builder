@@ -10,7 +10,7 @@
 
 ## 配置结构
 
-`TEX` 段驱动 LaTeX 文档布局与代码渲染，`PROGRAM` 段控制源码树处理。下表列出全部可配置项（截至 Round 2）。
+`TEX` 段驱动 LaTeX 文档布局与代码渲染，`PROGRAM` 段控制源码树处理。下表列出全部可配置项（截至 Round 3a）。
 
 ### TEX 段
 
@@ -19,8 +19,10 @@
 | `TEX.author` | `"Aiza"` | PDF 作者（`pdfauthor` + `\author`）。`escape_latex_specials=true` 时自动转义 `_` `%` `&` 等 |
 | `TEX.subject` | `"文档主题"` | PDF 主题（`pdfsubject`）。自动转义 |
 | `TEX.title.content` | `"文档标题"` | 文档主标题（`\title` + `pdftitle`）。自动转义 |
-| `TEX.title.note` | `"标题页额外内容"` | 标题页额外内容（`\begin{center}...\end{center}`）。自动转义 |
+| `TEX.title.note` | `"标题页额外内容"` | 标题页额外内容。**Round 3a**：使用 `\begin{<alignment>}…\end{<alignment>}`（center/flushleft/flushright） |
 | `TEX.title.date` | `"\\today"` | `\date{}` 的值 |
+| `TEX.title.font_size_cmd` | `"\\Large\\bfseries"` | **Round 3a**：`\title{...}` 内嵌的字号/字重命令 |
+| `TEX.title.alignment` | `"center"` | **Round 3a**：标题页 note 区域 LaTeX 环境名：`center` / `flushleft` / `flushright` |
 | `TEX.title.escape_latex_specials` | `true` | 是否对 author/subject/title 三个字段做 LaTeX 转义。设 `false` 保留 LaTeX 字面量（如 `$\frac{1}{2}$`） |
 | `TEX.code.minted_style` | `"bw"` | pygments 样式：[https://pygments.org/styles/](https://pygments.org/styles/) |
 | `TEX.code.font_family` | `"Fira Code"` | 等宽字体（`\newfontfamily`） |
@@ -34,10 +36,23 @@
 | `TEX.code.frame` | `"none"` | `\setminted{frame=...}`：`none` / `leftline` / `lines` / `single` |
 | `TEX.code.autogobble` | `false` | `\setminted{autogobble=...}`：自动剥离前导空白 |
 | `TEX.code.highlight_color` | `"yellow!10"` | `\setminted{highlightcolor=...}`：选区高亮色（minted 2.x） |
+| `TEX.code.mathescape` | `false` | **Round 3a**：minted 内识别 `$...$` 为数学模式 |
+| `TEX.code.escapeinside` | `""` | **Round 3a**：minted 内可逃逸区间（如 `"|_"`）。空 = 不输出该选项 |
+| `TEX.code.xleftmargin` | `""` | **Round 3a**：minted 左边距（如 `"10pt"`） |
+| `TEX.code.xrightmargin` | `""` | **Round 3a**：minted 右边距 |
+| `TEX.code.firstnumber` | `"auto"` | **Round 3a**：起始行号；`"auto"` 续接上一个 block，否则用整数 |
+| `TEX.code.stepnumber` | `"1"` | **Round 3a**：行号间隔 |
+| `TEX.code.numberstyle` | `""` | **Round 3a**：行号样式命令（如 `"\\tiny\\color{red}"`） |
+| `TEX.code.showspaces` | `false` | **Round 3a**：可视化空格字符 |
+| `TEX.code.showtabs` | `false` | **Round 3a**：可视化 Tab 字符 |
 | `TEX.hyperref.enable_colorlinks` | `true` | `colorlinks=...` |
 | `TEX.hyperref.link_color` | `"blue"` | 内部链接颜色 |
 | `TEX.hyperref.file_color` | `"magenta"` | 文件链接颜色 |
 | `TEX.hyperref.url_color` | `"cyan"` | URL 颜色 |
+| `TEX.hyperref.cite_color` | `"green"` | **Round 3a**：`citecolor=...`：引用链接颜色 |
+| `TEX.hyperref.anchor_color` | `"black"` | **Round 3a**：`anchorcolor=...`：锚点链接颜色 |
+| `TEX.hyperref.pdf_border` | `"{0 0 0}"` | **Round 3a**：`pdfborder=...`：链接边框。值需自带 `{}`（如 `"{0 0 0}"` 表示无边） |
+| `TEX.hyperref.pdf_lang` | `"zh-CN"` | **Round 3a**：`pdflang=...`：PDF 语言标识 |
 | `TEX.hyperref.numbered_bookmarks` | `true` | 书签显示章节编号 |
 | `TEX.hyperref.open_bookmarks` | `false` | 打开 PDF 时展开书签 |
 | `TEX.hyperref.bookmarks_depth` | `5` | PDF 书签深度 |
@@ -47,10 +62,15 @@
 | `TEX.geometry.top_margin` | `"1cm"` | 上边距 |
 | `TEX.geometry.bottom_margin` | `"1.2cm"` | 下边距 |
 | `TEX.geometry.column_sep` | `"1cm"` | 双栏间距 |
-| `TEX.layout.section_depth` | `5` | `\setcounter{secnumdepth}{...}` 编号深度 |
+| `TEX.geometry.headheight` | `"12pt"` | **Round 3a**：`\geometry{headheight=...}`：页眉高度 |
+| `TEX.geometry.headsep` | `"20pt"` | **Round 3a**：`\geometry{headsep=...}`：页眉与正文间距 |
+| `TEX.geometry.footskip` | `"30pt"` | **Round 3a**：`\geometry{footskip=...}`：页脚基线到正文底部距离 |
+| `TEX.geometry.column_rule` | `false` | **Round 3a**：`\geometry{columnrule=...}`：twocolumn 时是否画分隔线（onecolumn 模式无效） |
+| `TEX.layout.section_depth` | `5` | `\setcounter{secnumdepth}{...}` 编号深度。**Round 3a 双重身份**：同时决定 CodeBlockGenerator 截取的章节层级（深度超出 clamp 到最后一层而非报错） |
 | `TEX.layout.toc_depth` | `5` | `\setcounter{tocdepth}{...}` 目录深度 |
 | `TEX.layout.columns` | `2` | 1 或 2：正文总列数。`1` 适合演示/草稿，`2` 适合代码密集 |
 | `TEX.layout.toc_in_columns` | `false` | `true` = 目录单栏显示（更宽的章节标题）；`false` = 目录与正文同列数 |
+| `TEX.layout.escape_section_names` | `true` | **Round 3a**：CodeBlockGenerator 是否对章节名（目录名）做 LaTeX 转义。设 `false` 时目录名原样输出（若含 `_` `%` 等特殊字符由 xelatex 报错） |
 | `TEX.fancy.head_left` | `""` | 启用 fancy 后，header 左侧文本 |
 | `TEX.fancy.head_center` | `""` | header 中间 |
 | `TEX.fancy.head_right` | `""` | header 右侧 |
@@ -58,15 +78,25 @@
 | `TEX.fancy.foot_center` | `""` | footer 中间 |
 | `TEX.fancy.foot_right` | `""` | footer 右侧 |
 | `TEX.fancy.rule_width` | `"0.4pt"` | `\headrulewidth`：header 下分隔线粗细；`0pt` 隐藏 |
-| `TEX.section.format_section` | `""` | `\titleformat{\section}{<this>}{...}`：section 标题格式（`\Large\bfseries\color{blue}` 等） |
+| `TEX.section.format_section` | `""` | `\titleformat{\section}{<this>}{...}{<separator>}{...}`：section 标题格式（`\Large\bfseries\color{blue}` 等） |
 | `TEX.section.format_subsection` | `""` | subsection 格式 |
 | `TEX.section.format_subsubsection` | `""` | subsubsection 格式 |
 | `TEX.section.format_paragraph` | `""` | paragraph 格式 |
 | `TEX.section.format_subparagraph` | `""` | subparagraph 格式 |
+| `TEX.section.format_separator` | `"1em"` | **Round 3a**：`\titleformat{<level>}{...}{...}{<this>}{...}` 第 4 个参数（标题与编号之间的水平间距），全部 5 个层级共用 |
 | `TEX.metadata.keywords` | `[]` | PDF 关键词数组。写入 `pdfkeywords={kw1, kw2}` |
+| `TEX.toc.title` | `"目录"` | **Round 3a**：`\renewcommand{\contentsname}{...}`：目录标题 |
+| `TEX.toc.dot_leaders` | `true` | **Round 3a**：`true` = 保留 LaTeX 默认引导点；`false` = `\def\@dotsep{10000}` 取消引导点 |
 | `TEX.global.main_font` | `"Times New Roman"` | 西文主字体（`\setmainfont`） |
 | `TEX.global.cjk_main_font` | `"SimSun"` | CJK 主字体（`\setCJKmainfont`） |
+| `TEX.global.cjk_sans_font` | `"SimHei"` | **Round 3a**：CJK sans 字体（`\setsansfont`） |
+| `TEX.global.cjk_main_bold_font` | `""` | **Round 3a**：`\setCJKmainfont{...}[BoldFont=...]`；空 = 不输出该选项（依赖 AutoFakeBold 或其他字体机制） |
+| `TEX.global.cjk_main_italic_font` | `""` | **Round 3a**：`\setCJKmainfont{...}[ItalicFont=...]`；空 = 不输出该选项 |
+| `TEX.global.cjk_auto_fake_bold` | `true` | **Round 3a**：`\setCJKmainfont{...}[AutoFakeBold=...]`：未指定 BoldFont 时自动用粗体算法模拟 |
+| `TEX.global.cjk_auto_fake_slant` | `true` | **Round 3a**：`\setCJKmainfont{...}[AutoFakeSlant=...]`：未指定 ItalicFont 时自动用斜体算法模拟 |
 | `TEX.global.page_style` | `"plain"` | `\pagestyle{...}`：`plain` / `headings` / `empty` / `fancy` |
+| `TEX.docclass.base_font_size` | `"10pt"` | **Round 3a**：`\documentclass[<this>,...]{ctexart}` 主字号 |
+| `TEX.docclass.orientation` | `"landscape"` | **Round 3a**：`\documentclass[...,<this>,...]{ctexart}` 与 `\geometry{...}`：landscape / portrait |
 
 ### PROGRAM 段
 
@@ -74,6 +104,7 @@
 |---|---|---|
 | `PROGRAM.include_file_types` | `[".cpp", ".c", ...]` | 包含的源文件扩展名（白名单） |
 | `PROGRAM.ignore_patterns` | `["*ignore*"]` | 排除的 glob 模式（`Microsoft.Extensions.FileSystemGlobbing` 语法） |
+| `PROGRAM.code_language_overrides` | `[]` | **Round 3a**：扩展名→minted 语言映射的增量覆盖。字符串对数组 `["ext:lang"]`（如 `[".md:markdown", ".cpp:cpp"]`）。合并到代码内置 24 条默认映射上；非法条目（缺 `:` / 非 `.` 前缀 / 字段空）会被跳过 |
 
 ## 启用 fancy 头脚示例
 
@@ -90,28 +121,54 @@
 ```jsonc
 "SECTION": {
     "format_section": "\\Large\\bfseries\\color{blue}",
-    "format_subsection": "\\large\\bfseries\\color{black!70}"
+    "format_subsection": "\\large\\bfseries\\color{black!70}",
+    "format_separator": "2em"
 }
 ```
+
+## 自定义 CJK 字体（Round 3a）
+
+```jsonc
+"GLOBAL": {
+    "cjk_main_font": "Noto Serif CJK SC",
+    "cjk_main_bold_font": "Noto Serif CJK SC Bold",
+    "cjk_auto_fake_bold": false
+}
+```
+
+## 自定义 extension→language 映射（Round 3a）
+
+```jsonc
+"PROGRAM": {
+    "include_file_types": [".py", ".cpp", ".md"],
+    "code_language_overrides": [".md:markdown", ".py:python3"]
+}
+```
+
+注：扩展名必须同时存在于内置 `CODE_LANGUAGES_EXTENSIONS` 白名单（26 种）才会走 minted 高亮；白名单外的扩展名仅作为 raw text 输出。
 
 ## 占位符
 
 模板中的 `##KEY##` 由 `PdfBuilder.ReplaceMainPlaceholders` 用 `TEX` 段对应大写下划线 key 的值替换（如 `TEX.geometry.paper_size` → `##GEOMETRY_PAPER_SIZE##`）。
 
-`<<KEY>>` 是 **runtime** 占位符，由 `PdfBuilder.GenerateTexContent` 在 `ReplaceMainPlaceholders` 之后单独替换：
+`<<KEY>>` 是 **runtime** 占位符，由 `PdfBuilder.GenerateTexContent` 在 `ReplaceMainPlaceholders` 之前单独替换：
 - `<<MINTED_OUTPUTDIR>>` → minted 输出目录
 - `<<METADATA_KEYWORDS>>` → `TEX.metadata.keywords` 数组拼接为 `"kw1, kw2"`
 - `<<DOC_CLASS_COLUMNS>>` / `<<LAYOUT_TOC_OPENING>>` / `<<LAYOUT_BODY_OPENING>>` → 来自 `TEX.layout.columns` + `toc_in_columns` 的布局控制
-- `<<CONTENT>>` → CodeBlockGenerator 生成的代码块正文
+- `<<CJK_FONT_BLOCK>>` → **Round 3a**：动态拼装的 `\setCJKmainfont{...}[...]` 块（含 BoldFont/ItalicFont 空值剔除 + AutoFake 开关）
+- `<<TOC_DOT_LEADERS_LINE>>` → **Round 3a**：默认空；`TEX.toc.dot_leaders=false` 时替换为 `\def\@dotsep{10000}`
+- `<<CONTENT>>` → CodeBlockGenerator 生成的代码块正文（在 `ReplaceMainPlaceholders` 之后才替换）
 
 ## 新增配置项 checklist
 
 新增 `TEX` 配置项时需要：
-1. 在 `Resources/DefaultConfig.jsonc` 注册（同时给出注释）
-2. 在 `Resources/Templates/Main.tex` 引用 `##NEW_KEY##`（注意大写）
+1. 在 `Resources/DefaultConfig.jsonc` 注册（同时给出注释）。**默认值遵循 Round 2 行为**（保证老用户零差异）
+2. 在 `Resources/Templates/Main.tex` 引用 `##NEW_KEY##`（注意大写）。**空值特殊处理**：若新选项的值可能为空（如 `cjk_main_bold_font`、`escapeinside`），用 runtime `<<BLOCK>>` 占位符 + PdfBuilder 条件拼装，避免 `BoldFont=,` 这种 LaTeX 非法语法
 3. 跑 `dotnet run -- validate -s <src> -c <your-cfg.jsonc>` 确认无 `unresolved ##NEW_KEY##` 报告
 
 `PROGRAM` 段的 `ignore_patterns` 走 .NET glob（`Microsoft.Extensions.FileSystemGlobbing`）。`Matcher.Match(name).HasMatches = false` 表示被 exclude 命中。
+
+`PROGRAM.code_language_overrides` 走字符串对数组（`["ext:lang"]`）；扩展名必须先在代码内置的 `CODE_LANGUAGES_EXTENSIONS` 白名单里才会走 minted 高亮路径，否则仅以 raw text 输出。
 
 ## 覆盖 LaTeX 模板
 
