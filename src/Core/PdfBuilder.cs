@@ -55,12 +55,12 @@ namespace Core {
 		private int CompileTexToPdf(FileInfo midTexFileInfo) {
 			_logger.Info("Starting LaTeX compilation...");
 
-			const int requiredCompilations = 2;
+			var passCount = Math.Clamp(_programConfigParser["BUILD_PASS_COUNT"].GetAsInt(), 1, 5);
 			var timeoutSeconds = Math.Clamp(_programConfigParser["BUILD_TIMEOUT_SECONDS"].GetAsInt(), 0, 600);
 
 			bool cleanupNeeded = true;
 
-			for (int pass = 1; pass <= requiredCompilations; pass++) {
+			for (int pass = 1; pass <= passCount; pass++) {
 				_logger.Info($"Compilation pass #{pass}...");
 
 				// 每次 pass 清空 buffer，使最终 dump 时只看到失败 pass 的 stderr。

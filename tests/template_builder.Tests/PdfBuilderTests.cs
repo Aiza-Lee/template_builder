@@ -1030,4 +1030,55 @@ public class PdfBuilderTests {
 		Assert.Contains("-jobname=jobname", args);
 		Assert.Contains("\"" + midTex.FullName + "\"", args);
 	}
+
+	// ============================================================
+	//  Round 3b tests: pass_count
+	// ============================================================
+
+	[Fact]
+	public void Build_PassCountDefault_IsTwo() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+		try {
+			builder.Build();
+			Assert.Equal(2, runner.Calls.Count);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void Build_PassCount1_InvokesXelatexOnce() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner(
+			"""{ "PROGRAM": { "build": { "pass_count": 1 } } }""");
+		try {
+			builder.Build();
+			Assert.Single(runner.Calls);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void Build_PassCount0_ClampedToOne() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner(
+			"""{ "PROGRAM": { "build": { "pass_count": 0 } } }""");
+		try {
+			builder.Build();
+			Assert.Single(runner.Calls);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void Build_PassCount99_ClampedToFive() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner(
+			"""{ "PROGRAM": { "build": { "pass_count": 99 } } }""");
+		try {
+			builder.Build();
+			Assert.Equal(5, runner.Calls.Count);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
 }
