@@ -17,10 +17,9 @@ public class ProgramTests {
 	public void CreateRootCommand_DoesNotThrowWithInjectedLogger() {
 		var logger = new TestLogger();
 
-		var root = global::Program.Program.CreateRootCommand(logger);
+		// 装配过程不应主动写日志（只有 Main 启动时才会写 Info）
+		global::Program.Program.CreateRootCommand(logger);
 
-		// 装配过程不应主动写日志（只在 Main 的 Info("Application started...") 中触发）
-		Assert.NotNull(root);
 		Assert.Empty(logger.Entries);
 	}
 }

@@ -101,8 +101,14 @@ public class PdfBuilderTests {
 	//  Round 2 tests: title escape + metadata keywords + runtime
 	// ============================================================
 
-	private static (string tmpDir, PdfBuilder builder) CreateBuilderFixture(
-		string configJson
+	/// <summary>
+	/// Round 3d 整合：单一基础 fixture 方法。`fakeRunner` 为 null 时构造 PdfBuilder 用真实的 XelatexRunner
+	///（依赖本机 xelatex）；传入则用 FakeXelatexRunner 替换。
+	/// 两个原 wrapper（CreateBuilderFixture / CreateBuilderFixtureWithFakeRunner）保留以避免改 50+ 调用点。
+	/// </summary>
+	private static (string tmpDir, PdfBuilder builder, FakeXelatexRunner? runner) CreateFixtureCore(
+		string configJson,
+		FakeXelatexRunner? fakeRunner
 	) {
 		var tmpDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(tmpDir);
@@ -120,35 +126,29 @@ public class PdfBuilderTests {
 
 		var options = new BuildSubcommandOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
 		var resMgr = new ManifestResourceManager(logger);
-		var builder = new PdfBuilder(logger, options, texParser, programParser, resMgr);
+		var builder = new PdfBuilder(logger, options, texParser, programParser, resMgr, fakeRunner);
+		return (tmpDir, builder, fakeRunner);
+	}
+
+	/// <summary>
+	/// 保留旧 signature：返回 (tmpDir, builder)，不暴露 fake runner。多数 GenerateTexContent_ForTest 类测试用它。
+	/// </summary>
+	private static (string tmpDir, PdfBuilder builder) CreateBuilderFixture(
+		string configJson
+	) {
+		var (tmpDir, builder, _) = CreateFixtureCore(configJson, null);
 		return (tmpDir, builder);
 	}
 
 	/// <summary>
-	/// Round 3b: fixture 注入 FakeXelatexRunner，返回 runner 实例供断言调用计数/参数。
+	/// Round 3b 引入：注入 FakeXelatexRunner，返回 runner 实例供断言调用计数/参数。
 	/// </summary>
 	private static (string tmpDir, PdfBuilder builder, FakeXelatexRunner runner) CreateBuilderFixtureWithFakeRunner(
 		string configJson
 	) {
-		var tmpDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-		Directory.CreateDirectory(tmpDir);
-		var sourceDir = Directory.CreateDirectory(Path.Combine(tmpDir, "src"));
-		File.WriteAllText(Path.Combine(sourceDir.FullName, "a.cpp"), "int main() { return 0; }");
-		var outputPdf = new FileInfo(Path.Combine(tmpDir, "out.pdf"));
-		var configFile = new FileInfo(Path.Combine(tmpDir, "cfg.json"));
-		File.WriteAllText(configFile.FullName, configJson);
-
-		var logger = new TestLogger();
-		var texParser = new ConfigParser("TEX", logger, ConfigStrictness.Strict);
-		var programParser = new ConfigParser("PROGRAM", logger, ConfigStrictness.Strict);
-		texParser.ParseConfigFile(File.ReadAllText(configFile.FullName), configFile.FullName);
-		programParser.ParseConfigFile(File.ReadAllText(configFile.FullName), configFile.FullName);
-
-		var options = new BuildSubcommandOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
-		var resMgr = new ManifestResourceManager(logger);
-		var runner = new FakeXelatexRunner();
-		var builder = new PdfBuilder(logger, options, texParser, programParser, resMgr, runner);
-		return (tmpDir, builder, runner);
+		var fake = new FakeXelatexRunner();
+		var (tmpDir, builder, runner) = CreateFixtureCore(configJson, fake);
+		return (tmpDir, builder, runner!);
 	}
 
 	[Fact]
