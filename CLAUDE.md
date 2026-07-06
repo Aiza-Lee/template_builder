@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-`template_builder` 是一个 C# 命令行工具，将算法/代码模板目录编译成 PDF 文档。它递归遍历源文件夹，按文件类型过滤并生成 LaTeX（minted 代码块），最后调用系统的 `xelatex` 编译（默认 2 pass，可通过 `PROGRAM.build.pass_count` 降到 1）生成最终的 PDF。
+`template_builder` 是一个 C# 命令行工具，将算法/代码模板目录编译成 PDF 文档。它递归遍历源文件夹，按文件类型过滤并生成 LaTeX（minted 代码块），最后调用系统的 `xelatex` 编译（默认 2 pass，可通过 `PROGRAM.build.pass_count` 降到 1）生成最终的 PDF。`PROGRAM.build.incremental=true` 启用增量构建（源/配置/模板未变时跳过 xelatex，写 `<basename>.tbuild` sidecar）；`TEX.code.minted_outputdir` 可把 `_minted/` 缓存从 PDF 输出目录中分离出来供 CI 跨 run 复用。
 
 **版本与依赖**：`.NET 9.0`（`net9.0`）；运行时依赖系统的 `xelatex`（TeX Live）。核心 NuGet：`System.CommandLine 2.0.0-rc.1`、`Microsoft.Extensions.FileSystemGlobbing 9.0.0`。
 
@@ -59,7 +59,9 @@ template_builder init     -o <path>             [--format jsonc|json]
 - **`src/Core/Pipeline/BuildPipelineRunner.cs`**：读取 JSON、构造两个 `ConfigParser`、调用 `PdfBuilder.Build()`，并捕 `MalformedConfigException` / `UnknownConfigKeyException` 映射退出码。
 - **`src/Core/Pipeline/ValidationRunner.cs`**：跑 7 项检查（源目录 / 配置解析 / 严格 key 白名单 / 嵌入式资源 / 源码树可走 + 章节深度 / `Main.tex` 的 `##KEY##` 解析 / 可选 xelatex PATH），不调 xelatex，产出 `ValidationReport`（text / json 两种格式）。
 - **`src/Core/Pipeline/ConfigInitializer.cs`**：把嵌入式 `DefaultConfig.jsonc` 资源复制到 `-o` 路径。`--format json` 走 `JsonDocument` + `JsonCommentHandling.Skip` 剥除注释。
-- **`src/Core/PdfBuilder.cs`**：总编排。`pass_count` 次 `xelatex` 编译（默认 2；让 `hyperref` 书签/目录稳定）；stderr 累积到 `_xelatexStderr`，仅在失败且未生成 PDF 时升为 Error 输出，避免 `minted` 无害提示刷屏。`Cleanup` 与 `SaveTexFile` 抽成 `internal static` 便于测试。Round 3b 后 ctor 接受可选 `IXelatexRunner`（默认 real `XelatexRunner`），便于测试注入 fake。
+- **`src/Core/PdfBuilder.cs`**：总编排。`pass_count` 次 `xelatex` 编译（默认 2；让 `hyperref` 书签/目录稳定）；stderr 累积到 `_xelatexStderr`，仅在失败且未生成 PDF 时升为 Error 输出，避免 `minted` 无害提示刷屏。`Cleanup` 与 `SaveTexFile` 抽成 `internal static` 便于测试。Round 3b 后 ctor 接受可选 `IXelatexRunner`（默认 real `XelatexRunner`），便于测试注入 fake。xelatex args 含 `-file-line-error` 让错误信息显示源行号。`GenerateTexContent` 接受预解析的模板 + minted dir 三个入参（与 `Build()` 共享同一条预解析路径）。
+- **`src/Core/BuildFingerprint.cs`**：内容哈希 + sidecar 读写工具。`Compute` 返回 SHA-1 16-hex prefix，输入包括源树（按相对路径排序的 `relpath\tlength\tmtime_ticks\tsha1`）+ 两个 parser 的全量配置 + 模板内容 + minted outputdir。`TryLoadSidecar` / `WriteSidecar` 配合 `<basename>.tbuild` sidecar 文件，原子写（`.tmp` → `File.Move` 覆盖）。
+- **`Build()` 增量跳过流程**：`Build()` 入口预解析模板 + minted dir → 计算指纹 → `TryIncrementalSkip`（`incremental=true` + sidecar 存在 + PDF 存在 + 哈希匹配）→ 命中即 `return ExitCodes.Success` + 日志 `"Build skipped (incremental)"`；未命中走全量。`CompileTexToPdf` 在「所有 pass 成功 + aux 已清」的规范成功路径写 sidecar，xelatex 失败 / 超时 / PDF-已存在-有警告的分支不写，保证「失败不破坏下次跳过」。
 - **`src/Core/XelatexRunner.cs`**：Round 3b 抽象。`IXelatexRunner.Run(workingDir, arguments, timeoutSeconds)` → `XelatexResult(ExitCode, Stderr, TimedOut)`。真实实现用 `Process.Start` + `WaitForExit(timeoutMs)` + `Kill(entireProcessTree=true)` 防 hang。
 - **`src/Core/CodeBlockGenerator.cs`**：通过 `SourceTreeWalker.Walk` 遍历源目录，按深度插入 `\section` → `\subsection` → `\subsubsection` → `\paragraph` → `\subparagraph`（深度由 `LAYOUT_SECTION_DEPTH` 截断，clamp [1, 5]，超出 clamp 到最后一层而非报错）。Round 3a 重构：24 条扩展名→语言默认映射从硬编码提取为 `_defaultExtMap`（static）+ 实例 `_languageMap`（合并 `PROGRAM.code_language_overrides` 增量覆盖）；未知名扩展退化为 `PlainText` 并 warn 一次（`_warnedExtensions` 防刷屏）。`LAYOUT_ESCAPE_SECTION_NAMES` toggle 控制章节名 LatexEscaper。
 - **`src/Utils/LatexEscaper.cs`**：转义 LaTeX 11 个保留字符（`\` `{` `}` `#` `$` `%` `&` `_` `^` `~`），给用户提供的标题/作者/备注/章节名做安全处理。`CodeBlockGenerator` 与 `PdfBuilder` 共用。
