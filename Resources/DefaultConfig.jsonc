@@ -179,11 +179,7 @@
 			"timeout_seconds": 120,
 			// xelatex 编译 pass 数（1 or 2；Round 3b 默认 2，保留 Round 2 行为）
 			// 设 1 可省 ~50% xelatex 时间，但若保留 \tableofcontents 会导致页码显示 "?"（用户责任）
-			"pass_count": 2,
-			// Round 4 新增：内容哈希增量构建。true 时若源/配置/模板未变则跳过 xelatex，
-			// 直接复用旧 PDF（sidecar <basename>.tbuild 记录 SHA-1 指纹）。
-			// 默认 false 保持现状；CI 建议开启。
-			"incremental": false
+			"pass_count": 2
 		}
 	},
 }

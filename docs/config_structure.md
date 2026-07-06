@@ -112,7 +112,6 @@
 | `PROGRAM.code_language_overrides` | `[]` | 扩展名→minted 语言映射的增量覆盖。字符串对数组 `["ext:lang"]`（如 `[".md:markdown", ".cpp:cpp"]`）。合并到代码内置 24 条默认映射上；非法条目（缺 `:` / 非 `.` 前缀 / 字段空）会被跳过 |
 | `PROGRAM.build.timeout_seconds` | `120` | 单次 xelatex pass 的超时秒数。超时则 Kill 整个进程树（防 minted/pygmentize 子进程残留）+ 报 `XelatexFailure` 退出。`0` = 不限时（pass 0 给 `WaitForExit`，）。值会被 clamp 到 `[0, 600]` |
 | `PROGRAM.build.pass_count` | `2` | xelatex 编译 pass 数（clamp 到 `[1, 5]`）。`1` 可省 ~50% xelatex 时间，但若保留 `\tableofcontents` 会导致页码显示 "?"（xelatex 自然行为，需 pass 2 解析交叉引用）。**用户责任**：选 1 时需自行确认能接受不完整的 ToC |
-| `PROGRAM.build.incremental` | `false` | 内容哈希增量构建。`true` 时若源树/配置/模板未变则跳过 xelatex，直接复用旧 PDF（sidecar `<basename>.tbuild` 与 PDF 同目录，记录 SHA-1 指纹）。源/配置/模板任意一个变化即触发完整重建。**适用场景**：开发者循环 + CI（与 `TEX.code.minted_outputdir` 配合时，连首遍 xelatex 也可命中 minted 缓存） |
 
 ## 启用 fancy 头脚示例
 
@@ -244,30 +243,9 @@ microtype 默认三选项全开。如需彻底关闭以避免某些老 TeX Live 
 
 无需改 C# 代码：在 `build` 时加 `--template-dir <dir>`，把同名 `Main.tex` 和/或 `CodeBlock.tex` 放进该目录即可。`init` 输出的末尾也会提示此用法。
 
-## 构建速度（增量 + minted 缓存复用）
+## 构建速度：minted 缓存复用
 
-### 开发者循环：增量构建
-
-`PROGRAM.build.incremental = true` 启用增量构建。指纹哈希输入：
-
-1. **源树内容**：每个非隐藏、非 ignore 文件的 `relpath\tlength\tmtime_ticks\tsha1`，按相对路径排序
-2. **配置**：TEX + PROGRAM 两个 parser 的全量 key→value（按 key 排序）
-3. **模板**：解析后的 `Main.tex` + `CodeBlock.tex` 内容
-4. **minted outputdir**：实际写入 `Main.tex` 的路径字面量
-
-sidecar 文件 `<basename>.tbuild` 与 PDF 同目录，写入时机为「xelatex 全部 pass 成功 + 辅助文件已清理」的规范成功路径。xelatex 失败 / 超时 / 产生非零退出但 PDF 已生成的分支**不写** sidecar，保证「失败不破坏下次跳过」。
-
-```jsonc
-"PROGRAM": {
-    "build": {
-        "incremental": true   // 重复构建 ~10-50 ms；源/配置/模板未变时跳过 xelatex
-    }
-}
-```
-
-### CI 缓存：minted 缓存目录覆盖
-
-`TEX.code.minted_outputdir` 把 minted 的 `_minted/` 缓存从 PDF 输出目录中分离出来，让 CI 可以把缓存放到 `actions/cache` 可达的位置。配合 `incremental=true` 时，连首遍 xelatex 的 pygmentize 重新高亮也可以跳过（`_minted/` 内容稳定 → 命中）。
+`TEX.code.minted_outputdir` 把 minted 的 `_minted/` 缓存从 PDF 输出目录中分离出来，让 CI 可以把缓存放到 `actions/cache` 可达的位置。下次 CI 命中缓存时，首遍 xelatex 可跳过 pygmentize 重新高亮。
 
 ```jsonc
 "TEX": {
@@ -277,7 +255,7 @@ sidecar 文件 `<basename>.tbuild` 与 PDF 同目录，写入时机为「xelatex
 }
 ```
 
-GitHub Actions 示例（与 `incremental=true` 组合使用）：
+GitHub Actions 示例：
 
 ```yaml
 - name: Cache minted cache

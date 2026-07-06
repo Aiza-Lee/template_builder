@@ -15,8 +15,6 @@ namespace Core {
 		private readonly IXelatexRunner _xelatexRunner;
 		private readonly StringBuilder _xelatexStderr = new();
 		private int _unresolvedPlaceholderCount;
-		// Round 4: 本次 Build() 计算的指纹，Build() 期间赋值；成功路径由 CompileTexToPdf 写回 sidecar
-		private string? _currentFingerprint;
 
 		public PdfBuilder(
 			ILogger logger,
@@ -42,28 +40,8 @@ namespace Core {
 			_logger.Info("Build process started...");
 			_unresolvedPlaceholderCount = 0;
 
-			// === Round 4: 预解析模板与 minted 输出目录；计算构建指纹。
-			// 模板内容 + minted outputdir 同时进入指纹与 TeX 生成路径。
-			var mainTemplateContent = ResolveTemplateContent("Main.tex");
-			var codeBlockTemplateContent = ResolveTemplateContent("CodeBlock.tex");
-			var mintedOutputDir = ResolveMintedOutputDir();
-			_currentFingerprint = BuildFingerprint.Compute(
-				_options.SourceDir.FullName,
-				_programConfigParser["IGNORE_PATTERNS"].GetAsStringArray(),
-				_texConfigParser,
-				_programConfigParser,
-				mainTemplateContent,
-				codeBlockTemplateContent,
-				mintedOutputDir
-			);
-
-			// === Round 4: 增量跳过（PROGRAM.build.incremental=true 时启用）
-			if (TryIncrementalSkip()) {
-				return ExitCodes.Success;
-			}
-
 			// 生成 TeX 正文内容
-			var mainTemplate = GenerateTexContent(mainTemplateContent, codeBlockTemplateContent, mintedOutputDir);
+			var mainTemplate = GenerateTexContent();
 			if (_unresolvedPlaceholderCount > 0) {
 				return ExitCodes.UnresolvedPlaceholders;
 			}
@@ -73,44 +51,6 @@ namespace Core {
 
 			// 编译 TeX 文件为 PDF
 			return CompileTexToPdf(midTexFileInfo);
-		}
-
-		/// <summary>
-		/// Round 4 新增：尝试跳过当前构建（源/配置/模板未变且 PDF 已存在）。
-		/// 命中条件：开关启用 + 侧车文件存在 + PDF 存在 + 指纹匹配。
-		/// </summary>
-		private bool TryIncrementalSkip() {
-			if (!IncrementalSkipEnabled()) return false;
-			if (_currentFingerprint == null) return false;
-			// 用 File.Exists 而不是 _options.OutputPdf.Exists：FileInfo.Exists 会缓存首次读取的值，
-			// 在测试或 CI 中"PDF 是后来才写出"的场景下会假阴性。
-			if (!File.Exists(_options.OutputPdf.FullName)) return false;
-			var sidecarPath = GetSidecarPath();
-			if (!BuildFingerprint.TryLoadSidecar(sidecarPath, out var storedHash)) return false;
-			if (!string.Equals(storedHash, _currentFingerprint, StringComparison.Ordinal)) return false;
-			_logger.Info("Build skipped (incremental): source/config/templates unchanged.");
-			return true;
-		}
-
-		/// <summary>
-		/// Round 4 新增：计算 minted outputdir。优先用 <c>TEX.code.minted_outputdir</c> 覆盖；
-		/// 空字符串回退到 PDF 输出目录（保持原行为）。返回值已统一使用正斜杠。
-		/// </summary>
-		private string ResolveMintedOutputDir() {
-			var mintedOverride = _texConfigParser["CODE_MINTED_OUTPUTDIR"].GetAsString();
-			return !string.IsNullOrEmpty(mintedOverride)
-				? mintedOverride.Replace("\\", "/")
-				: _options.OutputPdf.Directory!.FullName.Replace("\\", "/");
-		}
-
-		/// <summary>Round 4 新增：sidecar 文件路径（与 PDF 同目录，扩展名 <c>.tbuild</c>）。</summary>
-		private string GetSidecarPath() {
-			return Path.ChangeExtension(_options.OutputPdf.FullName, BuildFingerprint.SidecarSuffix);
-		}
-
-		/// <summary>Round 4 新增：是否启用增量构建。默认 false 保持原行为。</summary>
-		private bool IncrementalSkipEnabled() {
-			return _programConfigParser["BUILD_INCREMENTAL"].GetAsBool(false);
 		}
 
 		private int CompileTexToPdf(FileInfo midTexFileInfo) {
@@ -145,14 +85,8 @@ namespace Core {
 				}
 			}
 			_logger.Info("LaTeX compilation completed successfully.");
-			if (cleanupNeeded) {
+			if (cleanupNeeded)
 				CleanupAuxiliaryFiles();
-				// Round 4: 规范成功路径（aux 文件已清）写 sidecar，供下次增量跳过使用。
-				// 失败/超时/有警告保留 aux 的路径不写 sidecar，保证"失败不破坏跳过"。
-				if (IncrementalSkipEnabled() && _currentFingerprint != null) {
-					BuildFingerprint.WriteSidecar(GetSidecarPath(), _currentFingerprint);
-				}
-			}
 			return ExitCodes.Success;
 		}
 
@@ -258,28 +192,18 @@ namespace Core {
 		/// 生成 TeX 正文内容（暴露为 internal 以便单测断言占位符替换结果）。
 		/// </summary>
 		internal string GenerateTexContent_ForTest() {
-			// Round 4: 与 Build() 走同一路径——预解析模板 + minted dir，保证测试输出与生产一致
-			var mainTemplateContent = ResolveTemplateContent("Main.tex");
-			var codeBlockTemplateContent = ResolveTemplateContent("CodeBlock.tex");
-			var mintedOutputDir = ResolveMintedOutputDir();
-			return GenerateTexContent(mainTemplateContent, codeBlockTemplateContent, mintedOutputDir).ToString();
+			return GenerateTexContent().ToString();
 		}
 
 		/// <summary>
 		/// 生成 TeX 正文内容
 		/// </summary>
-		/// <param name="mainTemplateContent">已解析的 Main.tex 内容（Build() 入口预解析，避免重复 IO）</param>
-		/// <param name="codeBlockTemplateContent">已解析的 CodeBlock.tex 内容</param>
-		/// <param name="mintedOutputDir">minted outputdir（可能被 <c>TEX.code.minted_outputdir</c> 覆盖）</param>
-		private StringBuilder GenerateTexContent(
-			string mainTemplateContent,
-			string codeBlockTemplateContent,
-			string mintedOutputDir
-		) {
+		private StringBuilder GenerateTexContent() {
+			string mainTemplateContent = ResolveTemplateContent("Main.tex");
 			var mainTemplate = new StringBuilder(mainTemplateContent);
 
-			// 设置 minted 的输出目录（Round 4：来自入参，可被用户配置覆盖）
-			mainTemplate.Replace("<<MINTED_OUTPUTDIR>>", mintedOutputDir);
+			// 设置 minted 的输出目录（可被 TEX.code.minted_outputdir 覆盖，CI 缓存用）
+			mainTemplate.Replace("<<MINTED_OUTPUTDIR>>", ResolveMintedOutputDir());
 
 			// PDF 元数据：keywords 数组 → "kw1, kw2, kw3"
 			var keywords = string.Join(", ", _texConfigParser["METADATA_KEYWORDS"].GetAsStringArray());
@@ -318,6 +242,7 @@ namespace Core {
 			int tabSize = _texConfigParser["CODE_TAB_SIZE"].GetAsInt();
 			int sectionDepth = _texConfigParser["LAYOUT_SECTION_DEPTH"].GetAsInt();
 			bool escapeSectionNames = _texConfigParser["LAYOUT_ESCAPE_SECTION_NAMES"].GetAsBool(true);
+			string codeBlockTemplateContent = ResolveTemplateContent("CodeBlock.tex");
 			var codeBlockGen = new CodeBlockGenerator(
 				_logger, _programConfigParser, tabSize, _options.SourceDir,
 				codeBlockTemplateContent, sectionDepth, escapeSectionNames);
@@ -342,6 +267,18 @@ namespace Core {
 				}
 			}
 			return _resMgr.GetResourceInString("Templates." + fileName);
+		}
+
+		/// <summary>
+		/// 计算 minted outputdir。优先用 <c>TEX.code.minted_outputdir</c> 覆盖；
+		/// 空字符串回退到 PDF 输出目录（保持原行为）。返回值已统一使用正斜杠。
+		/// CI 配合 actions/cache 用：把 _minted/ 放到稳定路径跨 run 复用。
+		/// </summary>
+		private string ResolveMintedOutputDir() {
+			var mintedOverride = _texConfigParser["CODE_MINTED_OUTPUTDIR"].GetAsString();
+			return !string.IsNullOrEmpty(mintedOverride)
+				? mintedOverride.Replace("\\", "/")
+				: _options.OutputPdf.Directory!.FullName.Replace("\\", "/");
 		}
 
 		/// <summary>
