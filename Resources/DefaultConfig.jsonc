@@ -1,6 +1,6 @@
 {
 	"_metadata": {
-		"version": "3.0",
+		"version": "3.1",
 		"description": "配置文件，定义LaTeX文档的各项参数"
 	},
 
@@ -46,7 +46,10 @@
 			"stepnumber": "1",				// \setminted{stepnumber=...}
 			"numberstyle": "",				// \setminted{numberstyle=...} 如 "\\tiny\\color{red}"
 			"showspaces": false,			// \setminted{showspaces=...}
-			"showtabs": false				// \setminted{showtabs=...}
+			"showtabs": false,				// \setminted{showtabs=...}
+			// Round 4 新增：minted 缓存目录覆盖。空 = 跟随 PDF 输出目录（原行为）。
+			// CI 中可指向稳定的外部路径（如 ${{ runner.temp }}/tex-minted）配合 actions/cache 复用 _minted。
+			"minted_outputdir": ""
 		},
 
 		// hyperref 超链接 / PDF 书签
@@ -176,7 +179,11 @@
 			"timeout_seconds": 120,
 			// xelatex 编译 pass 数（1 or 2；Round 3b 默认 2，保留 Round 2 行为）
 			// 设 1 可省 ~50% xelatex 时间，但若保留 \tableofcontents 会导致页码显示 "?"（用户责任）
-			"pass_count": 2
+			"pass_count": 2,
+			// Round 4 新增：内容哈希增量构建。true 时若源/配置/模板未变则跳过 xelatex，
+			// 直接复用旧 PDF（sidecar <basename>.tbuild 记录 SHA-1 指纹）。
+			// 默认 false 保持现状；CI 建议开启。
+			"incremental": false
 		}
 	},
 }
