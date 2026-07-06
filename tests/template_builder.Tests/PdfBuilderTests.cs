@@ -1178,4 +1178,63 @@ public class PdfBuilderTests {
 			Directory.Delete(tmpDir, recursive: true);
 		}
 	}
+
+	// ============================================================
+	//  Coverage 补充测试：覆盖之前漏掉的真实分支
+	// ============================================================
+
+	/// <summary>
+	/// Pass 1 返回非零退出码但 PDF 已经写出 → 走 cleanupNeeded=false 的
+	/// warning 分支（继续到 pass 2），不报 XelatexFailure。
+	/// </summary>
+	[Fact]
+	public void Build_RunnerExitCode1PdfExists_WarningNotError() {
+		var (tmpDir, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+		// 在调用 Build() 之前先创建 PDF 文件，
+		// 让 _options.OutputPdf.Exists 返回 true，触发"PDF exists"分支
+		var outputPdfPath = Path.Combine(tmpDir, "out.pdf");
+		File.WriteAllText(outputPdfPath, "%PDF-1.4 stub");
+
+		// Pass 1 模拟非零退出，但 PDF 已存在 → 走 warning 分支
+		runner.Results.Enqueue(new XelatexResult(1, "warning only", false));
+		// Pass 2 模拟成功
+		runner.Results.Enqueue(new XelatexResult(0, "", false));
+
+		try {
+			var exitCode = builder.Build();
+			Assert.Equal(ExitCodes.Success, exitCode);
+		} finally {
+			Directory.Delete(tmpDir, recursive: true);
+		}
+	}
+
+	/// <summary>
+	/// 直接验证 TemplatePlaceholderScanner 检测未注册的 ##KEY## / <<KEY>> 占位符——
+	/// 这条对应 PdfBuilder.Build 中 unresolved-placeholder 早返（exit 3）的输入端。
+	/// </summary>
+	[Fact]
+	public void TemplatePlaceholderScanner_FindsUnregisteredKeyAndRuntimeToken() {
+		var unresolved = TemplatePlaceholderScanner.FindUnresolved(
+			"before ##NOT_REGISTERED## after <<MUST_FAIL>> end"
+		).ToList();
+		Assert.Contains("##NOT_REGISTERED##", unresolved);
+		Assert.Contains("<<MUST_FAIL>>", unresolved);
+	}
+
+	/// <summary>
+	/// PdfBuilder.SaveTexFile 写出的内容应原样写盘——验证 helper 没有意外修改。
+	/// 同时也覆盖了 internal static SaveTexFile 的写盘路径。
+	/// </summary>
+	[Fact]
+	public void SaveTexFile_RoundtripsContentByteForByte() {
+		var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempDir);
+		const string content = "\\section{Hello}\n% comment\nbody\n";
+		try {
+			var written = PdfBuilder.SaveTexFile(content, tempDir);
+			Assert.Equal(content, File.ReadAllText(written));
+		} finally {
+			Directory.Delete(tempDir, recursive: true);
+		}
+	}
 }
