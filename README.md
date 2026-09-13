@@ -48,14 +48,14 @@ CI 门禁友好，秒级返回。
 
 输出示例（text 格式）：
 ```
-[OK]    source.exists  /path/to/src
-[OK]    config.parses  /path/to/config.json
-[OK]    resources.Main.tex  2584 chars
-[OK]    resources.CodeBlock.tex  50 chars
-[OK]    source.walk  max depth = 1
-[OK]    source.depth  1 ≤ 4
-[OK]    placeholders.##KEY##  25 placeholders all resolve
-Summary: 0 error(s), 0 warning(s)
+[通过] source.exists  /path/to/src
+[通过] config.parses  /path/to/config.json
+[通过] resources.Main.tex  2584 chars
+[通过] resources.CodeBlock.tex  50 chars
+[通过] source.walk  max depth = 1
+[通过] source.depth  1 ≤ 4
+[通过] placeholders.##KEY##  25 placeholders all resolve
+汇总：0 项错误，0 项警告
 ```
 
 #### `init` —— 生成带注释的默认配置骨架

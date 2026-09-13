@@ -1,17 +1,17 @@
 namespace Utils {
-	/// <summary>
-	/// 配置文件解析器接口，通过解析字符串形式的配置文件内容，提供访问配置值的方法
-	/// </summary>
-	internal interface IConfigParser {
-		/// <summary>
-		/// 解析配置文件内容
-		/// </summary>
-		/// <param name="content">字符串形式的配置文件内容</param>
-		/// <param name="sourcePath">可选，源文件路径，用于在异常中提供上下文</param>
-		void ParseConfigFile(string content, string? sourcePath = null);
+    /// <summary>
+    /// 配置文件解析器接口，通过解析字符串形式的配置文件内容，提供访问配置值的方法
+    /// </summary>
+    internal interface IConfigParser {
+        /// <summary>
+        /// 解析配置文件内容
+        /// </summary>
+        /// <param name="content">字符串形式的配置文件内容</param>
+        /// <param name="sourcePath">可选，源文件路径，用于在异常中提供上下文</param>
+        void ParseConfigFile(string content, string? sourcePath = null);
 
-		ReadonlyConfigValue this[string key] { get; }
+        ReadonlyConfigValue this[string key] { get; }
 
-		IEnumerable<KeyValuePair<string, string>> GetAllConfigsAsString();
-	}
+        IEnumerable<KeyValuePair<string, string>> GetAllConfigsAsString();
+    }
 }

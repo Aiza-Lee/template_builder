@@ -1,6 +1,6 @@
-# 设置缩进风格
+# 设置缩进风格（4 空格统一 — Round 4 起改成 tab→space）
 [*.cs]
-indent_style = tab
+indent_style = space
 indent_size = 4
 
 # 设置大括号风格

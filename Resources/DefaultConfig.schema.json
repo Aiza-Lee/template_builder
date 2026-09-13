@@ -1,0 +1,269 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://github.com/Aiza/template_builder/Resources/DefaultConfig.schema.json",
+	"title": "template_builder DefaultConfig",
+	"description": "配置文件 schema，对应 Resources/DefaultConfig.jsonc。运行时由 ConfigParser 读取（keys 转 UPPER_SNAKE_CASE）。",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["TEX", "PROGRAM"],
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"description": "本 schema 路径。编辑器据此启用自动补全与校验。"
+		},
+		"TEX": {
+			"type": "object",
+			"additionalProperties": false,
+			"description": "驱动 LaTeX 文档布局与代码渲染。",
+			"properties": {
+				"author": { "type": "string" },
+				"subject": { "type": "string" },
+				"title": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"content": { "type": "string" },
+						"note": { "type": "string" },
+						"date": { "type": "string" },
+						"font_size_cmd": { "type": "string" },
+						"alignment": {
+							"type": "string",
+							"enum": ["center", "flushleft", "flushright"]
+						},
+						"escape_latex_specials": { "type": "boolean" }
+					}
+				},
+				"code": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "代码块（minted）的样式与字体设置。",
+					"properties": {
+						"minted_style": { "type": "string" },
+						"font_family": { "type": "string" },
+						"font_size": { "type": "string" },
+						"line_height": { "type": "string" },
+						"tab_size": { "type": "integer", "minimum": 0 },
+						"bg_color": { "type": "string" },
+						"break_lines": { "type": "boolean" },
+						"line_numbers": { "type": "boolean" },
+						"numbers_sep": { "type": "string" },
+						"frame": {
+							"type": "string",
+							"enum": ["none", "leftline", "lines", "single"]
+						},
+						"autogobble": { "type": "boolean" },
+						"highlight_color": { "type": "string" },
+						"mathescape": { "type": "boolean" },
+						"escapeinside": { "type": "string" },
+						"xleftmargin": { "type": "string" },
+						"xrightmargin": { "type": "string" },
+						"firstnumber": {
+							"type": "string",
+							"pattern": "^(auto|\\d+)$"
+						},
+						"stepnumber": {
+							"type": "string",
+							"pattern": "^\\d+$"
+						},
+						"numberstyle": { "type": "string" },
+						"showspaces": { "type": "boolean" },
+						"showtabs": { "type": "boolean" },
+						"minted_outputdir": { "type": "string" }
+					}
+				},
+				"hyperref": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "PDF 超链接与书签。",
+					"properties": {
+						"enable_colorlinks": { "type": "boolean" },
+						"link_color": { "type": "string" },
+						"file_color": { "type": "string" },
+						"url_color": { "type": "string" },
+						"numbered_bookmarks": { "type": "boolean" },
+						"open_bookmarks": { "type": "boolean" },
+						"bookmarks_depth": { "type": "integer", "minimum": 0, "maximum": 5 },
+						"cite_color": { "type": "string" },
+						"anchor_color": { "type": "string" },
+						"pdf_border": { "type": "string" },
+						"pdf_lang": { "type": "string" }
+					}
+				},
+				"geometry": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "页面尺寸与边距（geometry 包）。",
+					"properties": {
+						"paper_size": { "type": "string" },
+						"left_margin": { "type": "string" },
+						"right_margin": { "type": "string" },
+						"top_margin": { "type": "string" },
+						"bottom_margin": { "type": "string" },
+						"column_sep": { "type": "string" },
+						"headheight": { "type": "string" },
+						"headsep": { "type": "string" },
+						"footskip": { "type": "string" },
+						"column_rule": { "type": "boolean" }
+					}
+				},
+				"layout": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "文档级布局：列数 / 目录深度。",
+					"properties": {
+						"section_depth": { "type": "integer", "minimum": 1, "maximum": 5 },
+						"toc_depth": { "type": "integer", "minimum": 0, "maximum": 5 },
+						"columns": { "type": "integer", "enum": [1, 2] },
+						"toc_in_columns": { "type": "boolean" },
+						"escape_section_names": { "type": "boolean" }
+					}
+				},
+				"fancy": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "fancy 头脚：使用前需设 GLOBAL.PAGE_STYLE = \"fancy\"。",
+					"properties": {
+						"head_left": { "type": "string" },
+						"head_center": { "type": "string" },
+						"head_right": { "type": "string" },
+						"foot_left": { "type": "string" },
+						"foot_center": { "type": "string" },
+						"foot_right": { "type": "string" },
+						"rule_width": { "type": "string" }
+					}
+				},
+				"typesetting": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "排版微调：microtype + parskip。",
+					"properties": {
+						"microtype": {
+							"type": "object",
+							"additionalProperties": false,
+							"properties": {
+								"protrusion": { "type": "boolean" },
+								"expansion": { "type": "boolean" },
+								"kerning": { "type": "boolean" }
+							}
+						},
+						"parskip": {
+							"type": "object",
+							"additionalProperties": false,
+							"properties": {
+								"enabled": { "type": "boolean" }
+							}
+						}
+					}
+				},
+				"section": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "titlesec section 标题格式。留空 = 使用 LaTeX 默认；填入格式串（如 \"\\Large\\bfseries\\color{blue}\"）覆盖。",
+					"properties": {
+						"format_section": { "type": "string" },
+						"format_subsection": { "type": "string" },
+						"format_subsubsection": { "type": "string" },
+						"format_paragraph": { "type": "string" },
+						"format_subparagraph": { "type": "string" },
+						"format_separator": { "type": "string" }
+					}
+				},
+				"metadata": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "PDF 元数据：hypersetup 的 pdfkeywords 字段。",
+					"properties": {
+						"keywords": {
+							"type": "array",
+							"items": { "type": "string" }
+						}
+					}
+				},
+				"global": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "文档级字体与页眉页脚。",
+					"properties": {
+						"main_font": { "type": "string" },
+						"cjk_main_font": { "type": "string" },
+						"cjk_sans_font": { "type": "string" },
+						"cjk_main_bold_font": { "type": "string" },
+						"cjk_main_italic_font": { "type": "string" },
+						"cjk_auto_fake_bold": { "type": "boolean" },
+						"cjk_auto_fake_slant": { "type": "boolean" },
+						"page_style": {
+							"type": "string",
+							"enum": ["plain", "headings", "empty", "fancy"]
+						}
+					}
+				},
+				"toc": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "目录标题与引导符。",
+					"properties": {
+						"title": { "type": "string" },
+						"dot_leaders": { "type": "boolean" }
+					}
+				},
+				"docclass": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "\\documentclass[] 选项（与 geometry 协同）。",
+					"properties": {
+						"base_font_size": { "type": "string" },
+						"orientation": {
+							"type": "string",
+							"enum": ["landscape", "portrait"]
+						}
+					}
+				}
+			}
+		},
+		"PROGRAM": {
+			"type": "object",
+			"additionalProperties": false,
+			"description": "控制源码树处理。",
+			"properties": {
+				"include_file_types": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"pattern": "^\\.[A-Za-z0-9]+$"
+					},
+					"description": "包含的源文件扩展名（白名单，需带 . 前缀）。"
+				},
+				"ignore_patterns": {
+					"type": "array",
+					"items": { "type": "string" },
+					"description": "排除的 glob 模式（Microsoft.Extensions.FileSystemGlobbing 语法）。"
+				},
+				"code_language_overrides": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"pattern": "^\\.[A-Za-z0-9]+:[A-Za-z0-9_+\\-]+$"
+					},
+					"description": "扩展名→minted 语言映射的增量覆盖（\"ext:lang\"）。与 _defaultExtMap 24 条默认映射合并；非法条目被静默跳过。"
+				},
+				"build": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "构建器行为调优。",
+					"properties": {
+						"timeout_seconds": {
+							"type": "integer",
+							"minimum": 0,
+							"description": "xelatex 单次 pass 的超时秒数；超时则 Kill(entireProcessTree=true) + 报 XelatexFailure。0 = 不限时。"
+						},
+						"pass_count": {
+							"type": "integer",
+							"enum": [1, 2],
+							"description": "xelatex 编译 pass 数。1 节省 ~50% 时间，但若保留 \\tableofcontents 会导致页码显示 \"?\"。"
+						}
+					}
+				}
+			}
+		}
+	}
+}

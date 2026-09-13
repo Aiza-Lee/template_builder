@@ -1,0 +1,50 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"${workspaceFolder}/template_builder.csproj",
+				"-c",
+				"Debug"
+			],
+			"problemMatcher": ["$msCompile"],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "编译 Debug 版本的 template_builder（dotnet build）"
+		},
+		{
+			"label": "build preview PDF (temp/图论)",
+			"dependsOn": ["build"],
+			"type": "shell",
+			"command": "mkdir -p ${workspaceFolder}/preview && dotnet run --no-build --project ${workspaceFolder}/template_builder.csproj -- build -s ${workspaceFolder}/temp/图论 -o ${workspaceFolder}/preview/图论.pdf -c ${workspaceFolder}/temp/build-cfg.jsonc",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared",
+				"clear": true
+			},
+			"detail": "编译 temp/图论/ → preview/图论.pdf（配置：temp/build-cfg.jsonc；中间文件写入 temp/图论/build/，不污染源目录）"
+		},
+		{
+			"label": "clean preview PDF outputs",
+			"type": "shell",
+			"command": "rm",
+			"args": [
+				"-rf",
+				"${workspaceFolder}/preview/图论.pdf",
+				"${workspaceFolder}/temp/图论/build"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "silent"
+			},
+			"detail": "清理 preview/图论.pdf 和 temp/图论/build/（含 mid-output.*、_minted/ 缓存）"
+		}
+	]
+}

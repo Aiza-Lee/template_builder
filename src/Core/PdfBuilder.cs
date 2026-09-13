@@ -3,359 +3,420 @@ using System.Text.RegularExpressions;
 using Utils;
 
 namespace Core {
-	/// <summary>
-	/// 构建最终pdf文件的类
-	/// </summary>
-	internal class PdfBuilder {
-		private readonly ILogger _logger;
-		private readonly BuildSubcommandOptions _options;
-		private readonly IConfigParser _texConfigParser;
-		private readonly IConfigParser _programConfigParser;
-		private readonly ManifestResourceManager _resMgr;
-		private readonly IXelatexRunner _xelatexRunner;
-		private readonly StringBuilder _xelatexStderr = new();
-		private int _unresolvedPlaceholderCount;
+    /// <summary>
+    /// 构建最终pdf文件的类
+    /// </summary>
+    internal class PdfBuilder {
+        private readonly ILogger _logger;
+        private readonly BuildSubcommandOptions _options;
+        private readonly IConfigParser _texConfigParser;
+        private readonly IConfigParser _programConfigParser;
+        private readonly ManifestResourceManager _resMgr;
+        private readonly IXelatexRunner _xelatexRunner;
+        private readonly StringBuilder _xelatexStderr = new();
+        private int _unresolvedPlaceholderCount;
 
-		public PdfBuilder(
-			ILogger logger,
-			BuildSubcommandOptions options,
-			IConfigParser texConfigParser,
-			IConfigParser programConfigParser,
-			ManifestResourceManager resMgr,
-			IXelatexRunner? xelatexRunner = null
-		) {
-			_logger = logger;
-			_options = options;
-			_texConfigParser = texConfigParser;
-			_programConfigParser = programConfigParser;
-			_resMgr = resMgr;
-			_xelatexRunner = xelatexRunner ?? new XelatexRunner(logger);
-		}
+        public PdfBuilder(
+            ILogger logger,
+            BuildSubcommandOptions options,
+            IConfigParser texConfigParser,
+            IConfigParser programConfigParser,
+            ManifestResourceManager resMgr,
+            IXelatexRunner? xelatexRunner = null
+        ) {
+            _logger = logger;
+            _options = options;
+            _texConfigParser = texConfigParser;
+            _programConfigParser = programConfigParser;
+            _resMgr = resMgr;
+            _xelatexRunner = xelatexRunner ?? new XelatexRunner(logger);
+        }
 
-		/// <summary>
-		/// 执行构建命令。生成tex文件内容，并编译为pdf，输出到配置中的路径。
-		/// </summary>
-		/// <returns>退出码（0 成功；1 xelatex 失败；3 模板存在未替换占位符）</returns>
-		public int Build() {
-			_logger.Info("Build process started...");
-			_unresolvedPlaceholderCount = 0;
+        /// <summary>
+        /// 执行构建命令。生成tex文件内容，并编译为pdf，输出到配置中的路径。
+        /// </summary>
+        /// <returns>退出码（0 成功；1 xelatex 失败；3 模板存在未替换占位符）</returns>
+        public int Build() {
+            _logger.Info("构建流程已启动...");
+            _unresolvedPlaceholderCount = 0;
 
-			// 生成 TeX 正文内容
-			var mainTemplate = GenerateTexContent();
-			if (_unresolvedPlaceholderCount > 0) {
-				return ExitCodes.UnresolvedPlaceholders;
-			}
+            // 清理上次遗留的 build/ 中间文件，避免源目录扫描时产生噪声 warning
+            PurgeBuildDir();
 
-			// 保存 TeX 文件
-			var midTexFileInfo = SaveTexFile(mainTemplate.ToString());
+            // 生成 TeX 正文内容
+            var mainTemplate = GenerateTexContent();
+            if (_unresolvedPlaceholderCount > 0) {
+                return ExitCodes.UnresolvedPlaceholders;
+            }
 
-			// 编译 TeX 文件为 PDF
-			return CompileTexToPdf(midTexFileInfo);
-		}
+            // 保存 TeX 文件
+            var midTexFileInfo = SaveTexFile(mainTemplate.ToString());
 
-		private int CompileTexToPdf(FileInfo midTexFileInfo) {
-			_logger.Info("Starting LaTeX compilation...");
+            // 编译 TeX 文件为 PDF
+            return CompileTexToPdf(midTexFileInfo);
+        }
 
-			var passCount = Math.Clamp(_programConfigParser["BUILD_PASS_COUNT"].GetAsInt(), 1, 5);
-			var timeoutSeconds = Math.Clamp(_programConfigParser["BUILD_TIMEOUT_SECONDS"].GetAsInt(), 0, 600);
+        /// <summary>
+        /// 构建前清理 build/ 子目录中的旧中间文件（mid-output.*、_minted/）。
+        /// 确保源目录扫描器不会对上次遗留文件发出噪声 warning。
+        /// build/ 不存在时静默跳过。
+        /// </summary>
+        private void PurgeBuildDir() {
+            var buildDir = Path.Combine(_options.SourceDir.FullName, "build");
+            if (!Directory.Exists(buildDir)) return;
+            Cleanup(buildDir, "mid-output", _logger);
+            // Cleanup 不含 .pdf（CleanupAuxiliaryFiles 设计上保留 build dir PDF 供拷贝）；
+            // 此处构建前清理需额外删除，避免扫描器对残留 mid-output.pdf 发出噪声 warning。
+            TryDelete(Path.Combine(buildDir, "mid-output.pdf"), _logger);
+            var mintedDir = Path.Combine(buildDir, "_minted");
+            if (Directory.Exists(mintedDir)) {
+                try { Directory.Delete(mintedDir, recursive: true); } catch (Exception ex) {
+                    _logger.Warning($"构建前清理 {mintedDir} 失败：{ex.Message}");
+                }
+            }
+        }
 
-			bool cleanupNeeded = true;
+        private int CompileTexToPdf(FileInfo midTexFileInfo) {
+            _logger.Info("开始 LaTeX 编译...");
 
-			for (int pass = 1; pass <= passCount; pass++) {
-				_logger.Info($"Compilation pass #{pass}...");
+            var passCount = Math.Clamp(_programConfigParser["BUILD_PASS_COUNT"].GetAsInt(), 1, 5);
+            var timeoutSeconds = Math.Clamp(_programConfigParser["BUILD_TIMEOUT_SECONDS"].GetAsInt(), 0, 600);
 
-				// 每次 pass 清空 buffer，使最终 dump 时只看到失败 pass 的 stderr。
-				_xelatexStderr.Clear();
+            bool cleanupNeeded = true;
 
-				var result = RunXelatex(midTexFileInfo, pass, timeoutSeconds);
-				if (result.TimedOut) {
-					_logger.Error($"xelatex pass #{pass} timed out after {timeoutSeconds}s. Aborting build.");
-					FlushStderrAsError();
-					return ExitCodes.XelatexFailure;
-				}
-				if (result.ExitCode != 0) {
-					if (_options.OutputPdf.Exists) {
-						_logger.Warning("xelatex returned a non-zero exit code, but the PDF was generated. Please check the compilation log for warnings or non-fatal errors.");
-						cleanupNeeded = false; // 保留辅助文件以供调试
-					} else {
-						_logger.Error($"xelatex exited with code {result.ExitCode}. LaTeX compilation failed.");
-						FlushStderrAsError();
-						return ExitCodes.XelatexFailure;
-					}
-				}
-			}
-			_logger.Info("LaTeX compilation completed successfully.");
-			if (cleanupNeeded)
-				CleanupAuxiliaryFiles();
-			return ExitCodes.Success;
-		}
+            for (int pass = 1; pass <= passCount; pass++) {
+                _logger.Info($"第 {pass} 轮编译...");
 
-		/// <summary>
-		/// 编译失败时把累积的 stderr 一次性以 Error 级别输出。
-		/// </summary>
-		private void FlushStderrAsError() {
-			if (_xelatexStderr.Length == 0) return;
-			_logger.Error("--- xelatex stderr ---");
-			foreach (var line in _xelatexStderr.ToString().Split('\n')) {
-				var trimmed = line.TrimEnd('\r');
-				if (trimmed.Length > 0) {
-					_logger.Error(trimmed);
-				}
-			}
-		}
+                // 每次 pass 清空 buffer，使最终 dump 时只看到失败 pass 的 stderr。
+                _xelatexStderr.Clear();
 
-		private XelatexResult RunXelatex(FileInfo midTexFileInfo, int pass, int timeoutSeconds) {
-			var arguments = BuildXelatexArguments(midTexFileInfo);
+                var result = RunXelatex(midTexFileInfo, pass, timeoutSeconds);
+                if (result.TimedOut) {
+                    _logger.Error($"xelatex 第 {pass} 轮在 {timeoutSeconds} 秒后超时，中止构建。");
+                    FlushStderrAsError();
+                    return ExitCodes.XelatexFailure;
+                }
+                if (result.ExitCode != 0) {
+                    // xelatex 把 PDF 写到 <src>/build/<jobname>.pdf；用户指定的是 <src>/build/mid-output.pdf
+                    var buildDirPdf = new FileInfo(midTexFileInfo.FullName.Replace(".tex", ".pdf"));
+                    if (buildDirPdf.Exists) {
+                        _logger.Warning("xelatex 返回了非零退出码，但 PDF 已生成。请检查编译日志中的警告或非致命错误。");
+                        cleanupNeeded = false; // 保留辅助文件以供调试
+                    } else {
+                        _logger.Error($"xelatex 退出码 {result.ExitCode}，LaTeX 编译失败。");
+                        FlushStderrAsError();
+                        return ExitCodes.XelatexFailure;
+                    }
+                }
+            }
+            _logger.Info("LaTeX 编译已成功完成。");
 
-			// 通过 IXelatexRunner 抽象 spawn xelatex；返回 XelatexResult 包含合并的 stderr 与超时标记。
-			var result = _xelatexRunner.Run(AppContext.BaseDirectory, arguments, timeoutSeconds);
+            // 把 <src>/build/<jobname>.pdf 拷贝到用户 -o 指定路径
+            var generatedPdf = new FileInfo(midTexFileInfo.FullName.Replace(".tex", ".pdf"));
+            if (generatedPdf.Exists) {
+                try {
+                    if (_options.OutputPdf.Directory is { } parent && !parent.Exists) {
+                        parent.Create();
+                    }
+                    File.Copy(generatedPdf.FullName, _options.OutputPdf.FullName, overwrite: true);
+                    _logger.Info($"PDF 已写入 \"{_options.OutputPdf.FullName}\"。");
+                } catch (Exception ex) {
+                    _logger.Error($"复制 PDF 到 \"{_options.OutputPdf.FullName}\" 失败：{ex.Message}");
+                    return ExitCodes.XelatexFailure;
+                }
+            }
 
-			// 给本 pass 的 stderr 打标签，便于在 dump 时区分归属。
-			AppendLabeledStderr(_xelatexStderr, pass, result.Stderr);
-			return result;
-		}
+            if (cleanupNeeded)
+                CleanupAuxiliaryFiles();
+            return ExitCodes.Success;
+        }
 
-		/// <summary>
-		/// 构造 xelatex 命令行参数串。提取为 internal static 便于单测断言参数内容（无需 mock Process）。
-		/// </summary>
-		internal static string BuildXelatexArguments(FileInfo midTexFileInfo) {
-			var sb = new StringBuilder();
-			sb.Append("-shell-escape ");
-			sb.Append("-interaction=nonstopmode ");
-			// Round 4 新增：错误信息显示源文件行号（仅影响日志格式，不改输出内容/速度）
-			sb.Append("-file-line-error ");
-			sb.Append($"-jobname={Path.GetFileNameWithoutExtension(midTexFileInfo.Name)} ");
-			sb.Append($"-output-directory \"{midTexFileInfo.DirectoryName}\" ");
-			sb.Append($"\"{midTexFileInfo.FullName}\"");
-			return sb.ToString();
-		}
+        /// <summary>
+        /// 编译失败时把累积的 stderr 一次性以 Error 级别输出。
+        /// </summary>
+        private void FlushStderrAsError() {
+            if (_xelatexStderr.Length == 0) return;
+            _logger.Error("--- xelatex 标准错误输出 ---");
+            foreach (var line in _xelatexStderr.ToString().Split('\n')) {
+                var trimmed = line.TrimEnd('\r');
+                if (trimmed.Length > 0) {
+                    _logger.Error(trimmed);
+                }
+            }
+        }
 
-		/// <summary>
-		/// 给一次 xelatex pass 的 stderr 打上 `--- pass N stderr ---` 标签并追加到目标 buffer。提取为 internal static 便于测试。
-		/// </summary>
-		internal static void AppendLabeledStderr(StringBuilder buffer, int pass, string stderr) {
-			buffer.AppendLine($"--- pass {pass} stderr ---");
-			buffer.Append(stderr);
-		}
+        private XelatexResult RunXelatex(FileInfo midTexFileInfo, int pass, int timeoutSeconds) {
+            var arguments = BuildXelatexArguments(midTexFileInfo);
 
-		/// <summary>
-		/// 清理辅助文件
-		/// </summary>
-		private void CleanupAuxiliaryFiles() {
-			var baseName = Path.GetFileNameWithoutExtension(_options.OutputPdf.Name);
-			var outputDir = _options.OutputPdf.Directory!.FullName;
-			Cleanup(outputDir, baseName, _logger);
-		}
+            // 通过 IXelatexRunner 抽象 spawn xelatex；返回 XelatexResult 包含合并的 stderr 与超时标记。
+            var result = _xelatexRunner.Run(AppContext.BaseDirectory, arguments, timeoutSeconds);
 
-		/// <summary>
-		/// 清理 LaTeX 编译产生的中间文件。提取为 internal static 以便测试。
-		/// </summary>
-		internal static void Cleanup(string outputDir, string baseName, ILogger logger) {
-			var extensionsToDelete = new[] { ".aux", ".log", ".toc", ".out", ".nav", ".snm" };
+            // 给本 pass 的 stderr 打标签，便于在 dump 时区分归属。
+            AppendLabeledStderr(_xelatexStderr, pass, result.Stderr);
+            return result;
+        }
 
-			foreach (var ext in extensionsToDelete) {
-				TryDelete(Path.Combine(outputDir, baseName + ext), logger);
-			}
-			// mid-output.tex 是本工具生成的中间文件，按 jobname 无关的固定名存放
-			TryDelete(Path.Combine(outputDir, "mid-output.tex"), logger);
-		}
+        /// <summary>
+        /// 构造 xelatex 命令行参数串。提取为 internal static 便于单测断言参数内容（无需 mock Process）。
+        /// </summary>
+        /// <remarks>
+        /// -output-directory 指向 midTexFileInfo 所在目录（即 <sourceDir>/build/），
+        /// 与 SaveTexFile 的输出位置一致。LaTeX 中间文件（.aux/.log/.toc/.out/.nav/.snm）
+        /// 与 minted 缓存（_minted/）落到该子目录，不污染源目录。
+        /// PDF 由 PdfBuilder.Build 后续阶段从 `<sourceDir>/build/<jobname>.pdf` 拷贝到 -o 指定路径。
+        /// </remarks>
+        internal static string BuildXelatexArguments(FileInfo midTexFileInfo) {
+            var sb = new StringBuilder();
+            sb.Append("-shell-escape ");
+            sb.Append("-interaction=nonstopmode ");
+            // 错误信息显示源文件行号（仅影响日志格式，不改输出内容/速度）
+            sb.Append("-file-line-error ");
+            sb.Append($"-jobname={Path.GetFileNameWithoutExtension(midTexFileInfo.Name)} ");
+            sb.Append($"-output-directory \"{midTexFileInfo.DirectoryName}\" ");
+            sb.Append($"\"{midTexFileInfo.FullName}\"");
+            return sb.ToString();
+        }
 
-		private static void TryDelete(string filePath, ILogger logger) {
-			logger.Debug($"Attempting to delete auxiliary file: {filePath}");
-			if (File.Exists(filePath)) {
-				try {
-					File.Delete(filePath);
-					logger.Debug($"Deleted auxiliary file: {filePath}");
-				} catch (Exception ex) {
-					logger.Warning($"Failed to delete {filePath}: {ex.Message}");
-				}
-			}
-		}
+        /// <summary>
+        /// 给一次 xelatex pass 的 stderr 打上 `--- pass N stderr ---` 标签并追加到目标 buffer。提取为 internal static 便于测试。
+        /// </summary>
+        internal static void AppendLabeledStderr(StringBuilder buffer, int pass, string stderr) {
+            buffer.AppendLine($"--- pass {pass} stderr ---");
+            buffer.Append(stderr);
+        }
 
-		/// <summary>
-		/// 保存 TeX 文件
-		/// </summary>
-		private FileInfo SaveTexFile(string texContent) {
-			return new FileInfo(SaveTexFile(texContent, _options.OutputPdf.Directory!.FullName));
-		}
+        /// <summary>
+        /// 清理辅助文件。中间文件位于 <sourceDir>/build/ 而非用户 -o 目录（见 SaveTexFile / BuildXelatexArguments）。
+        /// </summary>
+        private void CleanupAuxiliaryFiles() {
+            var baseName = "mid-output"; // mid-output.tex 是固定名，与 jobname 无关
+            var outputDir = Path.Combine(_options.SourceDir.FullName, "build");
+            Cleanup(outputDir, baseName, _logger);
+            // 同时删 _minted/ 缓存目录（minted 输出；保留可加速下次 build，但默认删以保持 build/ 干净）
+            var mintedDir = Path.Combine(outputDir, "_minted");
+            if (Directory.Exists(mintedDir)) {
+                try { Directory.Delete(mintedDir, recursive: true); } catch (Exception ex) {
+                    _logger.Warning($"删除 {mintedDir} 失败：{ex.Message}");
+                }
+            }
+        }
 
-		/// <summary>
-		/// 写出 TeX 文件到指定目录，返回写入文件的绝对路径。提取为 internal static 以便测试。
-		/// </summary>
-		internal static string SaveTexFile(string texContent, string outputDir) {
-			var filePath = Path.Combine(outputDir, "mid-output.tex");
-			File.WriteAllText(filePath, texContent);
-			return filePath;
-		}
+        /// <summary>
+        /// 清理 LaTeX 编译产生的中间文件。提取为 internal static 以便测试。
+        /// </summary>
+        internal static void Cleanup(string outputDir, string baseName, ILogger logger) {
+            var extensionsToDelete = new[] { ".aux", ".log", ".toc", ".out", ".nav", ".snm" };
 
-		/// <summary>
-		/// 生成 TeX 正文内容（暴露为 internal 以便单测断言占位符替换结果）。
-		/// </summary>
-		internal string GenerateTexContent_ForTest() {
-			return GenerateTexContent().ToString();
-		}
+            foreach (var ext in extensionsToDelete) {
+                TryDelete(Path.Combine(outputDir, baseName + ext), logger);
+            }
+            // mid-output.tex 是本工具生成的中间文件，按 jobname 无关的固定名存放
+            TryDelete(Path.Combine(outputDir, "mid-output.tex"), logger);
+        }
 
-		/// <summary>
-		/// 生成 TeX 正文内容
-		/// </summary>
-		private StringBuilder GenerateTexContent() {
-			string mainTemplateContent = ResolveTemplateContent("Main.tex");
-			var mainTemplate = new StringBuilder(mainTemplateContent);
+        private static void TryDelete(string filePath, ILogger logger) {
+            logger.Debug($"Attempting to delete auxiliary file: {filePath}");
+            if (File.Exists(filePath)) {
+                try {
+                    File.Delete(filePath);
+                    logger.Debug($"Deleted auxiliary file: {filePath}");
+                } catch (Exception ex) {
+                    logger.Warning($"删除 {filePath} 失败：{ex.Message}");
+                }
+            }
+        }
 
-			// 设置 minted 的输出目录（可被 TEX.code.minted_outputdir 覆盖，CI 缓存用）
-			mainTemplate.Replace("<<MINTED_OUTPUTDIR>>", ResolveMintedOutputDir());
+        /// <summary>
+        /// 保存 TeX 文件
+        /// </summary>
+        private FileInfo SaveTexFile(string texContent) {
+            // 把 mid-output.tex 写到 <src>/build/（与 xelatex -output-directory 同目录），
+            // 让源目录保持干净。build/ 目录不存在时自动创建。
+            var buildDir = Path.Combine(_options.SourceDir.FullName, "build");
+            Directory.CreateDirectory(buildDir);
+            return new FileInfo(SaveTexFile(texContent, buildDir));
+        }
 
-			// PDF 元数据：keywords 数组 → "kw1, kw2, kw3"
-			var keywords = string.Join(", ", _texConfigParser["METADATA_KEYWORDS"].GetAsStringArray());
-			mainTemplate.Replace("<<METADATA_KEYWORDS>>", keywords);
+        /// <summary>
+        /// 写出 TeX 文件到指定目录，返回写入文件的绝对路径。提取为 internal static 以便测试。
+        /// </summary>
+        internal static string SaveTexFile(string texContent, string outputDir) {
+            var filePath = Path.Combine(outputDir, "mid-output.tex");
+            File.WriteAllText(filePath, texContent);
+            return filePath;
+        }
 
-			// Layout runtime: documentclass columns + TOC/body column toggles
-			var columns = _texConfigParser["LAYOUT_COLUMNS"].GetAsInt();
-			var tocInColumns = _texConfigParser["LAYOUT_TOC_IN_COLUMNS"].GetAsBool();
-			mainTemplate.Replace("<<DOC_CLASS_COLUMNS>>", columns == 2 ? "twocolumn" : "");
-			mainTemplate.Replace("<<LAYOUT_TOC_OPENING>>", columns == 2 ? (tocInColumns ? @"\onecolumn" : @"\twocolumn") : "");
-			mainTemplate.Replace("<<LAYOUT_BODY_OPENING>>", columns == 2 && tocInColumns ? @"\twocolumn" : "");
+        /// <summary>
+        /// 生成 TeX 正文内容（暴露为 internal 以便单测断言占位符替换结果）。
+        /// </summary>
+        internal string GenerateTexContent_ForTest() {
+            return GenerateTexContent().ToString();
+        }
 
-			// CJK font block (runtime): 动态拼装 \setCJKmainfont{...}[...]，
-			// BoldFont/ItalicFont 空值时跳过该选项（避免 LaTeX 非法语法 BoldFont=,）。
-			mainTemplate.Replace("<<CJK_FONT_BLOCK>>", BuildCjkFontBlock());
+        /// <summary>
+        /// 生成 TeX 正文内容
+        /// </summary>
+        private StringBuilder GenerateTexContent() {
+            string mainTemplateContent = ResolveTemplateContent("Main.tex");
+            var mainTemplate = new StringBuilder(mainTemplateContent);
 
-			// TOC dot leaders (runtime): 默认 true → 空（LaTeX 自然有点引导），
-			// false → \def\@dotsep{10000} 取消引导点。
-			var tocDotLeaders = _texConfigParser["TOC_DOT_LEADERS"].GetAsBool(true);
-			mainTemplate.Replace("<<TOC_DOT_LEADERS_LINE>>", tocDotLeaders ? "" : @"\def\@dotsep{10000}");
+            // 设置 minted 的输出目录（可被 TEX.code.minted_outputdir 覆盖，CI 缓存用）
+            mainTemplate.Replace("<<MINTED_OUTPUTDIR>>", ResolveMintedOutputDir());
 
-			// Typesetting parskip (runtime): 默认 false → 空；true → \usepackage{parskip}
-			// 段间垂直空白替代段首缩进（Round 3c）。
-			var parskipEnabled = _texConfigParser["TYPESETTING_PARSKIP_ENABLED"].GetAsBool(false);
-			mainTemplate.Replace("<<TYPESETTING_PARSKIP_LINE>>", parskipEnabled ? @"\usepackage{parskip}" : "");
+            // PDF 元数据：keywords 数组 → "kw1, kw2, kw3"
+            var keywords = string.Join(", ", _texConfigParser["METADATA_KEYWORDS"].GetAsStringArray());
+            mainTemplate.Replace("<<METADATA_KEYWORDS>>", keywords);
 
-			ReplaceMainPlaceholders(mainTemplate);
+            // Layout runtime: documentclass columns + TOC/body column toggles
+            var columns = _texConfigParser["LAYOUT_COLUMNS"].GetAsInt();
+            var tocInColumns = _texConfigParser["LAYOUT_TOC_IN_COLUMNS"].GetAsBool();
+            mainTemplate.Replace("<<DOC_CLASS_COLUMNS>>", columns == 2 ? "twocolumn" : "");
+            mainTemplate.Replace("<<LAYOUT_TOC_OPENING>>", columns == 2 ? (tocInColumns ? @"\onecolumn" : @"\twocolumn") : "");
+            mainTemplate.Replace("<<LAYOUT_BODY_OPENING>>", columns == 2 && tocInColumns ? @"\twocolumn" : "");
 
-			// 在 <<CONTENT>> 替换前扫描 Main.tex，避免误报尚未替换的 <<CONTENT>> 标记。
-			foreach (var placeholder in TemplatePlaceholderScanner.FindUnresolved(mainTemplate.ToString())) {
-				if (placeholder == "<<CONTENT>>") continue;
-				_logger.Error($"Unresolved placeholder '{placeholder}' in Main.tex.");
-				_unresolvedPlaceholderCount++;
-			}
+            // CJK font block (runtime): 动态拼装 \setCJKmainfont{...}[...]，
+            // BoldFont/ItalicFont 空值时跳过该选项（避免 LaTeX 非法语法 BoldFont=,）。
+            mainTemplate.Replace("<<CJK_FONT_BLOCK>>", BuildCjkFontBlock());
 
-			int tabSize = _texConfigParser["CODE_TAB_SIZE"].GetAsInt();
-			int sectionDepth = _texConfigParser["LAYOUT_SECTION_DEPTH"].GetAsInt();
-			bool escapeSectionNames = _texConfigParser["LAYOUT_ESCAPE_SECTION_NAMES"].GetAsBool(true);
-			string codeBlockTemplateContent = ResolveTemplateContent("CodeBlock.tex");
-			var codeBlockGen = new CodeBlockGenerator(
-				_logger, _programConfigParser, tabSize, _options.SourceDir,
-				codeBlockTemplateContent, sectionDepth, escapeSectionNames);
-			string codeBlocks = codeBlockGen.Generate();
-			_unresolvedPlaceholderCount += codeBlockGen.UnresolvedPlaceholderCount;
+            // TOC dot leaders (runtime): 默认 true → 空（LaTeX 自然有点引导），
+            // false → \def\@dotsep{10000} 取消引导点。
+            var tocDotLeaders = _texConfigParser["TOC_DOT_LEADERS"].GetAsBool(true);
+            mainTemplate.Replace("<<TOC_DOT_LEADERS_LINE>>", tocDotLeaders ? "" : @"\def\@dotsep{10000}");
 
-			// 插入正文内容，生成最终的 TeX 内容
-			mainTemplate.Replace("<<CONTENT>>", codeBlocks);
+            // Typesetting parskip (runtime): 默认 false → 空；true → \usepackage{parskip}
+            // 段间垂直空白替代段首缩进
+            var parskipEnabled = _texConfigParser["TYPESETTING_PARSKIP_ENABLED"].GetAsBool(false);
+            mainTemplate.Replace("<<TYPESETTING_PARSKIP_LINE>>", parskipEnabled ? @"\usepackage{parskip}" : "");
 
-			return mainTemplate;
-		}
+            ReplaceMainPlaceholders(mainTemplate);
 
-		/// <summary>
-		/// 解析模板内容：优先使用 TemplateDir 下的文件，否则落回嵌入资源。
-		/// </summary>
-		private string ResolveTemplateContent(string fileName) {
-			if (_options.TemplateDir != null) {
-				var overridePath = Path.Combine(_options.TemplateDir.FullName, fileName);
-				if (File.Exists(overridePath)) {
-					_logger.Info($"Using external template: {overridePath}");
-					return File.ReadAllText(overridePath);
-				}
-			}
-			return _resMgr.GetResourceInString("Templates." + fileName);
-		}
+            // 在 <<CONTENT>> 替换前扫描 Main.tex，避免误报尚未替换的 <<CONTENT>> 标记。
+            foreach (var placeholder in TemplatePlaceholderScanner.FindUnresolved(mainTemplate.ToString())) {
+                if (placeholder == "<<CONTENT>>") continue;
+                _logger.Error($"Unresolved placeholder '{placeholder}' in Main.tex.");
+                _unresolvedPlaceholderCount++;
+            }
 
-		/// <summary>
-		/// 计算 minted outputdir。优先用 <c>TEX.code.minted_outputdir</c> 覆盖；
-		/// 空字符串回退到 PDF 输出目录（保持原行为）。返回值已统一使用正斜杠。
-		/// CI 配合 actions/cache 用：把 _minted/ 放到稳定路径跨 run 复用。
-		/// </summary>
-		private string ResolveMintedOutputDir() {
-			var mintedOverride = _texConfigParser["CODE_MINTED_OUTPUTDIR"].GetAsString();
-			return !string.IsNullOrEmpty(mintedOverride)
-				? mintedOverride.Replace("\\", "/")
-				: _options.OutputPdf.Directory!.FullName.Replace("\\", "/");
-		}
+            int tabSize = _texConfigParser["CODE_TAB_SIZE"].GetAsInt();
+            int sectionDepth = _texConfigParser["LAYOUT_SECTION_DEPTH"].GetAsInt();
+            bool escapeSectionNames = _texConfigParser["LAYOUT_ESCAPE_SECTION_NAMES"].GetAsBool(true);
+            string codeBlockTemplateContent = ResolveTemplateContent("CodeBlock.tex");
+            var codeBlockGen = new CodeBlockGenerator(
+                _logger, _programConfigParser, tabSize, _options.SourceDir,
+                codeBlockTemplateContent, sectionDepth, escapeSectionNames);
+            string codeBlocks = codeBlockGen.Generate();
+            _unresolvedPlaceholderCount += codeBlockGen.UnresolvedPlaceholderCount;
 
-		/// <summary>
-		/// 动态拼装 CJK 主字体块。BoldFont/ItalicFont 为空字符串时跳过对应选项（避免
-		/// LaTeX 收到 BoldFont=, 非法语法）。AutoFake* 始终输出（默认 true）。
-		/// 提取为 private 方法以便未来加 unit test 时直接覆盖。
-		/// </summary>
-		private string BuildCjkFontBlock() {
-			var main = _texConfigParser["GLOBAL_CJK_MAIN_FONT"].GetAsString();
-			var bold = _texConfigParser["GLOBAL_CJK_MAIN_BOLD_FONT"].GetAsString();
-			var italic = _texConfigParser["GLOBAL_CJK_MAIN_ITALIC_FONT"].GetAsString();
-			var autoBold = _texConfigParser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(true);
-			var autoSlant = _texConfigParser["GLOBAL_CJK_AUTO_FAKE_SLANT"].GetAsBool(true);
+            // 插入正文内容，生成最终的 TeX 内容
+            mainTemplate.Replace("<<CONTENT>>", codeBlocks);
 
-			var sb = new StringBuilder();
-			sb.Append($"\\setCJKmainfont{{{main}}}[\n");
-			if (!string.IsNullOrEmpty(bold)) {
-				sb.Append($"    BoldFont={bold},\n");
-			}
-			if (!string.IsNullOrEmpty(italic)) {
-				sb.Append($"    ItalicFont={italic},\n");
-			}
-			sb.Append($"    AutoFakeBold={(autoBold ? "true" : "false")},\n");
-			sb.Append($"    AutoFakeSlant={(autoSlant ? "true" : "false")}\n");
-			sb.Append(']');
-			return sb.ToString();
-		}
+            return mainTemplate;
+        }
 
-		/// <summary>
-		/// 需要做 LaTeX 转义的占位符键（用户可见的文本字段）。
-		/// </summary>
-		private static readonly IReadOnlySet<string> _keysToEscape = new HashSet<string>(StringComparer.Ordinal) {
-			"AUTHOR", "SUBJECT", "TITLE_CONTENT", "TITLE_NOTE"
-		};
+        /// <summary>
+        /// 解析模板内容：优先使用 TemplateDir 下的文件，否则落回嵌入资源。
+        /// </summary>
+        private string ResolveTemplateContent(string fileName) {
+            if (_options.TemplateDir != null) {
+                var overridePath = Path.Combine(_options.TemplateDir.FullName, fileName);
+                if (File.Exists(overridePath)) {
+                    _logger.Info($"使用外部模板：{overridePath}");
+                    return File.ReadAllText(overridePath);
+                }
+            }
+            return _resMgr.GetResourceInString("Templates." + fileName);
+        }
 
-		/// <summary>
-		/// 替换 MainTeX 模板中的占位符。对用户可见的文本字段（标题/作者/备注）做 LaTeX
-		/// 转义，防止 `_` / `%` / `&` 等字符破坏编译。可以通过
-		/// <c>TEX.TITLE.ESCAPE_LATEX_SPECIALS=false</c> 关掉。
-		/// </summary>
-		/// <remarks>
-		/// Round 3→4 重构：原实现对 ~60 个 key 各做一次 <c>StringBuilder.Replace</c>，
-		/// 每次 O(N) 扫描，整体 O(K·N)。新实现编译一个正则
-		/// <c>##[A-Z0-9_]+##</c>，单次扫描完成，O(N)。<br/>
-		/// 兼容原"值含 ##OTHER## 时递归替换"语义：用 <c>do-while</c> 循环
-		/// <c>Regex.Replace</c>，每次循环展开一层，直到文本不再变化或达到安全上限 10 次。
-		/// </remarks>
-		/// <param name="content">要替换的模板内容</param>
-		private void ReplaceMainPlaceholders(StringBuilder content) {
-			var escapeEnabled = _texConfigParser["TITLE_ESCAPE_LATEX_SPECIALS"].GetAsBool();
-			// 1. 构造 key→value 字典（对 4 个用户文本字段做 LaTeX 转义）
-			var lookup = new Dictionary<string, string>(StringComparer.Ordinal);
-			foreach (var (key, value) in _texConfigParser.GetAllConfigsAsString()) {
-				lookup[key] = escapeEnabled && _keysToEscape.Contains(key)
-					? LatexEscaper.Escape(value)
-					: value;
-			}
-			// 2. 多次 Regex.Replace 直到稳定（兼容值含 ##OTHER## 的递归替换）
-			var text = content.ToString();
-			string prev;
-			int safety = 0;
-			do {
-				prev = text;
-				text = _placeholderRegex.Replace(text, m => {
-					var key = m.Groups[1].Value;
-					return lookup.TryGetValue(key, out var v) ? v : m.Value;
-				});
-			} while (text != prev && ++safety < 10);
-			// 3. 写回 StringBuilder
-			content.Clear();
-			content.Append(text);
-		}
+        /// <summary>
+        /// 计算 minted outputdir。优先用 <c>TEX.code.minted_outputdir</c> 覆盖；
+        /// 空字符串回退到 build/ 子目录（与 mid-output.tex 同目录），确保 _minted/
+        /// 缓存与其他中间文件集中在一处，不污染源目录。返回值已统一使用正斜杠。
+        /// CI 配合 actions/cache 用：把 _minted/ 放到稳定路径跨 run 复用。
+        /// </summary>
+        private string ResolveMintedOutputDir() {
+            var mintedOverride = _texConfigParser["CODE_MINTED_OUTPUTDIR"].GetAsString();
+            if (!string.IsNullOrEmpty(mintedOverride))
+                return mintedOverride.Replace("\\", "/");
+            // 默认：build/ 子目录（xelatex -output-directory 指向此处），_minted/ 与 .aux/.log 并列
+            var buildDir = Path.Combine(_options.SourceDir.FullName, "build");
+            return buildDir.Replace("\\", "/");
+        }
 
-		// Round 4 新增：##KEY## 占位符正则，KEY 限定为大写/数字/下划线
-		// （ConfigParser 路径展开规则保证所有 config key 都匹配此模式）。
-		private static readonly Regex _placeholderRegex = new(
-			@"##([A-Z0-9_]+)##",
-			RegexOptions.Compiled);
-	}
+        /// <summary>
+        /// 动态拼装 CJK 主字体块。BoldFont/ItalicFont 为空字符串时跳过对应选项（避免
+        /// LaTeX 收到 BoldFont=, 非法语法）。AutoFake* 始终输出（默认 true）。
+        /// 提取为 private 方法以便未来加 unit test 时直接覆盖。
+        /// </summary>
+        private string BuildCjkFontBlock() {
+            var main = _texConfigParser["GLOBAL_CJK_MAIN_FONT"].GetAsString();
+            var bold = _texConfigParser["GLOBAL_CJK_MAIN_BOLD_FONT"].GetAsString();
+            var italic = _texConfigParser["GLOBAL_CJK_MAIN_ITALIC_FONT"].GetAsString();
+            var autoBold = _texConfigParser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(true);
+            var autoSlant = _texConfigParser["GLOBAL_CJK_AUTO_FAKE_SLANT"].GetAsBool(true);
+
+            var sb = new StringBuilder();
+            sb.Append($"\\setCJKmainfont{{{main}}}[\n");
+            if (!string.IsNullOrEmpty(bold)) {
+                sb.Append($"    BoldFont={bold},\n");
+            }
+            if (!string.IsNullOrEmpty(italic)) {
+                sb.Append($"    ItalicFont={italic},\n");
+            }
+            sb.Append($"    AutoFakeBold={(autoBold ? "true" : "false")},\n");
+            sb.Append($"    AutoFakeSlant={(autoSlant ? "true" : "false")}\n");
+            sb.Append(']');
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 需要做 LaTeX 转义的占位符键（用户可见的文本字段）。
+        /// </summary>
+        private static readonly IReadOnlySet<string> _keysToEscape = new HashSet<string>(StringComparer.Ordinal) {
+            "AUTHOR", "SUBJECT", "TITLE_CONTENT", "TITLE_NOTE"
+        };
+
+        /// <summary>
+        /// 替换 MainTeX 模板中的占位符。对用户可见的文本字段（标题/作者/备注）做 LaTeX
+        /// 转义，防止 `_` / `%` / `&` 等字符破坏编译。可以通过
+        /// <c>TEX.TITLE.ESCAPE_LATEX_SPECIALS=false</c> 关掉。
+        /// </summary>
+        /// <remarks>
+        /// 重构：原实现对 ~60 个 key 各做一次 <c>StringBuilder.Replace</c>，
+        /// 每次 O(N) 扫描，整体 O(K·N)。新实现编译一个正则
+        /// <c>##[A-Z0-9_]+##</c>，单次扫描完成，O(N)。<br/>
+        /// 兼容原"值含 ##OTHER## 时递归替换"语义：用 <c>do-while</c> 循环
+        /// <c>Regex.Replace</c>，每次循环展开一层，直到文本不再变化或达到安全上限 10 次。
+        /// </remarks>
+        /// <param name="content">要替换的模板内容</param>
+        private void ReplaceMainPlaceholders(StringBuilder content) {
+            var escapeEnabled = _texConfigParser["TITLE_ESCAPE_LATEX_SPECIALS"].GetAsBool();
+            // 1. 构造 key→value 字典（对 4 个用户文本字段做 LaTeX 转义）
+            var lookup = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (key, value) in _texConfigParser.GetAllConfigsAsString()) {
+                lookup[key] = escapeEnabled && _keysToEscape.Contains(key)
+                    ? LatexEscaper.Escape(value)
+                    : value;
+            }
+            // 2. 多次 Regex.Replace 直到稳定（兼容值含 ##OTHER## 的递归替换）
+            var text = content.ToString();
+            string prev;
+            int safety = 0;
+            do {
+                prev = text;
+                text = _placeholderRegex.Replace(text, m => {
+                    var key = m.Groups[1].Value;
+                    return lookup.TryGetValue(key, out var v) ? v : m.Value;
+                });
+            } while (text != prev && ++safety < 10);
+            // 3. 写回 StringBuilder
+            content.Clear();
+            content.Append(text);
+        }
+
+        // ##KEY## 占位符正则：KEY 限定为大写/数字/下划线
+        // （ConfigParser 路径展开规则保证所有 config key 都匹配此模式）。
+        private static readonly Regex _placeholderRegex = new(
+            @"##([A-Z0-9_]+)##",
+            RegexOptions.Compiled);
+    }
 }
