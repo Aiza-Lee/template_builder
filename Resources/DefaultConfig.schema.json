@@ -244,7 +244,7 @@
 						"type": "string",
 						"pattern": "^\\.[A-Za-z0-9]+:[A-Za-z0-9_+\\-]+$"
 					},
-					"description": "扩展名→minted 语言映射的增量覆盖（\"ext:lang\"）。与 _defaultExtMap 24 条默认映射合并；非法条目被静默跳过。"
+					"description": "扩展名→minted 语言映射的增量覆盖（\"ext:lang\"）。与 _defaultExtMap 29 条默认映射合并；非法条目被静默跳过。"
 				},
 				"build": {
 					"type": "object",

@@ -87,4 +87,29 @@ public class RootCommandFactoryTests {
         Assert.Equal(0, result);
         Assert.True(File.Exists(outputPath));
     }
+
+    [Fact]
+    public void GetDefaultConfigFileInfo_ReturnsPathWithoutCreatingFile() {
+        var info = RootCommandFactory.GetDefaultConfigFileInfo();
+        Assert.NotNull(info);
+        Assert.EndsWith("config.json", info.FullName);
+    }
+
+    [Fact]
+    public void Invoke_Build_WithExplicitExistingConfig_DoesNotTriggerDefaultConfigCreation() {
+        var logger = new TestLogger();
+        var factory = new RootCommandFactory(logger);
+        var root = factory.CreateRootCommand();
+
+        using var tmp = TempDir.Create();
+        var srcDir = Path.Combine(tmp.Path, "src");
+        Directory.CreateDirectory(srcDir);
+        var cfgFile = Path.Combine(tmp.Path, "custom.json");
+        File.WriteAllText(cfgFile, "{}");
+        var outPdf = Path.Combine(tmp.Path, "out.pdf");
+
+        root.Parse(new[] { "build", "-s", srcDir, "-o", outPdf, "-c", cfgFile }).Invoke();
+
+        Assert.DoesNotContain(logger.Entries, e => e.Message.Contains("创建默认配置文件"));
+    }
 }

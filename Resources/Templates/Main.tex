@@ -1,11 +1,34 @@
 \documentclass[##DOCCLASS_BASE_FONT_SIZE##,##DOCCLASS_ORIENTATION##,<<DOC_CLASS_COLUMNS>>]{ctexart} % ctexart支持中文排版
 
 \usepackage{geometry}		% 页面布局设置
+\makeatletter
+% 兼容 minted v3+（TeX Live 2024+）：outputdir 选项在 v3 已废弃并触发 PackageError 导致非零退出码，
+% 此处将 minted 的 PackageError 降级为 Warning，兼顾旧版 minted v2 的 outputdir 与新版自动输出目录检测
+\let\old@PackageError\PackageError
+\def\PackageError#1#2#3{%
+  \edef\tb@pkg{#1}%
+  \edef\tb@minted{minted}%
+  \ifx\tb@pkg\tb@minted
+    \PackageWarning{minted}{#2}%
+  \else
+    \old@PackageError{#1}{#2}{#3}%
+  \fi
+}
+\makeatother
 \usepackage[outputdir=<<MINTED_OUTPUTDIR>>]{minted}			% 代码高亮显示
+\makeatletter
+\let\PackageError\old@PackageError
+\makeatother
 \usepackage{fontspec}		% 字体设置
 \usepackage{xeCJK}			% 中文支持（XeLaTeX）
 \usepackage{xcolor}			% 颜色支持
-\usepackage[##TYPESETTING_MICROTYPE_PROTRUSION##,##TYPESETTING_MICROTYPE_EXPANSION##,##TYPESETTING_MICROTYPE_KERNING##]{microtype}	% 字符伸出/字体扩展/字偶距（Round 3c）
+\usepackage[protrusion=##TYPESETTING_MICROTYPE_PROTRUSION##,expansion=##TYPESETTING_MICROTYPE_EXPANSION##,kerning=##TYPESETTING_MICROTYPE_KERNING##]{microtype}	% 字符伸出/字体扩展/字偶距（Round 3c）
+\makeatletter
+% XeTeX 引擎本身不支持 microtype 的 font expansion 与 kerning（原生由 fontspec/harfbuzz 处理），
+% 将其 setup 设为 relax，避免因用户配置开启此类选项导致 XeLaTeX 抛出 Package Error 与非零退出码。
+\let\MT@setup@expansion\relax
+\let\MT@setup@kerning\relax
+\makeatother
 <<TYPESETTING_PARSKIP_LINE>>	% runtime: parskip 开关（默认空；typesetting.parskip.enabled=true 时启用段间空白包）
 \usepackage{hyperref}		% 超链接和PDF书签
 \usepackage{amsmath}		% 数学公式扩展
@@ -22,14 +45,14 @@
 	left=##GEOMETRY_LEFT_MARGIN##,			% 左边距值，如: 2cm
 	right=##GEOMETRY_RIGHT_MARGIN##,		% 右边距值，如: 2cm
 	top=##GEOMETRY_TOP_MARGIN##,			% 上边距值，如: 2.5cm
-	bottom=##GEOMETRY_BOTTOM_MARGIN##		% 下边距值，如: 2.5cm
+	bottom=##GEOMETRY_BOTTOM_MARGIN##,		% 下边距值，如: 2.5cm
 	headheight=##GEOMETRY_HEADHEIGHT##,		% 页眉高度
 	headsep=##GEOMETRY_HEADSEP##,		% 页眉与正文间距
-	footskip=##GEOMETRY_FOOTSKIP##,		% 页脚基线到正文底部距离
-	columnrule=##GEOMETRY_COLUMN_RULE##		% twocolumn 模式下列分隔线（true/false）
+	footskip=##GEOMETRY_FOOTSKIP##		% 页脚基线到正文底部距离
 }
 
 \setlength{\columnsep}{##GEOMETRY_COLUMN_SEP##} % 双栏间距，如: 1cm
+<<GEOMETRY_COLUMN_RULE_LINE>>
 
 % Fonts - 字体设置
 \setmainfont{##GLOBAL_MAIN_FONT##}  % 西文主字体名称，如：Times New Roman
@@ -75,15 +98,11 @@
 	autogobble=##CODE_AUTOGOBBLE##,
 	highlightcolor=##CODE_HIGHLIGHT_COLOR##,
 	mathescape=##CODE_MATHESCAPE##,
-	escapeinside=##CODE_ESCAPEINSIDE##,
-	xleftmargin=##CODE_XLEFTMARGIN##,
-	xrightmargin=##CODE_XRIGHTMARGIN##,
 	firstnumber=##CODE_FIRSTNUMBER##,
 	stepnumber=##CODE_STEPNUMBER##,
-	numberstyle=##CODE_NUMBERSTYLE##,
 	showspaces=##CODE_SHOWSPACES##,
 	showtabs=##CODE_SHOWTABS##,
-}
+<<MINTED_EXTRA_OPTIONS>>}
 
 % 页面样式设置
 \pagestyle{##GLOBAL_PAGE_STYLE##}  % 页面风格: plain（只有页码）, headings（页眉带章节，页脚带页码）, empty（无页眉页脚）, fancy（自定义头脚）
@@ -106,7 +125,7 @@
 \titleformat{\subparagraph}{##SECTION_FORMAT_SUBPARAGRAPH##}{\thesubparagraph}{##SECTION_FORMAT_SEPARATOR##}{}
 
 % 文档标题元数据设置
-\title{##TITLE_FONT_SIZE_CMD####TITLE_CONTENT##}			% 文档标题
+\title{##TITLE_FONT_SIZE_CMD## ##TITLE_CONTENT##}			% 文档标题
 \author{##AUTHOR##}			% 作者名称
 \date{##TITLE_DATE##}
 

@@ -50,11 +50,11 @@ CI 门禁友好，秒级返回。
 ```
 [通过] source.exists  /path/to/src
 [通过] config.parses  /path/to/config.json
-[通过] resources.Main.tex  2584 chars
-[通过] resources.CodeBlock.tex  50 chars
-[通过] source.walk  max depth = 1
+[通过] resources.Main.tex  2584 字符
+[通过] resources.CodeBlock.tex  50 字符
+[通过] source.walk  最大深度 = 1
 [通过] source.depth  1 ≤ 4
-[通过] placeholders.##KEY##  25 placeholders all resolve
+[通过] placeholders.##KEY##  25 个占位符全部成功解析
 汇总：0 项错误，0 项警告
 ```
 

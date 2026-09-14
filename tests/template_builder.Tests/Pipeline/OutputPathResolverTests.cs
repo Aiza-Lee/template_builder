@@ -22,6 +22,7 @@ public class OutputPathResolverTests {
 
         var ex = Assert.Throws<InvalidArgumentException>(() => resolver.ResolveSourceDir(fake));
         Assert.Contains(fake.FullName, ex.Message);
+        Assert.Contains("未找到源文件目录", ex.Message);
     }
 
     [Fact]

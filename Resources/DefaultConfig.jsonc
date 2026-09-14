@@ -75,7 +75,7 @@
 			"headheight": "12pt",			// \geometry{headheight=...}
 			"headsep": "20pt",				// \geometry{headsep=...}
 			"footskip": "30pt",				// \geometry{footskip=...}
-			"column_rule": false			// \geometry{columnrule=...} 仅在 twocolumn 时生效
+			"column_rule": false			// twocolumn 时是否画分隔线（\setlength{\columnseprule}{0.4pt}）
 		},
 
 		// 文档级布局：列数 / 目录深度
@@ -103,10 +103,10 @@
 			"microtype": {
 				// microtype 字符伸出（标点悬挂到 margin 外，对代码密集文档尤其有用）
 				"protrusion": true,
-				// 字体微扩展（改善断行，减少 overfull/underfull \hbox 警告）
-				"expansion": true,
-				// 字偶距增强（XeLaTeX 下对部分字体生效）
-				"kerning": true
+				// 字体微扩展（XeLaTeX 引擎不支持此特性，默认设为 false 避免编译报错）
+				"expansion": false,
+				// 字偶距增强（XeLaTeX 引擎通过 fontspec 原生支持，microtype kerning 仅限 pdfTeX，默认设为 false 避免编译报错）
+				"kerning": false
 			},
 			"parskip": {
 				// 段间垂直空白替代段首缩进；默认 false（保留 LaTeX 经典缩进外观）
@@ -157,11 +157,11 @@
 	// ===== PROGRAM section: controls source-tree processing =====
 	"PROGRAM": {
 		// 包含的源文件扩展名（白名单）
-		"include_file_types": [".cpp", ".c", ".json", ".tex", ".hpp", ".h", ".py", ".txt"],
+		"include_file_types": [".cpp", ".c", ".java", ".json", ".tex", ".hpp", ".h", ".py", ".txt"],
 		// 排除的 glob 模式（Microsoft.Extensions.FileSystemGlobbing 语法）
-		"ignore_patterns": ["*ignore*"],
+		"ignore_patterns": ["*ignore*", "build"],
 		// 扩展名→minted 语言映射的增量覆盖
-		// 字符串对数组："ext:lang"，与 CodeBlockGenerator._defaultExtMap 中 24 条默认映射合并
+		// 字符串对数组："ext:lang"，与 CodeBlockGenerator._defaultExtMap 中 29 条默认映射合并
 		// 例：[".md:markdown", ".myext:cpp"]；非法条目（缺 : / 非 . 前缀 / 字段空）会被静默跳过
 		"code_language_overrides": [],
 		// 构建器行为调优

@@ -71,7 +71,9 @@ dotnet publish "$PROJECT_DIR/template_builder.csproj" \
     --configuration Release \
     --runtime "$RUNTIME" \
     --output "$PROJECT_DIR/publish/template_builder-$RUNTIME" \
-    --self-contained true
+    --self-contained true \
+    -p:PublishSingleFile=true \
+    -p:EnableCompressionInSingleFile=true
 
 echo "清理无关文件..."
 # 保留主程序、配置、资源目录，删除 pdb、xml、.DS_Store 等常见无关文件

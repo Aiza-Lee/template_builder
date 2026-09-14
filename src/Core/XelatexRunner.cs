@@ -66,6 +66,7 @@ namespace Core {
                 proc.Start();
             } catch (Exception ex) {
                 _logger.Error($"启动 xelatex 失败：{ex.Message}");
+                _logger.Error("排查指引：未检测到 xelatex 命令或无法启动。请确认已安装 TeX 发行版（如 TeX Live、MacTeX 或 MiKTeX），并将 xelatex 所在 bin 目录添加至系统环境变量 PATH。");
                 return new XelatexResult(-1, stderr.ToString() + $"[failed to start: {ex.Message}]\n", false);
             }
 
@@ -81,7 +82,7 @@ namespace Core {
             }
 
             if (!exited) {
-                _logger.Error($"xelatex exceeded timeout ({timeoutSeconds}s); killing process tree.");
+                _logger.Error($"xelatex 运行超时（{timeoutSeconds} 秒），正在终止进程树。");
                 try {
                     proc.Kill(entireProcessTree: true);
                 } catch (Exception ex) {

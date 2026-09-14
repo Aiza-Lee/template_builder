@@ -31,26 +31,34 @@ namespace Utils {
             ILogger? logger = null
         ) {
             var matcher = BuildMatcher(ignorePatterns);
-            return WalkInternal(root, 0, matcher, logger);
+            return WalkInternal(root, root, 0, matcher, logger);
         }
 
         // HasMatches = false 表示被 exclude 命中
-        private static bool IsIgnored(string name, Matcher matcher) {
-            return !matcher.Match(name).HasMatches;
+        private static bool IsIgnored(string relativePath, Matcher matcher) {
+            return !matcher.Match(relativePath).HasMatches;
         }
 
         private static Matcher BuildMatcher(IReadOnlyList<string> ignorePatterns) {
             var matcher = new Matcher();
+            matcher.AddInclude("**/*");
             matcher.AddInclude("*");
             foreach (var pattern in ignorePatterns) {
-                if (!string.IsNullOrWhiteSpace(pattern)) {
-                    matcher.AddExclude(pattern);
+                if (string.IsNullOrWhiteSpace(pattern)) continue;
+                matcher.AddExclude(pattern);
+                if (!pattern.Contains('/')) {
+                    matcher.AddExclude($"**/{pattern}");
+                    matcher.AddExclude($"{pattern}/**");
+                    matcher.AddExclude($"**/{pattern}/**");
+                } else if (pattern.EndsWith("/**")) {
+                    matcher.AddExclude(pattern[..^3]);
                 }
             }
             return matcher;
         }
 
         private static IEnumerable<SourceEntry> WalkInternal(
+            DirectoryInfo root,
             DirectoryInfo dir,
             int depth,
             Matcher matcher,
@@ -62,12 +70,17 @@ namespace Utils {
                     logger?.Debug($"Skipping hidden directory: {subDir.FullName}");
                     continue;
                 }
-                if (IsIgnored(subDir.Name, matcher)) {
+                if (depth == 0 && subDir.Name.Equals("build", StringComparison.OrdinalIgnoreCase)) {
+                    logger?.Debug($"Skipping build directory: {subDir.FullName}");
+                    continue;
+                }
+                var relPath = Path.GetRelativePath(root.FullName, subDir.FullName).Replace('\\', '/');
+                if (IsIgnored(relPath, matcher)) {
                     logger?.Debug($"Skipping directory '{subDir.FullName}' due to ignore pattern match.");
                     continue;
                 }
                 yield return new SourceEntry(subDir, depth, IsDirectory: true);
-                foreach (var entry in WalkInternal(subDir, depth + 1, matcher, logger)) {
+                foreach (var entry in WalkInternal(root, subDir, depth + 1, matcher, logger)) {
                     yield return entry;
                 }
             }
@@ -78,7 +91,8 @@ namespace Utils {
                     logger?.Debug($"Skipping hidden file: {file.FullName}");
                     continue;
                 }
-                if (IsIgnored(file.Name, matcher)) {
+                var relPath = Path.GetRelativePath(root.FullName, file.FullName).Replace('\\', '/');
+                if (IsIgnored(relPath, matcher)) {
                     logger?.Debug($"Skipping file '{file.FullName}' due to ignore pattern match.");
                     continue;
                 }

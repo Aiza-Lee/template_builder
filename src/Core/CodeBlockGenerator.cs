@@ -13,7 +13,7 @@ namespace Core {
         private int _unresolvedPlaceholderCount;
 
         private readonly string CODE_BLOCK_TEMPLATE = string.Empty;
-        private readonly string[] INCLUDE_FILE_TYPES = [];
+        private readonly HashSet<string> _includeFileTypes;
         private readonly string[] IGNORE_PATTERNS = [];
 
         /// <summary>
@@ -30,7 +30,8 @@ namespace Core {
         /// 此映射同时作为「是否使用 minted 代码块」的判断依据（在映射中 = minted，否则 = 纯文本）。
         /// </summary>
         private static readonly Dictionary<string, string> _defaultExtMap = new(StringComparer.OrdinalIgnoreCase) {
-            { "c", "c" }, { "cpp", "cpp" }, { "hpp", "cpp" }, { "h", "c" },
+            { "c", "c" }, { "cpp", "cpp" }, { "cc", "cpp" }, { "cxx", "cpp" },
+            { "hpp", "cpp" }, { "hxx", "cpp" }, { "h", "c" }, { "java", "java" },
             { "cs", "csharp" }, { "rs", "rust" }, { "ts", "typescript" },
             { "js", "javascript" }, { "py", "python" }, { "rb", "ruby" },
             { "go", "go" }, { "php", "php" }, { "html", "html" },
@@ -66,7 +67,12 @@ namespace Core {
             _escapeSectionNames = escapeSectionNames;
 
             CODE_BLOCK_TEMPLATE = codeBlockTemplate;
-            INCLUDE_FILE_TYPES = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
+            var includeFileTypes = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
+            _includeFileTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ext in includeFileTypes) {
+                if (string.IsNullOrWhiteSpace(ext)) continue;
+                _includeFileTypes.Add(ext.StartsWith('.') ? ext : "." + ext);
+            }
             IGNORE_PATTERNS = _programConfigParser["IGNORE_PATTERNS"].GetAsStringArray();
 
             // 章节深度 clamp 到 [1, _allSectionCommands.Length]
@@ -91,7 +97,7 @@ namespace Core {
             var ext = pair[..idx].Trim();
             var lang = pair[(idx + 1)..].Trim();
             if (!ext.StartsWith('.')) {
-                _logger.Warning($"code_language_overrides entry '{pair}' has no '.' prefix on extension. Skipping.");
+                _logger.Warning($"code_language_overrides 条目 \"{pair}\" 的扩展名缺少 \".\" 前缀，已跳过。");
                 return;
             }
             _languageMap[ext[1..]] = lang;
@@ -106,21 +112,38 @@ namespace Core {
             var sourceDirInfo = _sourceDirInfo;
             if (!sourceDirInfo.Exists) {
                 Directory.CreateDirectory(sourceDirInfo.FullName);
-                _logger.Warning($"Source directory '{sourceDirInfo.FullName}' does not exist. Created the directory. Please add source files and rebuild.");
+                _logger.Warning($"源目录 \"{sourceDirInfo.FullName}\" 不存在。已自动创建该目录，请添加源文件后重新构建。");
                 return string.Empty;
             }
 
             var strBuilder = new StringBuilder();
             var lastIndex = _sectionCommands.Length - 1;
+            var pendingDirs = new List<(int Depth, string Name, int EffectiveDepth)>();
+
             foreach (var entry in SourceTreeWalker.Walk(sourceDirInfo, IGNORE_PATTERNS, _logger)) {
+                // 弹出深度不小于当前 entry 深度（即已离开该分支）的未决目录
+                while (pendingDirs.Count > 0 && pendingDirs[^1].Depth >= entry.Depth) {
+                    pendingDirs.RemoveAt(pendingDirs.Count - 1);
+                }
+
                 // 深度超过章节层级时 clamp 到最后一层（不报错不跳过）
                 var effectiveDepth = entry.Depth >= _sectionCommands.Length ? lastIndex : entry.Depth;
+
                 if (entry.IsDirectory) {
-                    InsertSection(strBuilder, entry.Info.Name, effectiveDepth);
+                    // 目录暂存为未决，待其子树中发现有效源码文件时再输出
+                    pendingDirs.Add((entry.Depth, entry.Info.Name, effectiveDepth));
                     continue;
                 }
+
                 var codeBlock = GenerateCodeBlock_File((FileInfo)entry.Info);
                 if (string.IsNullOrEmpty(codeBlock)) continue;
+
+                // 存在有效代码文件，先输出所有父级未决目录的章节标题
+                foreach (var dir in pendingDirs) {
+                    InsertSection(strBuilder, dir.Name, dir.EffectiveDepth);
+                }
+                pendingDirs.Clear();
+
                 InsertSection(strBuilder, entry.Info.Name, effectiveDepth);
                 strBuilder.AppendLine(codeBlock);
             }
@@ -138,23 +161,25 @@ namespace Core {
         /// <param name="codeFile">代码文件信息</param>
         /// <returns>返回生成的tex代码</returns>
         private string GenerateCodeBlock_File(FileInfo codeFile) {
-            var extension = codeFile.Extension.TrimStart('.').ToLowerInvariant();
-            // 检查文件类型是否在包含列表中
-            if (Array.IndexOf(INCLUDE_FILE_TYPES, "." + extension) == -1) {
-                _logger.Warning($"File type '{extension}' is not in the include list. Skipping file '{codeFile.FullName}'.");
+            var rawExt = codeFile.Extension;
+            // 检查文件类型是否在包含列表中（大小写无关匹配，O(1) 查找）
+            if (!_includeFileTypes.Contains(rawExt)) {
+                var extDisplay = rawExt.TrimStart('.');
+                _logger.Warning($"文件类型 \"{extDisplay}\" 不在包含列表中，跳过文件 \"{codeFile.FullName}\"。");
                 return string.Empty;
             }
             var content = File.ReadAllText(codeFile.FullName);
             content = ExpandTabs(content);
 
+            var extKey = rawExt.StartsWith('.') ? rawExt[1..] : rawExt;
             // _languageMap 作为「是否走 minted 代码块」的单一判断：在映射中 → minted，否则 → 纯文本内嵌
-            if (_languageMap.TryGetValue(extension, out var language)) {
+            if (_languageMap.TryGetValue(extKey, out var language)) {
                 var codeBlock = new StringBuilder(CODE_BLOCK_TEMPLATE);
                 codeBlock.Replace("<<LANGUAGE>>", language);
                 codeBlock.Replace("<<CODE>>", content);
                 var rendered = codeBlock.ToString();
                 foreach (var placeholder in TemplatePlaceholderScanner.FindUnresolved(rendered)) {
-                    _logger.Error($"Unresolved placeholder '{placeholder}' in CodeBlock.tex (file: {codeFile.Name}).");
+                    _logger.Error($"CodeBlock.tex 模板中存在未替换的占位符 \"{placeholder}\"（文件：{codeFile.Name}）。");
                     _unresolvedPlaceholderCount++;
                 }
                 return rendered;
@@ -192,7 +217,7 @@ namespace Core {
         /// </summary>
         private void InsertSection(StringBuilder strBuilder, string sectionName, int depth) {
             if (depth < 0 || depth >= _sectionCommands.Length) {
-                _logger.Error($"Invalid section depth: {depth}. Cannot insert section '{sectionName}'.");
+                _logger.Error($"无效的章节深度：{depth}。无法插入章节 \"{sectionName}\"。");
                 return;
             }
             var sectionCmd = _sectionCommands[depth];

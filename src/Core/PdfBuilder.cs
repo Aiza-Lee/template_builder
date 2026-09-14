@@ -57,22 +57,17 @@ namespace Core {
         }
 
         /// <summary>
-        /// 构建前清理 build/ 子目录中的旧中间文件（mid-output.*、_minted/）。
-        /// 确保源目录扫描器不会对上次遗留文件发出噪声 warning。
+        /// 构建前清理 build/ 子目录及其中的旧中间文件。
+        /// 确保源目录扫描器不会将 build 目录误认为源码目录产生幽灵章节或噪声 warning。
         /// build/ 不存在时静默跳过。
         /// </summary>
         private void PurgeBuildDir() {
             var buildDir = Path.Combine(_options.SourceDir.FullName, "build");
             if (!Directory.Exists(buildDir)) return;
-            Cleanup(buildDir, "mid-output", _logger);
-            // Cleanup 不含 .pdf（CleanupAuxiliaryFiles 设计上保留 build dir PDF 供拷贝）；
-            // 此处构建前清理需额外删除，避免扫描器对残留 mid-output.pdf 发出噪声 warning。
-            TryDelete(Path.Combine(buildDir, "mid-output.pdf"), _logger);
-            var mintedDir = Path.Combine(buildDir, "_minted");
-            if (Directory.Exists(mintedDir)) {
-                try { Directory.Delete(mintedDir, recursive: true); } catch (Exception ex) {
-                    _logger.Warning($"构建前清理 {mintedDir} 失败：{ex.Message}");
-                }
+            try {
+                Directory.Delete(buildDir, recursive: true);
+            } catch (Exception ex) {
+                _logger.Warning($"构建前清理 {buildDir} 失败：{ex.Message}");
             }
         }
 
@@ -103,6 +98,9 @@ namespace Core {
                         _logger.Warning("xelatex 返回了非零退出码，但 PDF 已生成。请检查编译日志中的警告或非致命错误。");
                         cleanupNeeded = false; // 保留辅助文件以供调试
                     } else {
+                        if (result.ExitCode == -1 && !result.TimedOut || result.Stderr.Contains("[failed to start:")) {
+                            _logger.Error("排查指引：未检测到 xelatex 命令或无法启动。请确认已安装 TeX 发行版（如 TeX Live、MacTeX 或 MiKTeX），并将 xelatex 所在 bin 目录添加至系统环境变量 PATH。");
+                        }
                         _logger.Error($"xelatex 退出码 {result.ExitCode}，LaTeX 编译失败。");
                         FlushStderrAsError();
                         return ExitCodes.XelatexFailure;
@@ -288,6 +286,13 @@ namespace Core {
             var parskipEnabled = _texConfigParser["TYPESETTING_PARSKIP_ENABLED"].GetAsBool(false);
             mainTemplate.Replace("<<TYPESETTING_PARSKIP_LINE>>", parskipEnabled ? @"\usepackage{parskip}" : "");
 
+            // Geometry column rule (runtime): 默认 false → 空；true → \setlength{\columnseprule}{0.4pt}
+            var columnRule = _texConfigParser["GEOMETRY_COLUMN_RULE"].GetAsBool(false);
+            mainTemplate.Replace("<<GEOMETRY_COLUMN_RULE_LINE>>", columnRule ? @"\setlength{\columnseprule}{0.4pt}" : "");
+
+            // Minted extra options (runtime): 动态拼装非空选项，避免空值在 pgfkeys / minted v3 下语法错误
+            mainTemplate.Replace("<<MINTED_EXTRA_OPTIONS>>", BuildMintedExtraOptions());
+
             ReplaceMainPlaceholders(mainTemplate);
 
             // 在 <<CONTENT>> 替换前扫描 Main.tex，避免误报尚未替换的 <<CONTENT>> 标记。
@@ -366,6 +371,30 @@ namespace Core {
             sb.Append($"    AutoFakeSlant={(autoSlant ? "true" : "false")}\n");
             sb.Append(']');
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// 动态拼装 minted 的额外可选参数。对空值跳过该键，避免 pgfkeys 报错（例如 numberstyle=,）。
+        /// </summary>
+        private string BuildMintedExtraOptions() {
+            var lines = new List<string>();
+            var escapeinside = _texConfigParser["CODE_ESCAPEINSIDE"].GetAsString();
+            if (!string.IsNullOrEmpty(escapeinside)) {
+                lines.Add($"\tescapeinside={escapeinside},");
+            }
+            var xleftmargin = _texConfigParser["CODE_XLEFTMARGIN"].GetAsString();
+            if (!string.IsNullOrEmpty(xleftmargin)) {
+                lines.Add($"\txleftmargin={xleftmargin},");
+            }
+            var xrightmargin = _texConfigParser["CODE_XRIGHTMARGIN"].GetAsString();
+            if (!string.IsNullOrEmpty(xrightmargin)) {
+                lines.Add($"\txrightmargin={xrightmargin},");
+            }
+            var numberstyle = _texConfigParser["CODE_NUMBERSTYLE"].GetAsString();
+            if (!string.IsNullOrEmpty(numberstyle)) {
+                lines.Add($"\tnumberstyle={numberstyle},");
+            }
+            return lines.Count > 0 ? string.Join("\n", lines) + "\n" : "";
         }
 
         /// <summary>

@@ -21,7 +21,7 @@ public class ConfigPathResolverTests {
 
             Assert.Equal(tmp.FullName, result.FullName);
             Assert.True(userProvided);
-            Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO && e.Message.Contains("Using configuration file"));
+            Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO && e.Message.Contains("使用配置文件"));
         } finally {
             if (tmp.Exists) tmp.Delete();
         }
@@ -39,7 +39,7 @@ public class ConfigPathResolverTests {
 
         Assert.Equal(fallback.FullName, result.FullName);
         Assert.False(userProvided); // 回退后不再严格
-        Assert.Contains(logger.Entries, e => e.Level == LogLevel.WARNING && e.Message.Contains("not found"));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.WARNING && e.Message.Contains("未找到配置文件"));
     }
 
     [Fact]
@@ -52,5 +52,33 @@ public class ConfigPathResolverTests {
 
         Assert.Equal(fallback.FullName, result.FullName);
         Assert.False(userProvided);
+    }
+
+    [Fact]
+    public void Resolve_ExistingFileFromCli_DoesNotInvokeFallbackFactory() {
+        var logger = new TestLogger();
+        var resolver = new ConfigPathResolver(logger);
+
+        var tmp = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json"));
+        try {
+            File.WriteAllText(tmp.FullName, "{}");
+            tmp.Refresh();
+
+            bool fallbackFactoryCalled = false;
+            var (result, userProvided) = resolver.Resolve(
+                tmp,
+                userProvidedAtCli: true,
+                defaultFallbackFactory: () => {
+                    fallbackFactoryCalled = true;
+                    return tmp;
+                }
+            );
+
+            Assert.Equal(tmp.FullName, result.FullName);
+            Assert.True(userProvided);
+            Assert.False(fallbackFactoryCalled, "用户提供有效配置时，不应调用回退工厂。");
+        } finally {
+            if (tmp.Exists) tmp.Delete();
+        }
     }
 }

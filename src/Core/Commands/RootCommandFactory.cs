@@ -74,23 +74,7 @@ namespace Core.Commands {
             var configOption = new Option<FileInfo>("--config", "-c") {
                 Description = "配置文件的路径。",
                 HelpName = "CONFIG",
-                DefaultValueFactory = (_) => {
-                    // 配置文件的路径，默认值是操作系统用户配置目录下的 NightingaleStudio/TemplateBuilder/config.json
-                    var userConfigPath = new UserConfigPathHelper("NightingaleStudio", "TemplateBuilder").GetUserConfigPath();
-                    var configFileInfo = new FileInfo(Path.Combine(userConfigPath, "config.json"));
-                    if (!configFileInfo.Exists) {
-                        // 确保目录存在
-                        if (!configFileInfo.Directory!.Exists) {
-                            configFileInfo.Directory.Create();
-                        }
-                        // 从嵌入式资源中复制默认配置文件到该路径
-                        using var fs = new ManifestResourceManager().GetResourceAsStream("DefaultConfig.jsonc");
-                        using var outFs = configFileInfo.Create();
-                        fs.CopyTo(outFs);
-                        _logger.Info($"已在 \"{configFileInfo.FullName}\" 创建默认配置文件。");
-                    }
-                    return configFileInfo;
-                }
+                DefaultValueFactory = (_) => GetDefaultConfigFileInfo(),
             };
             cmd.Options.Add(configOption);
 
@@ -113,7 +97,7 @@ namespace Core.Commands {
                     var (cfg, userProvided) = new ConfigPathResolver(_logger).Resolve(
                         pr.GetValue(configOption),
                         userProvidedAtCli,
-                        configOption.GetDefaultValue() as FileInfo
+                        EnsureDefaultConfigFileExists
                     );
 
                     var options = new BuildSubcommandOptions(
@@ -175,7 +159,7 @@ namespace Core.Commands {
 
             /* --check-xelatex */
             var checkXelatexOption = new Option<bool>("--check-xelatex") {
-                Description = "同时校验 xelatex 是否在 PATH 上。",
+                Description = "同时校验 xelatex 与 pygmentize 是否在 PATH 上。",
                 HelpName = "CHECK_XELATEX",
                 DefaultValueFactory = (_) => false,
             };
@@ -243,6 +227,32 @@ namespace Core.Commands {
             });
 
             return cmd;
+        }
+
+        /// <summary>
+        /// 获取默认用户配置文件路径对象（不执行磁盘 I/O 也不创建文件）。
+        /// </summary>
+        internal static FileInfo GetDefaultConfigFileInfo() {
+            var userConfigPath = new UserConfigPathHelper("NightingaleStudio", "TemplateBuilder").GetUserConfigPath();
+            return new FileInfo(Path.Combine(userConfigPath, "config.json"));
+        }
+
+        /// <summary>
+        /// 确保默认用户配置文件存在；仅在真正需要使用默认配置且文件不存在时才从嵌入资源生成。
+        /// </summary>
+        internal FileInfo EnsureDefaultConfigFileExists() {
+            var configFileInfo = GetDefaultConfigFileInfo();
+            if (!configFileInfo.Exists) {
+                if (configFileInfo.Directory is { Exists: false } dir) {
+                    dir.Create();
+                }
+                using var fs = new ManifestResourceManager().GetResourceAsStream("DefaultConfig.jsonc");
+                using var outFs = configFileInfo.Create();
+                fs.CopyTo(outFs);
+                _logger.Info($"已在 \"{configFileInfo.FullName}\" 创建默认配置文件。");
+                configFileInfo.Refresh();
+            }
+            return configFileInfo;
         }
     }
 }

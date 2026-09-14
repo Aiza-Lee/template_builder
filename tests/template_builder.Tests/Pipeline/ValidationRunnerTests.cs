@@ -128,6 +128,8 @@ public class ValidationRunnerTests {
         var allMessages = string.Join("\n", logger.Entries.Select(e => e.Message));
         Assert.Contains("[通过]", allMessages);
         Assert.Contains("汇总：", allMessages);
+        Assert.Contains("字符", allMessages);
+        Assert.Contains("最大深度", allMessages);
         tmp.Dispose();
     }
 
@@ -158,6 +160,7 @@ public class ValidationRunnerTests {
 
         var allMessages = string.Join("\n", logger.Entries.Select(e => e.Message));
         Assert.Contains("environment.xelatex", allMessages);
+        Assert.Contains("environment.pygmentize", allMessages);
         tmp.Dispose();
     }
 
@@ -169,6 +172,34 @@ public class ValidationRunnerTests {
         try {
             Environment.SetEnvironmentVariable("PATH", "");
             Assert.False(ValidationRunner.CheckXelatexOnPath());
+        } finally {
+            Environment.SetEnvironmentVariable("PATH", originalPath);
+        }
+    }
+
+    [Fact]
+    public void CheckPygmentizeOnPath_EmptyPath_ReturnsFalse() {
+        var originalPath = Environment.GetEnvironmentVariable("PATH");
+        try {
+            Environment.SetEnvironmentVariable("PATH", "");
+            Assert.False(ValidationRunner.CheckPygmentizeOnPath());
+        } finally {
+            Environment.SetEnvironmentVariable("PATH", originalPath);
+        }
+    }
+
+    [Fact]
+    public void CheckExecutableOnPath_FindsExecutableInDirectoryOnPath() {
+        using var tmp = TempDir.Create();
+        var exeName = OperatingSystem.IsWindows() ? "dummy_tool.exe" : "dummy_tool";
+        var exePath = Path.Combine(tmp.Path, exeName);
+        File.WriteAllText(exePath, "#!/bin/sh\necho ok");
+
+        var originalPath = Environment.GetEnvironmentVariable("PATH");
+        try {
+            Environment.SetEnvironmentVariable("PATH", tmp.Path);
+            Assert.True(ValidationRunner.CheckExecutableOnPath("dummy_tool"));
+            Assert.False(ValidationRunner.CheckExecutableOnPath("non_existent_tool"));
         } finally {
             Environment.SetEnvironmentVariable("PATH", originalPath);
         }

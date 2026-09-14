@@ -19,7 +19,7 @@ namespace Core.Pipeline {
             // Check 1: 源目录存在
             if (!options.SourceDir.Exists) {
                 checks.Add(new ValidationCheck("source", "exists", false,
-                    $"Source directory not found: {options.SourceDir.FullName}"));
+                    $"未找到源目录：{options.SourceDir.FullName}"));
                 return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
             }
             checks.Add(new ValidationCheck("source", "exists", true, options.SourceDir.FullName));
@@ -46,8 +46,8 @@ namespace Core.Pipeline {
             try {
                 var mainTex = _resMgr.GetResourceInString("Templates.Main.tex");
                 var codeBlockTex = _resMgr.GetResourceInString("Templates.CodeBlock.tex");
-                checks.Add(new ValidationCheck("resources", "Main.tex", true, $"{mainTex.Length} chars"));
-                checks.Add(new ValidationCheck("resources", "CodeBlock.tex", true, $"{codeBlockTex.Length} chars"));
+                checks.Add(new ValidationCheck("resources", "Main.tex", true, $"{mainTex.Length} 字符"));
+                checks.Add(new ValidationCheck("resources", "CodeBlock.tex", true, $"{codeBlockTex.Length} 字符"));
             } catch (MissingEmbeddedResourceException ex) {
                 checks.Add(new ValidationCheck("resources", "embedded", false, ex.Message));
                 return EmitReport(checks, ExitCodes.MissingEmbeddedResource, options.Format);
@@ -61,10 +61,10 @@ namespace Core.Pipeline {
                     if (entry.Depth > maxDepth) maxDepth = entry.Depth;
                 }
                 checks.Add(new ValidationCheck("source", "walk", true,
-                    $"max depth = {maxDepth}"));
+                    $"最大深度 = {maxDepth}"));
                 if (maxDepth >= 5) {
                     checks.Add(new ValidationCheck("source", "depth", false,
-                        $"Section depth {maxDepth} exceeds maximum supported (4)"));
+                        $"章节深度 {maxDepth} 超过最大支持深度（4）"));
                 } else {
                     checks.Add(new ValidationCheck("source", "depth", true,
                         $"{maxDepth} ≤ 4"));
@@ -87,22 +87,26 @@ namespace Core.Pipeline {
                 missingPlaceholders = referenced.Where(p => !texKeys.Contains(p)).ToList();
                 if (missingPlaceholders.Count == 0) {
                     checks.Add(new ValidationCheck("placeholders", "##KEY##", true,
-                        $"{referenced.Count} placeholders all resolve"));
+                        $"{referenced.Count} 个占位符全部成功解析"));
                 } else {
                     foreach (var m in missingPlaceholders) {
                         checks.Add(new ValidationCheck("placeholders", $"##{m}##", false,
-                            $"Referenced in Main.tex but not defined in TEX config"));
+                            $"在 Main.tex 中被引用但未在 TEX 配置中定义"));
                     }
                 }
             } catch (Exception ex) {
                 checks.Add(new ValidationCheck("placeholders", "##KEY##", false, ex.Message));
             }
 
-            // Check 7: xelatex 在 PATH 上（可选）
+            // Check 7: 外部环境依赖检查（可选）
             if (options.CheckXelatex) {
-                var found = CheckXelatexOnPath();
-                checks.Add(new ValidationCheck("environment", "xelatex", found,
-                    found ? "found on PATH" : "xelatex not found on PATH"));
+                var xelatexFound = CheckXelatexOnPath();
+                checks.Add(new ValidationCheck("environment", "xelatex", xelatexFound,
+                    xelatexFound ? "已在 PATH 中找到" : "未在 PATH 中找到 xelatex（请安装 TeX Live / MacTeX / MiKTeX 并配置 PATH）"));
+
+                var pygmentizeFound = CheckPygmentizeOnPath();
+                checks.Add(new ValidationCheck("environment", "pygmentize", pygmentizeFound,
+                    pygmentizeFound ? "已在 PATH 中找到" : "未在 PATH 中找到 pygmentize（minted 宏包语法高亮依赖，可通过 pip install Pygments 安装）"));
             }
 
             // Exit code priority: 3 (placeholder missing) > 6 (other soft failures)
@@ -153,22 +157,36 @@ namespace Core.Pipeline {
         }
 
         /// <summary>
-        /// 在 PATH 上查找 xelatex 可执行文件（Windows 优先 xelatex.exe）。
+        /// 在 PATH 上查找指定命令的可执行文件（Windows 优先尝试 .exe / .cmd / .bat 等后缀）。
         /// </summary>
-        internal static bool CheckXelatexOnPath() {
+        internal static bool CheckExecutableOnPath(string executableName) {
             var pathEnv = Environment.GetEnvironmentVariable("PATH");
             if (string.IsNullOrEmpty(pathEnv)) return false;
-            var exeName = OperatingSystem.IsWindows() ? "xelatex.exe" : "xelatex";
+            var exeNames = OperatingSystem.IsWindows()
+                ? [executableName + ".exe", executableName + ".cmd", executableName + ".bat", executableName]
+                : new[] { executableName };
             foreach (var dir in pathEnv.Split(Path.PathSeparator)) {
                 if (string.IsNullOrWhiteSpace(dir)) continue;
                 try {
-                    var candidate = Path.Combine(dir.Trim(), exeName);
-                    if (File.Exists(candidate)) return true;
+                    foreach (var name in exeNames) {
+                        var candidate = Path.Combine(dir.Trim(), name);
+                        if (File.Exists(candidate)) return true;
+                    }
                 } catch {
                     // 非法路径条目（罕见），跳过
                 }
             }
             return false;
         }
+
+        /// <summary>
+        /// 在 PATH 上查找 xelatex 可执行文件。
+        /// </summary>
+        internal static bool CheckXelatexOnPath() => CheckExecutableOnPath("xelatex");
+
+        /// <summary>
+        /// 在 PATH 上查找 pygmentize 可执行文件（Python Pygments 宏包语法高亮依赖）。
+        /// </summary>
+        internal static bool CheckPygmentizeOnPath() => CheckExecutableOnPath("pygmentize");
     }
 }

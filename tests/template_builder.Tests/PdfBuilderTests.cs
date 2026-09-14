@@ -96,7 +96,8 @@ public class PdfBuilderTests {
     /// </summary>
     private static (TempDir tmp, PdfBuilder builder, FakeXelatexRunner? runner) CreateFixtureCore(
         string configJson,
-        FakeXelatexRunner? fakeRunner
+        FakeXelatexRunner? fakeRunner,
+        TestLogger? customLogger = null
     ) {
         var tmp = TempDir.Create();
         var sourceDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "src"));
@@ -105,7 +106,7 @@ public class PdfBuilderTests {
         var configFile = new FileInfo(Path.Combine(tmp.Path, "cfg.json"));
         File.WriteAllText(configFile.FullName, configJson);
 
-        var logger = new TestLogger();
+        var logger = customLogger ?? new TestLogger();
         var texParser = new ConfigParser("TEX", logger, ConfigStrictness.Strict);
         var programParser = new ConfigParser("PROGRAM", logger, ConfigStrictness.Strict);
         texParser.ParseConfigFile(File.ReadAllText(configFile.FullName), configFile.FullName);
@@ -131,10 +132,11 @@ public class PdfBuilderTests {
     /// Round 3b 引入：注入 FakeXelatexRunner，返回 runner 实例供断言调用计数/参数。
     /// </summary>
     private static (TempDir tmp, PdfBuilder builder, FakeXelatexRunner runner) CreateBuilderFixtureWithFakeRunner(
-        string configJson
+        string configJson,
+        TestLogger? customLogger = null
     ) {
         var fake = new FakeXelatexRunner();
-        var (tmp, builder, runner) = CreateFixtureCore(configJson, fake);
+        var (tmp, builder, runner) = CreateFixtureCore(configJson, fake, customLogger);
         return (tmp, builder, runner!);
     }
 
@@ -536,7 +538,9 @@ public class PdfBuilderTests {
             Assert.Contains(@"headheight=12pt", tex);
             Assert.Contains(@"headsep=20pt", tex);
             Assert.Contains(@"footskip=30pt", tex);
-            Assert.Contains(@"columnrule=false", tex);
+            Assert.Contains(@"bottom=1.2cm,", tex);
+            Assert.DoesNotContain(@"\setlength{\columnseprule}", tex);
+            Assert.DoesNotContain(@"columnrule=", tex);
         } finally {
             tmp.Dispose();
         }
@@ -549,7 +553,6 @@ public class PdfBuilderTests {
         try {
             var tex = builder.GenerateTexContent_ForTest();
             Assert.Contains(@"headheight=15pt", tex);
-            Assert.DoesNotContain(@"headheight=12pt", tex);
         } finally {
             tmp.Dispose();
         }
@@ -585,7 +588,8 @@ public class PdfBuilderTests {
             """{ "TEX": { "geometry": { "column_rule": true } } }""");
         try {
             var tex = builder.GenerateTexContent_ForTest();
-            Assert.Contains(@"columnrule=true", tex);
+            Assert.Contains(@"\setlength{\columnseprule}{0.4pt}", tex);
+            Assert.DoesNotContain(@"columnrule=", tex);
         } finally {
             tmp.Dispose();
         }
@@ -613,6 +617,19 @@ public class PdfBuilderTests {
         try {
             var tex = builder.GenerateTexContent_ForTest();
             Assert.Contains(@"\title{\Huge\itshape", tex);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void GenerateTexContent_TitlePlaceholder_HasSpaceBetweenFontSizeCmdAndContent() {
+        var (tmp, builder) = CreateBuilderFixture(
+            """{ "TEX": { "title": { "content": "测试标题" } } }""");
+        try {
+            var tex = builder.GenerateTexContent_ForTest();
+            // 验证 \Large\bfseries 与 中文标题之间存在空格分隔，防止 XeTeX 解析为未定义控制序列 \bfseries测试标题
+            Assert.Contains(@"\title{\Large\bfseries 测试标题}", tex);
         } finally {
             tmp.Dispose();
         }
@@ -713,12 +730,12 @@ public class PdfBuilderTests {
         try {
             var tex = builder.GenerateTexContent_ForTest();
             Assert.Contains(@"mathescape=false", tex);
-            Assert.Contains(@"escapeinside=", tex);
-            Assert.Contains(@"xleftmargin=", tex);
-            Assert.Contains(@"xrightmargin=", tex);
+            Assert.DoesNotContain(@"escapeinside=", tex);
+            Assert.DoesNotContain(@"xleftmargin=", tex);
+            Assert.DoesNotContain(@"xrightmargin=", tex);
             Assert.Contains(@"firstnumber=auto", tex);
             Assert.Contains(@"stepnumber=1", tex);
-            Assert.Contains(@"numberstyle=", tex);
+            Assert.DoesNotContain(@"numberstyle=", tex);
             Assert.Contains(@"showspaces=false", tex);
             Assert.Contains(@"showtabs=false", tex);
         } finally {
@@ -1004,6 +1021,20 @@ public class PdfBuilderTests {
     }
 
     [Fact]
+    public void Build_RunnerStartFailed_EmitsTroubleshootingGuidance() {
+        var logger = new TestLogger();
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}", logger);
+        runner.Results.Enqueue(new XelatexResult(-1, "[failed to start: No such file or directory]\n", false));
+        try {
+            var exitCode = builder.Build();
+            Assert.Equal(ExitCodes.XelatexFailure, exitCode);
+            Assert.Contains(logger.Entries, e => e.Level == LogLevel.ERROR && e.Message.Contains("排查指引"));
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
     public void BuildXelatexArguments_EmitsExpectedFlags() {
         var midTex = new FileInfo(Path.Combine(Path.GetTempPath(), "jobname.tex"));
         var args = PdfBuilder.BuildXelatexArguments(midTex);
@@ -1069,11 +1100,13 @@ public class PdfBuilderTests {
     // ============================================================
 
     [Fact]
-    public void GenerateTexContent_MicrotypeDefaults_AllThreeOptionsTrue() {
+    public void GenerateTexContent_MicrotypeDefaults_ProtrusionTrueOthersFalse() {
         var (tmp, builder) = CreateBuilderFixture("{}");
         try {
             var tex = builder.GenerateTexContent_ForTest();
-            Assert.Contains(@"\usepackage[true,true,true]{microtype}", tex);
+            Assert.Contains(@"\usepackage[protrusion=true,expansion=false,kerning=false]{microtype}", tex);
+            Assert.Contains(@"\let\MT@setup@expansion\relax", tex);
+            Assert.Contains(@"\let\old@PackageError\PackageError", tex);
         } finally {
             tmp.Dispose();
         }
@@ -1085,31 +1118,31 @@ public class PdfBuilderTests {
             """{ "TEX": { "typesetting": { "microtype": { "protrusion": false } } } }""");
         try {
             var tex = builder.GenerateTexContent_ForTest();
-            Assert.Contains(@"\usepackage[false,true,true]{microtype}", tex);
+            Assert.Contains(@"\usepackage[protrusion=false,expansion=false,kerning=false]{microtype}", tex);
         } finally {
             tmp.Dispose();
         }
     }
 
     [Fact]
-    public void GenerateTexContent_MicrotypeExpansionDisabled_EmitsFalse() {
+    public void GenerateTexContent_MicrotypeExpansionEnabled_EmitsTrue() {
         var (tmp, builder) = CreateBuilderFixture(
-            """{ "TEX": { "typesetting": { "microtype": { "expansion": false } } } }""");
+            """{ "TEX": { "typesetting": { "microtype": { "expansion": true } } } }""");
         try {
             var tex = builder.GenerateTexContent_ForTest();
-            Assert.Contains(@"\usepackage[true,false,true]{microtype}", tex);
+            Assert.Contains(@"\usepackage[protrusion=true,expansion=true,kerning=false]{microtype}", tex);
         } finally {
             tmp.Dispose();
         }
     }
 
     [Fact]
-    public void GenerateTexContent_MicrotypeKerningDisabled_EmitsFalse() {
+    public void GenerateTexContent_MicrotypeKerningEnabled_EmitsTrue() {
         var (tmp, builder) = CreateBuilderFixture(
-            """{ "TEX": { "typesetting": { "microtype": { "kerning": false } } } }""");
+            """{ "TEX": { "typesetting": { "microtype": { "kerning": true } } } }""");
         try {
             var tex = builder.GenerateTexContent_ForTest();
-            Assert.Contains(@"\usepackage[true,true,false]{microtype}", tex);
+            Assert.Contains(@"\usepackage[protrusion=true,expansion=false,kerning=true]{microtype}", tex);
         } finally {
             tmp.Dispose();
         }
@@ -1132,7 +1165,7 @@ public class PdfBuilderTests {
             """);
         try {
             var tex = builder.GenerateTexContent_ForTest();
-            Assert.Contains(@"\usepackage[false,false,false]{microtype}", tex);
+            Assert.Contains(@"\usepackage[protrusion=false,expansion=false,kerning=false]{microtype}", tex);
         } finally {
             tmp.Dispose();
         }
@@ -1284,6 +1317,29 @@ public class PdfBuilderTests {
             // ##AUTHOR## 已被 AUTHOR 的值（"Aiza"）替换
             Assert.DoesNotContain("##AUTHOR##", tex);
             Assert.Contains(@"\setmainfont{Aiza}", tex);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Build_PurgesBuildDirBeforeBuilding_DoesNotProduceBuildSection() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+        var buildDir = Path.Combine(tmp.Path, "src", "build");
+        Directory.CreateDirectory(buildDir);
+        File.WriteAllText(Path.Combine(buildDir, "old.aux"), "old aux content");
+        File.WriteAllText(Path.Combine(buildDir, "mid-output.pdf"), "old pdf");
+        string? generatedTex = null;
+        runner.Results.Enqueue(new XelatexResult(0, "", false));
+        runner.SideEffects.Enqueue((_, _) => {
+            generatedTex = File.ReadAllText(Path.Combine(buildDir, "mid-output.tex"));
+        });
+
+        try {
+            var exitCode = builder.Build();
+            Assert.Equal(ExitCodes.Success, exitCode);
+            Assert.NotNull(generatedTex);
+            Assert.DoesNotContain(@"\section{build}", generatedTex);
         } finally {
             tmp.Dispose();
         }

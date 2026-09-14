@@ -46,10 +46,18 @@ jobs:
             runtime: linux-x64
             archive: template_builder-linux-x64.tar.gz
             checksum: template_builder-linux-x64.tar.gz.sha256
+          - os: ubuntu-latest
+            runtime: linux-arm64
+            archive: template_builder-linux-arm64.tar.gz
+            checksum: template_builder-linux-arm64.tar.gz.sha256
           - os: macos-latest
             runtime: osx-x64
             archive: template_builder-osx-x64.tar.gz
             checksum: template_builder-osx-x64.tar.gz.sha256
+          - os: macos-latest
+            runtime: osx-arm64
+            archive: template_builder-osx-arm64.tar.gz
+            checksum: template_builder-osx-arm64.tar.gz.sha256
           - os: windows-latest
             runtime: win-x64
             archive: template_builder-win-x64.zip
@@ -65,7 +73,7 @@ jobs:
           dotnet-version: "9.0.x"
 
       - name: Publish self-contained binaries
-        run: dotnet publish template_builder.csproj --configuration Release --runtime ${{ matrix.runtime }} --self-contained true --output publish/template_builder-${{ matrix.runtime }}
+        run: dotnet publish template_builder.csproj --configuration Release --runtime ${{ matrix.runtime }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true --output publish/template_builder-${{ matrix.runtime }}
 
       - name: Clean artifacts (Unix)
         if: matrix.os != 'windows-latest'

@@ -66,7 +66,7 @@
 | `TEX.geometry.headheight` | `"12pt"` | `\geometry{headheight=...}`：页眉高度 |
 | `TEX.geometry.headsep` | `"20pt"` | `\geometry{headsep=...}`：页眉与正文间距 |
 | `TEX.geometry.footskip` | `"30pt"` | `\geometry{footskip=...}`：页脚基线到正文底部距离 |
-| `TEX.geometry.column_rule` | `false` | `\geometry{columnrule=...}`：twocolumn 时是否画分隔线（onecolumn 模式无效） |
+| `TEX.geometry.column_rule` | `false` | twocolumn 时是否画分隔线（`\setlength{\columnseprule}{0.4pt}`；onecolumn 模式无效） |
 | `TEX.layout.section_depth` | `5` | `\setcounter{secnumdepth}{...}` 编号深度。同时决定 CodeBlockGenerator 截取的章节层级（深度超出 clamp 到最后一层而非报错） |
 | `TEX.layout.toc_depth` | `5` | `\setcounter{tocdepth}{...}` 目录深度 |
 | `TEX.layout.columns` | `2` | 1 或 2：正文总列数。`1` 适合演示/草稿，`2` 适合代码密集 |
@@ -99,8 +99,8 @@
 | `TEX.docclass.base_font_size` | `"10pt"` | `\documentclass[<this>,...]{ctexart}` 主字号 |
 | `TEX.docclass.orientation` | `"landscape"` | `\documentclass[...,<this>,...]{ctexart}` 与 `\geometry{...}`：landscape / portrait |
 | `TEX.typesetting.microtype.protrusion` | `true` | `microtype` 字符伸出（标点悬挂到 margin 外）。代码密集文档（minted blocks）受益最明显 |
-| `TEX.typesetting.microtype.expansion` | `true` | `microtype` 字体微扩展（改善断行、减少 underfull `\hbox` 警告） |
-| `TEX.typesetting.microtype.kerning` | `true` | `microtype` 字偶距增强（XeLaTeX 下对部分字体生效） |
+| `TEX.typesetting.microtype.expansion` | `false` | `microtype` 字体微扩展（XeLaTeX 引擎不支持，默认 false 避免编译报错） |
+| `TEX.typesetting.microtype.kerning` | `false` | `microtype` 字偶距增强（XeLaTeX 引擎原生由 fontspec 处理，默认 false 避免编译报错） |
 | `TEX.typesetting.parskip.enabled` | `false` | true 时插入 `\usepackage{parskip}`，段间用垂直空白替代 LaTeX 默认的段首缩进（modern 风格） |
 
 ### PROGRAM 段
@@ -158,7 +158,7 @@
 
 ### 关闭 microtype（恢复 LaTeX 默认排版）
 
-microtype 默认三选项全开。如需彻底关闭以避免某些老 TeX Live 的兼容问题：
+microtype 默认开启 protrusion（字符悬挂伸出），关闭 expansion 与 kerning（因 XeLaTeX 引擎不支持）。如需彻底关闭 microtype：
 
 ```jsonc
 "TYPESETTING": {
@@ -170,7 +170,7 @@ microtype 默认三选项全开。如需彻底关闭以避免某些老 TeX Live 
 }
 ```
 
-三选项全 `false` 时 `\usepackage[false,false,false]{microtype}` 仍会发出（LaTeX 合法 no-op），任意一项改回 `true` 即激活对应功能。
+三选项全 `false` 时 `\usepackage[protrusion=false,expansion=false,kerning=false]{microtype}` 仍会发出（LaTeX 合法 no-op），任意一项改回 `true` 即激活对应功能。
 
 ### 现代段间空白（parskip）
 

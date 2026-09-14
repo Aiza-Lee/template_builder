@@ -272,4 +272,63 @@ public class ConfigParserTests {
 
         Assert.Throws<InvalidCastException>(() => parser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool());
     }
+
+    [Fact]
+    public void DefaultConfigDocument_ReturnsSameInstanceAcrossCalls() {
+        var doc1 = ConfigParser.DefaultConfigDocument;
+        var doc2 = ConfigParser.DefaultConfigDocument;
+
+        Assert.NotNull(doc1);
+        Assert.Same(doc1, doc2);
+    }
+
+    [Fact]
+    public void ConfigParser_SharesDefaultDocumentAcrossTexAndProgram() {
+        var logger = new TestLogger();
+        var texParser = new ConfigParser("TEX", logger);
+        var programParser = new ConfigParser("PROGRAM", logger);
+
+        Assert.Equal("Aiza", texParser["AUTHOR"].GetAsString());
+        var extensions = programParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
+        Assert.Contains(".cpp", extensions);
+        Assert.Contains(".py", extensions);
+    }
+
+    [Fact]
+    public void ConfigParser_CustomDefaultDocument_UsesProvidedDocument() {
+        var logger = new TestLogger();
+        using var customDoc = System.Text.Json.JsonDocument.Parse(
+            """
+            {
+                "CUSTOM_ROOT": {
+                    "setting_a": "alpha",
+                    "nested": {
+                        "setting_b": 42
+                    }
+                }
+            }
+            """
+        );
+
+        var parser = new ConfigParser("CUSTOM_ROOT", logger, customDoc);
+
+        Assert.Equal("alpha", parser["SETTING_A"].GetAsString());
+        Assert.Equal(42, parser["NESTED_SETTING_B"].GetAsInt());
+    }
+
+    [Fact]
+    public void ConfigParser_DebugLogging_EmitsForNonProgramSections() {
+        var logger = new TestLogger();
+        var parser = new ConfigParser("TEX", logger);
+
+        // 构造阶段注册默认配置：TEX 节点下的配置项也应触发 Debug 日志
+        Assert.Contains(logger.Entries, entry =>
+            entry.Level == LogLevel.DEBUG && entry.Message.StartsWith("Registering config key: 'AUTHOR'", StringComparison.Ordinal));
+
+        // 用户配置解析阶段：设置配置项也应触发 Debug 日志
+        parser.ParseConfigFile("""{ "TEX": { "author": "NewAuthor" } }""");
+        Assert.Contains(logger.Entries, entry =>
+            entry.Level == LogLevel.DEBUG && entry.Message.StartsWith("Setting config key: 'AUTHOR'", StringComparison.Ordinal));
+    }
 }
+

@@ -17,7 +17,7 @@ namespace Core.Pipeline {
                 throw new InvalidArgumentException("源文件目录无效。");
             }
             if (!requested.Exists) {
-                throw new InvalidArgumentException($"Source files folder \"{requested.FullName}\" not found.");
+                throw new InvalidArgumentException($"未找到源文件目录 \"{requested.FullName}\"。");
             }
             return requested;
         }
@@ -30,7 +30,7 @@ namespace Core.Pipeline {
                 throw new InvalidArgumentException("输出文件路径无效。");
             }
             if (!requested.Directory.Exists) {
-                _logger.Warning($"Output directory \"{requested.Directory.FullName}\" not found, created by the program.");
+                _logger.Warning($"未找到输出目录 \"{requested.Directory.FullName}\"，已由程序自动创建。");
                 requested.Directory.Create();
             }
             var pdfFileName = Path.GetFileNameWithoutExtension(requested.Name) + ".pdf";

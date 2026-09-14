@@ -96,19 +96,49 @@ namespace Utils {
             AllowTrailingCommas = true,
         };
 
+        private static readonly Lazy<JsonDocument> s_defaultConfigDocument = new(() => {
+            var raw = new ManifestResourceManager().GetResourceInString(DefaultConfigFileName);
+            return JsonDocument.Parse(raw, _jsonDocumentOptions);
+        });
+
         /// <summary>
-        /// 构造函数
+        /// 嵌入式默认配置的共享 JsonDocument 单例
+        /// </summary>
+        public static JsonDocument DefaultConfigDocument => s_defaultConfigDocument.Value;
+
+        /// <summary>
+        /// 构造函数，使用共享的嵌入式默认配置
         /// </summary>
         /// <param name="rootObjectName">配置文件的根对象名称</param>
         /// <param name="logger">日志记录器，可选</param>
         /// <param name="strictness">对未知 key 的处理策略，默认为 Lax</param>
-        public ConfigParser(string rootObjectName, ILogger logger, ConfigStrictness strictness = ConfigStrictness.Lax) {
+        public ConfigParser(string rootObjectName, ILogger logger, ConfigStrictness strictness = ConfigStrictness.Lax)
+            : this(rootObjectName, logger, DefaultConfigDocument, strictness) {
+        }
+
+        /// <summary>
+        /// 构造函数，支持传入指定的默认配置 JsonDocument
+        /// </summary>
+        /// <param name="rootObjectName">配置文件的根对象名称</param>
+        /// <param name="logger">日志记录器，可选</param>
+        /// <param name="defaultDocument">默认配置 JsonDocument</param>
+        /// <param name="strictness">对未知 key 的处理策略，默认为 Lax</param>
+        public ConfigParser(string rootObjectName, ILogger logger, JsonDocument defaultDocument, ConfigStrictness strictness = ConfigStrictness.Lax) {
+            ArgumentNullException.ThrowIfNull(defaultDocument);
             _logger = logger;
             _rootObjectName = rootObjectName;
             _strictness = strictness;
 
-            // 此处的默认配置是指在潜入文件中的json配置文件
-            ParseJsonContent(new ManifestResourceManager().GetResourceInString(DefaultConfigFileName), true);
+            ParseDefaultDocument(defaultDocument);
+        }
+
+        private void ParseDefaultDocument(JsonDocument defaultDocument) {
+            var json = defaultDocument.RootElement;
+            if (json.TryGetProperty(_rootObjectName, out var jsonElement)) {
+                ParseJsonElement_R(jsonElement, [], isDefaultConfig: true);
+            } else {
+                _logger?.Error($"Config content does not contain '{_rootObjectName}' root element.");
+            }
         }
 
         public ReadonlyConfigValue this[string key] {
@@ -202,9 +232,7 @@ namespace Utils {
         /// <param name="key">配置项键</param>
         /// <param name="defaultValue">配置项默认值</param>
         private void RegisterConfig(string key, ConfigValue configValue) {
-            if (_rootObjectName == "PROGRAM") {
-                _logger?.Debug($"Registering config key: '{key}' with default value: '{configValue.GetAsString()}'");
-            }
+            _logger?.Debug($"Registering config key: '{key}' with default value: '{configValue.GetAsString()}'");
             if (!_configValues.ContainsKey(key)) {
                 _configValues[key] = configValue;
             } else {
@@ -218,9 +246,7 @@ namespace Utils {
         /// <param name="key">配置项键</param>
         /// <param name="configValue">配置项值</param>
         private void SetConfigValue(string key, ConfigValue configValue) {
-            if (_rootObjectName == "PROGRAM") {
-                _logger?.Debug($"Setting config key: '{key}' with value: '{configValue.GetAsString()}'");
-            }
+            _logger?.Debug($"Setting config key: '{key}' with value: '{configValue.GetAsString()}'");
             if (_configValues.TryGetValue(key, out var existingConfigValue)) {
                 existingConfigValue.Value = configValue.Value;
             } else {

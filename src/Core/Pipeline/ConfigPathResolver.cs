@@ -21,20 +21,35 @@ namespace Core.Pipeline {
             FileInfo? requested,
             bool userProvidedAtCli,
             FileInfo? defaultFallback
+        ) => Resolve(requested, userProvidedAtCli, defaultFallback != null ? () => defaultFallback : null);
+
+        /// <summary>
+        /// 解析 `-c` 选项（支持惰性求值回退工厂，避免提前触发默认配置生成）。
+        /// </summary>
+        public (FileInfo ConfigFile, bool UserProvided) Resolve(
+            FileInfo? requested,
+            bool userProvidedAtCli,
+            Func<FileInfo>? defaultFallbackFactory
         ) {
             if (requested != null && requested.Exists) {
-                _logger.Info($"Using configuration file at \"{requested.FullName}\".");
+                _logger.Info($"使用配置文件：\"{requested.FullName}\"。");
                 return (requested, userProvidedAtCli);
             }
 
-            var requestedPath = requested?.FullName ?? "<null>";
-            _logger.Warning($"Configuration file \"{requestedPath}\" not found, use default configuration instead.");
+            if (userProvidedAtCli) {
+                var requestedPath = requested?.FullName ?? "<null>";
+                _logger.Warning($"未找到配置文件 \"{requestedPath}\"，将改用默认配置。");
+            }
 
-            if (defaultFallback == null) {
-                // 这分支理论上不可达：configOption.DefaultValueFactory 一定会算出一个 FileInfo
+            if (defaultFallbackFactory == null) {
+                // 这分支理论上不可达：应提供默认配置或回退工厂
                 throw new InvalidOperationException("默认配置回退不可用。");
             }
-            return (defaultFallback, false); // 退回默认配置不再严格
+            var fallback = defaultFallbackFactory();
+            if (!userProvidedAtCli) {
+                _logger.Info($"使用配置文件：\"{fallback.FullName}\"。");
+            }
+            return (fallback, false); // 退回默认配置不再严格
         }
     }
 }
