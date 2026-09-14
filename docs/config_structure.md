@@ -95,9 +95,11 @@
 | `TEX.global.cjk_main_italic_font` | `""` | `\setCJKmainfont{...}[ItalicFont=...]`；空 = 不输出该选项 |
 | `TEX.global.cjk_auto_fake_bold` | `true` | `\setCJKmainfont{...}[AutoFakeBold=...]`：未指定 BoldFont 时自动用粗体算法模拟 |
 | `TEX.global.cjk_auto_fake_slant` | `true` | `\setCJKmainfont{...}[AutoFakeSlant=...]`：未指定 ItalicFont 时自动用斜体算法模拟 |
+| `TEX.global.custom_font_dirs` | `[]` | 额外字体目录列表，免安装自动识别本地 TTF/OTF 字体 |
 | `TEX.global.page_style` | `"plain"` | `\pagestyle{...}`：`plain` / `headings` / `empty` / `fancy` |
 | `TEX.docclass.base_font_size` | `"10pt"` | `\documentclass[<this>,...]{ctexart}` 主字号 |
 | `TEX.docclass.orientation` | `"landscape"` | `\documentclass[...,<this>,...]{ctexart}` 与 `\geometry{...}`：landscape / portrait |
+| `TEX.docclass.fontset` | `"auto"` | ctex 字体集预设：`auto` / `fandol` / `ubuntu` / `windows` / `mac` / `none` |
 | `TEX.typesetting.microtype.protrusion` | `true` | `microtype` 字符伸出（标点悬挂到 margin 外）。代码密集文档（minted blocks）受益最明显 |
 | `TEX.typesetting.microtype.expansion` | `false` | `microtype` 字体微扩展（XeLaTeX 引擎不支持，默认 false 避免编译报错） |
 | `TEX.typesetting.microtype.kerning` | `false` | `microtype` 字偶距增强（XeLaTeX 引擎原生由 fontspec 处理，默认 false 避免编译报错） |

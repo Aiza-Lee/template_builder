@@ -16,10 +16,11 @@ namespace Core {
         /// <summary>
         /// 同步运行一次 xelatex 子进程，等待其退出或超时。
         /// </summary>
-        /// <param name="workingDir">子进程的工作目录（当前实现是 AppContext.BaseDirectory）</param>
+        /// <param name="workingDir">子进程的工作目录</param>
         /// <param name="arguments">完整的 xelatex 参数串</param>
         /// <param name="timeoutSeconds">超时秒数；&lt;= 0 表示不限时</param>
-        XelatexResult Run(string workingDir, string arguments, int timeoutSeconds);
+        /// <param name="extraFontDirs">需要额外追加到 OSFONTDIR 环境变量的自定义字体目录列表</param>
+        XelatexResult Run(string workingDir, string arguments, int timeoutSeconds, IEnumerable<string>? extraFontDirs = null);
     }
 
     /// <summary>
@@ -33,7 +34,7 @@ namespace Core {
             _logger = logger;
         }
 
-        public XelatexResult Run(string workingDir, string arguments, int timeoutSeconds) {
+        public XelatexResult Run(string workingDir, string arguments, int timeoutSeconds, IEnumerable<string>? extraFontDirs = null) {
             var stderr = new StringBuilder();
             using var proc = new Process {
                 StartInfo = new ProcessStartInfo {
@@ -46,6 +47,19 @@ namespace Core {
                     WorkingDirectory = workingDir
                 }
             };
+
+            // 注入自定义字体目录到 OSFONTDIR 环境变量，使得 XeTeX 能直接在免安装情况下识别本地字体
+            if (extraFontDirs != null) {
+                var validDirs = extraFontDirs.Where(d => !string.IsNullOrWhiteSpace(d) && Directory.Exists(d)).Distinct().ToList();
+                if (validDirs.Count > 0) {
+                    var existing = Environment.GetEnvironmentVariable("OSFONTDIR") ?? "";
+                    var sep = Path.PathSeparator;
+                    var joined = string.Join(sep.ToString(), validDirs);
+                    proc.StartInfo.EnvironmentVariables["OSFONTDIR"] = string.IsNullOrEmpty(existing)
+                        ? joined
+                        : $"{joined}{sep}{existing}";
+                }
+            }
 
             proc.ErrorDataReceived += (_, a) => {
                 if (a.Data != null) {

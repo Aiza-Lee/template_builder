@@ -6,7 +6,7 @@ namespace template_builder.Tests.Fixtures {
     /// 记录 xelatex 子进程调用并返回预设结果的 fake runner。仅用于单测，避免真的 spawn xelatex。
     /// </summary>
     internal class FakeXelatexRunner : IXelatexRunner {
-        public record Call(string WorkingDir, string Arguments, int TimeoutSeconds);
+        public record Call(string WorkingDir, string Arguments, int TimeoutSeconds, List<string>? ExtraFontDirs = null);
 
         public List<Call> Calls { get; } = new();
         public Queue<XelatexResult> Results { get; } = new();
@@ -17,8 +17,8 @@ namespace template_builder.Tests.Fixtures {
         /// </summary>
         public Queue<Action<string, string>?> SideEffects { get; } = new();
 
-        public XelatexResult Run(string workingDir, string arguments, int timeoutSeconds) {
-            Calls.Add(new Call(workingDir, arguments, timeoutSeconds));
+        public XelatexResult Run(string workingDir, string arguments, int timeoutSeconds, IEnumerable<string>? extraFontDirs = null) {
+            Calls.Add(new Call(workingDir, arguments, timeoutSeconds, extraFontDirs?.ToList()));
             // 执行副作用（如果有）
             if (SideEffects.Count > 0) {
                 var sideEffect = SideEffects.Dequeue();

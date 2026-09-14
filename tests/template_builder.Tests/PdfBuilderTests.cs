@@ -1373,5 +1373,106 @@ public class PdfBuilderTests {
         Assert.False(File.Exists(aex));
         Assert.False(File.Exists(w18));
     }
+
+    [Fact]
+    public void GenerateTexContent_DocclassFontset_EmitsFontsetOption() {
+        var (tmp, builder) = CreateBuilderFixture(
+            """{ "TEX": { "docclass": { "fontset": "ubuntu" } } }""");
+        try {
+            var tex = builder.GenerateTexContent_ForTest();
+            Assert.Contains(@"\documentclass[10pt,landscape,twocolumn,fontset=ubuntu]{ctexart}", tex);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void GenerateTexContent_DocclassFontsetAuto_OmitsFontsetOption() {
+        var (tmp, builder) = CreateBuilderFixture(
+            """{ "TEX": { "docclass": { "fontset": "auto" } } }""");
+        try {
+            var tex = builder.GenerateTexContent_ForTest();
+            Assert.Contains(@"\documentclass[10pt,landscape,twocolumn]{ctexart}", tex);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void GenerateTexContent_CjkMainFontAuto_OmitsSetCJKmainfont() {
+        var (tmp, builder) = CreateBuilderFixture(
+            """{ "TEX": { "global": { "cjk_main_font": "auto" } } }""");
+        try {
+            var tex = builder.GenerateTexContent_ForTest();
+            Assert.DoesNotContain(@"\setCJKmainfont", tex);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void GenerateTexContent_CjkFallbackChain_ContainsSimSunNotoAndFandol() {
+        var (tmp, builder) = CreateBuilderFixture("{}");
+        try {
+            var tex = builder.GenerateTexContent_ForTest();
+            Assert.Contains(@"\IfFontExistsTF{SimSun}", tex);
+            Assert.Contains(@"\IfFontExistsTF{Noto Serif CJK SC}", tex);
+            Assert.Contains(@"\IfFontExistsTF{FandolSong}", tex);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void GenerateTexContent_CjkCustomFont_PrependsToFallbackChain() {
+        var (tmp, builder) = CreateBuilderFixture(
+            """{ "TEX": { "global": { "cjk_main_font": "Source Han Serif SC" } } }""");
+        try {
+            var tex = builder.GenerateTexContent_ForTest();
+            Assert.Contains(@"\IfFontExistsTF{Source Han Serif SC}", tex);
+            Assert.Contains(@"\IfFontExistsTF{SimSun}", tex);
+            Assert.Contains(@"\IfFontExistsTF{Noto Serif CJK SC}", tex);
+            Assert.Contains(@"\IfFontExistsTF{FandolSong}", tex);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Build_DiscoversSourceFontsDir_AndPassesToRunner() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+        var fontsDir = Path.Combine(tmp.Path, "src", "fonts");
+        Directory.CreateDirectory(fontsDir);
+        try {
+            builder.Build();
+            Assert.NotEmpty(runner.Calls);
+            Assert.NotNull(runner.Calls[0].ExtraFontDirs);
+            Assert.Contains(fontsDir, runner.Calls[0].ExtraFontDirs!);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Build_CustomFontDirs_ResolvedAndPassedToRunner() {
+        using var extraDir = TempDir.Create();
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner($$"""
+            {
+                "TEX": {
+                    "global": {
+                        "custom_font_dirs": ["{{extraDir.Path.Replace("\\", "/")}}"]
+                    }
+                }
+            }
+            """);
+        try {
+            builder.Build();
+            Assert.NotEmpty(runner.Calls);
+            Assert.NotNull(runner.Calls[0].ExtraFontDirs);
+            Assert.Contains(extraDir.Path, runner.Calls[0].ExtraFontDirs!);
+        } finally {
+            tmp.Dispose();
+        }
+    }
 }
 

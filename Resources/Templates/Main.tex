@@ -1,4 +1,4 @@
-\documentclass[##DOCCLASS_BASE_FONT_SIZE##,##DOCCLASS_ORIENTATION##,<<DOC_CLASS_COLUMNS>>]{ctexart} % ctexart支持中文排版
+\documentclass[##DOCCLASS_BASE_FONT_SIZE##,##DOCCLASS_ORIENTATION##,<<DOC_CLASS_COLUMNS>><<DOC_CLASS_FONTSET>>]{ctexart} % ctexart支持中文排版
 
 \usepackage{geometry}		% 页面布局设置
 \makeatletter
@@ -54,10 +54,38 @@
 \setlength{\columnsep}{##GEOMETRY_COLUMN_SEP##} % 双栏间距，如: 1cm
 <<GEOMETRY_COLUMN_RULE_LINE>>
 
-% Fonts - 字体设置
-\setmainfont{##GLOBAL_MAIN_FONT##}  % 西文主字体名称，如：Times New Roman
-<<CJK_FONT_BLOCK>>  % runtime: \setCJKmainfont{...}[...] 由 PdfBuilder 动态拼装（BoldFont/ItalicFont 空值剔除 + AutoFake 开关）
-\setsansfont{##GLOBAL_CJK_SANS_FONT##}  % CJK sans 字体
+% Fonts - 字体设置（带智能回退链，兼顾用户自定义字体、OS原生字体与跨平台无损降级）
+\IfFontExistsTF{##GLOBAL_MAIN_FONT##}{
+	\setmainfont{##GLOBAL_MAIN_FONT##}
+}{
+	\IfFontExistsTF{Times New Roman}{
+		\setmainfont{Times New Roman}
+	}{
+		\IfFontExistsTF{Liberation Serif}{
+			\setmainfont{Liberation Serif}
+		}{
+			\IfFontExistsTF{TeX Gyre Termes}{
+				\setmainfont{TeX Gyre Termes}
+			}{}
+		}
+	}
+}
+<<CJK_FONT_BLOCK>>
+\IfFontExistsTF{##GLOBAL_CJK_SANS_FONT##}{
+	\setsansfont{##GLOBAL_CJK_SANS_FONT##}
+}{
+	\IfFontExistsTF{SimHei}{
+		\setsansfont{SimHei}
+	}{
+		\IfFontExistsTF{Noto Sans CJK SC}{
+			\setsansfont{Noto Sans CJK SC}
+		}{
+			\IfFontExistsTF{FandolHei}{
+				\setsansfont{FandolHei}
+			}{}
+		}
+	}
+}
 
 % Hyperref configuration - PDF导航、书签和元数据设置
 \hypersetup{
@@ -78,12 +106,41 @@
 	pdfkeywords={<<METADATA_KEYWORDS>>}					% PDF文档关键词（runtime 拼接）
 }
 
-\newfontfamily{\customcodefontfamily}{##CODE_FONT_FAMILY##}[		% Fira Code 字体设置
-	NFSSFamily=CustomCodeFont,
-	Contextuals={Alternate},  % 启用编程连字
-	Ligatures={Common, Rare}, % 启用所有连字类型
-	Kerning=On                % 开启字距调整
-]
+\IfFontExistsTF{##CODE_FONT_FAMILY##}{
+	\newfontfamily{\customcodefontfamily}{##CODE_FONT_FAMILY##}[
+		NFSSFamily=CustomCodeFont,
+		Contextuals={Alternate},  % 启用编程连字
+		Ligatures={Common, Rare}, % 启用所有连字类型
+		Kerning=On                % 开启字距调整
+	]
+}{
+	\IfFontExistsTF{Fira Code}{
+		\newfontfamily{\customcodefontfamily}{Fira Code}[
+			NFSSFamily=CustomCodeFont,
+			Contextuals={Alternate},
+			Ligatures={Common, Rare},
+			Kerning=On
+		]
+	}{
+		\IfFontExistsTF{Liberation Mono}{
+			\newfontfamily{\customcodefontfamily}{Liberation Mono}[
+				NFSSFamily=CustomCodeFont
+			]
+		}{
+			\IfFontExistsTF{Courier New}{
+				\newfontfamily{\customcodefontfamily}{Courier New}[
+					NFSSFamily=CustomCodeFont
+				]
+			}{
+				\IfFontExistsTF{TeX Gyre Cursor}{
+					\newfontfamily{\customcodefontfamily}{TeX Gyre Cursor}[
+						NFSSFamily=CustomCodeFont
+					]
+				}{}
+			}
+		}
+	}
+}
 
 \setminted{
 	style=##CODE_MINTED_STYLE##,

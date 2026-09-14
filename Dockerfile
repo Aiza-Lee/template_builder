@@ -56,9 +56,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HOME=/tmp \
     XDG_CACHE_HOME=/tmp/.cache \
     TEXMFVAR=/tmp/texmf-var \
-    TEXMFCONFIG=/tmp/texmf-config
+    TEXMFCONFIG=/tmp/texmf-config \
+    OSFONTDIR=/workspace/fonts:/workspace/src/fonts:/fonts:/usr/local/share/fonts:/usr/share/fonts
 
-# Install minimal TeX Live, Python pygments, fonttools, and base fonts
+# Install minimal TeX Live, Python pygments, and base fonts
 RUN set -ex; \
     apt-get update -qq; \
     apt-get install -y --no-install-recommends \
@@ -68,7 +69,6 @@ RUN set -ex; \
         fonts-liberation \
         fonts-noto-cjk \
         python3 \
-        python3-fonttools \
         python3-pygments \
         texlive-fonts-recommended \
         texlive-lang-chinese \
@@ -78,10 +78,6 @@ RUN set -ex; \
     ; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# Generate font compatibility layer for standard Windows / CJK fonts
-COPY docker/setup-fonts.py /tmp/setup-fonts.py
-RUN python3 /tmp/setup-fonts.py && rm -f /tmp/setup-fonts.py
 
 # Refresh font cache
 RUN fc-cache -fv

@@ -38,6 +38,14 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$(pwd)":/workspace ghcr.io/aiza-lee/t
     build -s ./my_templates -c config.jsonc -o ./output.pdf
 ```
 
+#### 3. 自定义字体支持（免安装）：
+- 将任意 `.ttf` / `.otf` 字体直接放入源目录下的 `fonts/`（如 `./my_templates/fonts/`）或当前工作目录下的 `./fonts/`。
+- 引擎将通过 XeTeX 原生 `OSFONTDIR` 自动检索识别，无需管理员权限，零门槛扩展。
+- 也可以通过挂载卷或环境变量映射宿主机字体目录：
+  ```bash
+  TEMPLATE_BUILDER_FONTS_DIR=/usr/share/fonts ./scripts/docker-run.sh build -s ./my_templates -o ./output.pdf
+  ```
+
 ---
 
 ### 方式二：本地原生构建与安装

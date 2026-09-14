@@ -24,8 +24,15 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
+# Support optional external fonts directory via TEMPLATE_BUILDER_FONTS_DIR
+EXTRA_MOUNTS=()
+if [ -n "${TEMPLATE_BUILDER_FONTS_DIR:-}" ] && [ -d "$TEMPLATE_BUILDER_FONTS_DIR" ]; then
+    EXTRA_MOUNTS+=(-v "$TEMPLATE_BUILDER_FONTS_DIR:/fonts:ro")
+fi
+
 # Run container with current directory mounted to /workspace
 exec docker run --rm -it \
     -u "$(id -u):$(id -g)" \
     -v "$(pwd)":/workspace \
+    "${EXTRA_MOUNTS[@]+"${EXTRA_MOUNTS[@]}"}" \
     "$IMAGE_NAME" "$@"

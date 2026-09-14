@@ -149,11 +149,51 @@ namespace Core {
             // 通过 IXelatexRunner 抽象 spawn xelatex；以 midTexFileInfo 所在目录（<sourceDir>/build/）为子进程工作目录，
             // 确保 minted 等宏包执行 shell-escape 临时测试文件（如 touch mid-output.aex）可正常在构建子目录写入。
             var workingDir = midTexFileInfo.DirectoryName ?? AppContext.BaseDirectory;
-            var result = _xelatexRunner.Run(workingDir, arguments, timeoutSeconds);
+            var extraFontDirs = ResolveExtraFontDirs();
+            var result = _xelatexRunner.Run(workingDir, arguments, timeoutSeconds, extraFontDirs);
 
             // 给本 pass 的 stderr 打标签，便于在 dump 时区分归属。
             AppendLabeledStderr(_xelatexStderr, pass, result.Stderr);
             return result;
+        }
+
+        /// <summary>
+        /// 收集免安装字体搜索目录，供注入到 xelatex 子进程的 OSFONTDIR 环境变量。
+        /// 扫描顺序：源目录下的 fonts/、当前工作目录下的 fonts/、系统/容器 /fonts，以及用户配置指定的 custom_font_dirs。
+        /// </summary>
+        internal List<string> ResolveExtraFontDirs() {
+            var dirs = new List<string>();
+
+            // 1. 扫描源目录下的 fonts/ 目录
+            var sourceFontsDir = Path.Combine(_options.SourceDir.FullName, "fonts");
+            if (Directory.Exists(sourceFontsDir)) {
+                dirs.Add(sourceFontsDir);
+            }
+
+            // 2. 扫描当前工作目录下的 fonts/ 目录
+            var cwdFontsDir = Path.GetFullPath("fonts");
+            if (Directory.Exists(cwdFontsDir)) {
+                dirs.Add(cwdFontsDir);
+            }
+
+            // 3. 扫描系统/容器通用挂载目录 /fonts
+            if (Directory.Exists("/fonts")) {
+                dirs.Add("/fonts");
+            }
+
+            // 4. 用户在配置 TEX.global.custom_font_dirs 中指定的额外目录
+            var customDirs = _texConfigParser["GLOBAL_CUSTOM_FONT_DIRS"].GetAsStringArray();
+            foreach (var customDir in customDirs) {
+                if (string.IsNullOrWhiteSpace(customDir)) continue;
+                var fullPath = Path.IsPathRooted(customDir)
+                    ? customDir
+                    : Path.GetFullPath(Path.Combine(_options.SourceDir.FullName, customDir));
+                if (Directory.Exists(fullPath)) {
+                    dirs.Add(fullPath);
+                }
+            }
+
+            return dirs.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         /// <summary>
@@ -274,6 +314,14 @@ namespace Core {
             mainTemplate.Replace("<<LAYOUT_TOC_OPENING>>", columns == 2 ? (tocInColumns ? @"\onecolumn" : @"\twocolumn") : "");
             mainTemplate.Replace("<<LAYOUT_BODY_OPENING>>", columns == 2 && tocInColumns ? @"\twocolumn" : "");
 
+            // ctex fontset 选项处理：auto / 空 → 留空（由 ctex 自动决定）；显式指定时注入 ,fontset={fontset}
+            var fontset = _texConfigParser["DOCCLASS_FONTSET"].GetAsString();
+            if (!string.IsNullOrWhiteSpace(fontset) && !fontset.Equals("auto", StringComparison.OrdinalIgnoreCase)) {
+                mainTemplate.Replace("<<DOC_CLASS_FONTSET>>", $",fontset={fontset}");
+            } else {
+                mainTemplate.Replace("<<DOC_CLASS_FONTSET>>", "");
+            }
+
             // CJK font block (runtime): 动态拼装 \setCJKmainfont{...}[...]，
             // BoldFont/ItalicFont 空值时跳过该选项（避免 LaTeX 非法语法 BoldFont=,）。
             mainTemplate.Replace("<<CJK_FONT_BLOCK>>", BuildCjkFontBlock());
@@ -350,29 +398,50 @@ namespace Core {
         }
 
         /// <summary>
-        /// 动态拼装 CJK 主字体块。BoldFont/ItalicFont 为空字符串时跳过对应选项（避免
-        /// LaTeX 收到 BoldFont=, 非法语法）。AutoFake* 始终输出（默认 true）。
-        /// 提取为 private 方法以便未来加 unit test 时直接覆盖。
+        /// 动态拼装 CJK 主字体块，带智能优雅回退链（用户指定 -> SimSun -> Noto Serif CJK SC -> FandolSong）。
+        /// 当 cjk_main_font 为空或 "auto" 时返回空字符串，完全交由 ctex 原生 fontset 处理。
+        /// BoldFont/ItalicFont 为空字符串时跳过对应选项。AutoFake* 始终输出（默认 true）。
         /// </summary>
-        private string BuildCjkFontBlock() {
+        internal string BuildCjkFontBlock() {
             var main = _texConfigParser["GLOBAL_CJK_MAIN_FONT"].GetAsString();
+            if (string.IsNullOrWhiteSpace(main) || main.Equals("auto", StringComparison.OrdinalIgnoreCase)) {
+                return string.Empty;
+            }
+
             var bold = _texConfigParser["GLOBAL_CJK_MAIN_BOLD_FONT"].GetAsString();
             var italic = _texConfigParser["GLOBAL_CJK_MAIN_ITALIC_FONT"].GetAsString();
             var autoBold = _texConfigParser["GLOBAL_CJK_AUTO_FAKE_BOLD"].GetAsBool(true);
             var autoSlant = _texConfigParser["GLOBAL_CJK_AUTO_FAKE_SLANT"].GetAsBool(true);
 
-            var sb = new StringBuilder();
-            sb.Append($"\\setCJKmainfont{{{main}}}[\n");
+            var opts = new StringBuilder();
+            opts.Append("[\n");
             if (!string.IsNullOrEmpty(bold)) {
-                sb.Append($"    BoldFont={bold},\n");
+                opts.Append($"\t\tBoldFont={bold},\n");
             }
             if (!string.IsNullOrEmpty(italic)) {
-                sb.Append($"    ItalicFont={italic},\n");
+                opts.Append($"\t\tItalicFont={italic},\n");
             }
-            sb.Append($"    AutoFakeBold={(autoBold ? "true" : "false")},\n");
-            sb.Append($"    AutoFakeSlant={(autoSlant ? "true" : "false")}\n");
-            sb.Append(']');
-            return sb.ToString();
+            opts.Append($"\t\tAutoFakeBold={(autoBold ? "true" : "false")},\n");
+            opts.Append($"\t\tAutoFakeSlant={(autoSlant ? "true" : "false")}\n");
+            opts.Append("\t]");
+            var optionsBlock = opts.ToString();
+
+            // 智能回退候选链：优先用户指定字体，随后尝试 Windows 经典宋体、开源思源宋体和 TeX 标配 Fandol
+            var candidates = new List<string> { main, "SimSun", "Noto Serif CJK SC", "FandolSong" }
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var result = "";
+            for (int i = candidates.Count - 1; i >= 0; i--) {
+                var font = candidates[i];
+                var branch = $"\\setCJKmainfont{{{font}}}{optionsBlock}";
+                if (string.IsNullOrEmpty(result)) {
+                    result = $"\\IfFontExistsTF{{{font}}}{{\n\t{branch}\n}}{{}}";
+                } else {
+                    result = $"\\IfFontExistsTF{{{font}}}{{\n\t{branch}\n}}{{\n\t{result}\n}}";
+                }
+            }
+            return result;
         }
 
         /// <summary>

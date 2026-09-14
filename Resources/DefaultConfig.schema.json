@@ -191,6 +191,11 @@
 						"cjk_main_italic_font": { "type": "string" },
 						"cjk_auto_fake_bold": { "type": "boolean" },
 						"cjk_auto_fake_slant": { "type": "boolean" },
+						"custom_font_dirs": {
+							"type": "array",
+							"items": { "type": "string" },
+							"description": "额外字体目录列表，免安装自动识别本地 TTF/OTF 字体。"
+						},
 						"page_style": {
 							"type": "string",
 							"enum": ["plain", "headings", "empty", "fancy"]
@@ -215,6 +220,11 @@
 						"orientation": {
 							"type": "string",
 							"enum": ["landscape", "portrait"]
+						},
+						"fontset": {
+							"type": "string",
+							"enum": ["auto", "fandol", "ubuntu", "windows", "mac", "none"],
+							"description": "ctex 宏包的字体集预设。"
 						}
 					}
 				}

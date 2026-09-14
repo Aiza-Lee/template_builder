@@ -138,6 +138,7 @@
 			"cjk_main_italic_font": "",			// \setCJKmainfont{...}[ItalicFont=...]（空 = 不输出）
 			"cjk_auto_fake_bold": true,			// \setCJKmainfont{...}[AutoFakeBold=...]
 			"cjk_auto_fake_slant": true,		// \setCJKmainfont{...}[AutoFakeSlant=...]
+			"custom_font_dirs": [],				// 额外字体目录列表，免安装自动识别本地 TTF/OTF 字体
 			"page_style": "plain"				// plain / headings / empty / fancy
 		},
 
@@ -150,7 +151,8 @@
 		// \documentclass[] 选项（与 geometry 协同）
 		"docclass": {
 			"base_font_size": "10pt",	// \documentclass[...pt,...] 主字号
-			"orientation": "landscape"	// landscape / portrait
+			"orientation": "landscape",	// landscape / portrait
+			"fontset": "auto"			// ctex 字体集：auto / fandol / ubuntu / windows / mac / none
 		}
 	},
 
