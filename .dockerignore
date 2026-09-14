@@ -1,0 +1,13 @@
+**/.git
+**/.github
+**/.vscode
+**/.agents
+**/.aito
+**/.claude
+**/bin
+**/obj
+**/publish
+**/preview
+**/temp
+**/docs
+**/*.md

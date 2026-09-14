@@ -1344,4 +1344,34 @@ public class PdfBuilderTests {
             tmp.Dispose();
         }
     }
+
+    [Fact]
+    public void Build_XelatexRunsInBuildDirectory_NotBaseDirectory() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+        var expectedBuildDir = Path.Combine(tmp.Path, "src", "build");
+        try {
+            builder.Build();
+            Assert.NotEmpty(runner.Calls);
+            Assert.Equal(expectedBuildDir, runner.Calls[0].WorkingDir);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Cleanup_RemovesAexAndW18Files() {
+        using var tmp = TempDir.Create();
+        var aex = Path.Combine(tmp.Path, "mid-output.aex");
+        var w18 = Path.Combine(tmp.Path, "mid-output.w18");
+        File.WriteAllText(aex, "minted test");
+        File.WriteAllText(w18, "minted w18 test");
+        Assert.True(File.Exists(aex));
+        Assert.True(File.Exists(w18));
+
+        PdfBuilder.Cleanup(tmp.Path, "mid-output", new TestLogger());
+
+        Assert.False(File.Exists(aex));
+        Assert.False(File.Exists(w18));
+    }
 }
+

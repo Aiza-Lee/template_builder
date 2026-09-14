@@ -146,8 +146,10 @@ namespace Core {
         private XelatexResult RunXelatex(FileInfo midTexFileInfo, int pass, int timeoutSeconds) {
             var arguments = BuildXelatexArguments(midTexFileInfo);
 
-            // 通过 IXelatexRunner 抽象 spawn xelatex；返回 XelatexResult 包含合并的 stderr 与超时标记。
-            var result = _xelatexRunner.Run(AppContext.BaseDirectory, arguments, timeoutSeconds);
+            // 通过 IXelatexRunner 抽象 spawn xelatex；以 midTexFileInfo 所在目录（<sourceDir>/build/）为子进程工作目录，
+            // 确保 minted 等宏包执行 shell-escape 临时测试文件（如 touch mid-output.aex）可正常在构建子目录写入。
+            var workingDir = midTexFileInfo.DirectoryName ?? AppContext.BaseDirectory;
+            var result = _xelatexRunner.Run(workingDir, arguments, timeoutSeconds);
 
             // 给本 pass 的 stderr 打标签，便于在 dump 时区分归属。
             AppendLabeledStderr(_xelatexStderr, pass, result.Stderr);
@@ -203,7 +205,7 @@ namespace Core {
         /// 清理 LaTeX 编译产生的中间文件。提取为 internal static 以便测试。
         /// </summary>
         internal static void Cleanup(string outputDir, string baseName, ILogger logger) {
-            var extensionsToDelete = new[] { ".aux", ".log", ".toc", ".out", ".nav", ".snm" };
+            var extensionsToDelete = new[] { ".aux", ".log", ".toc", ".out", ".nav", ".snm", ".aex", ".w18" };
 
             foreach (var ext in extensionsToDelete) {
                 TryDelete(Path.Combine(outputDir, baseName + ext), logger);

@@ -14,21 +14,48 @@ LaTeX 生成工具，将算法代码模板编译成PDF文档。
 
 ## 快速开始
 
-### 安装
-1. 克隆仓库：
+### 方式一：Docker 容器运行（推荐，开箱即用）
 
+容器镜像内置完整现代 XeLaTeX 环境、Python Pygments 语法高亮引擎、Fira Code 编程字体以及中西文字体兼容层（Times New Roman、SimSun、SimHei、KaiTi、FangSong 等），**无需在宿主机安装任何 TeX Live 或 .NET SDK 环境**。
+
+#### 1. 使用便捷脚本运行：
+
+```bash
+# 生成默认配置文件骨架
+./scripts/docker-run.sh init -o config.jsonc
+
+# 校验源目录与配置
+./scripts/docker-run.sh validate -s ./my_templates -c config.jsonc
+
+# 编译生成 PDF
+./scripts/docker-run.sh build -s ./my_templates -c config.jsonc -o ./output.pdf
+```
+
+#### 2. 或直接使用原生 Docker 命令：
+
+```bash
+docker run --rm -u "$(id -u):$(id -g)" -v "$(pwd)":/workspace ghcr.io/aiza-lee/template_builder:latest \
+    build -s ./my_templates -c config.jsonc -o ./output.pdf
+```
+
+---
+
+### 方式二：本地原生构建与安装
+
+#### 环境要求
+- [.NET 9.0 SDK](https://dotnet.microsoft.com/download)
+- [TeX Live](https://www.tug.org/texlive/)（包含 `xelatex` 与 `ctexart` 宏包）
+- [Pygments](https://pygments.org/)（`pygmentize` 命令行工具）
+- 字体：[Fira Code](https://github.com/tonsky/FiraCode)
+
+#### 构建与打包
 ```bash
 git clone https://github.com/Aiza-Lee/template_builder.git
 cd template_builder
+bash ./scripts/build.sh
 ```
-2. 构建项目：
 
-```bash
-bash ./build.sh
-```
-### 使用
-
-在构建好的 `publish` 目录下找到可执行文件 `template_builder`（Linux/macOS）或 `template_builder.exe`（Windows）。
+在构建好的 `publish` 目录下找到对应平台的可执行文件 `template_builder`（Linux/macOS）或 `template_builder.exe`（Windows）。
 
 工具提供三个子命令（必须显式指定）：
 
