@@ -137,7 +137,7 @@ namespace Core.Commands {
             var configOption = new Option<FileInfo>("--config", "-c") {
                 Description = "配置文件的路径。",
                 HelpName = "CONFIG",
-                Required = true,
+                DefaultValueFactory = (_) => GetDefaultConfigFileInfo(),
             };
             cmd.Options.Add(configOption);
 
@@ -168,15 +168,18 @@ namespace Core.Commands {
             cmd.SetAction((ParseResult pr) => {
                 try {
                     var src = pr.GetValue(sourceFilesFolderOption)!;
-                    var cfg = pr.GetValue(configOption)!;
                     if (!src.Exists) {
                         _logger.Error($"源目录不存在：{src.FullName}");
                         return ExitCodes.InvalidArguments;
                     }
-                    if (!cfg.Exists) {
-                        _logger.Error($"配置文件不存在：{cfg.FullName}");
-                        return ExitCodes.InvalidArguments;
-                    }
+
+                    bool userProvidedAtCli = pr.Tokens.Any(t => t.Value == "--config" || t.Value == "-c");
+                    var (cfg, _) = new ConfigPathResolver(_logger).Resolve(
+                        pr.GetValue(configOption),
+                        userProvidedAtCli,
+                        EnsureDefaultConfigFileExists
+                    );
+
                     var options = new ValidateSubcommandOptions(
                         src,
                         cfg,
@@ -193,6 +196,7 @@ namespace Core.Commands {
 
             return cmd;
         }
+
 
         /// <summary>
         /// init 子命令：写出带注释的默认配置骨架。
@@ -250,6 +254,7 @@ namespace Core.Commands {
                 using var outFs = configFileInfo.Create();
                 fs.CopyTo(outFs);
                 _logger.Info($"已在 \"{configFileInfo.FullName}\" 创建默认配置文件。");
+                _logger.Info("提示：可运行 init 命令生成带注释的配置骨架以便自定义。");
                 configFileInfo.Refresh();
             }
             return configFileInfo;

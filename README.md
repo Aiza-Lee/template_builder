@@ -1,6 +1,6 @@
 # ACM 代码模板PDF构建器
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/Aiza-Lee/template_builder) [![LaTeX](https://img.shields.io/badge/LaTeX-XeLaTeX-orange.svg)](https://www.latex-project.org/)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/Aiza-Lee/template_builder) [![LaTeX](https://img.shields.io/badge/LaTeX-XeLaTeX-orange.svg)](https://www.latex-project.org/) [![Build and Publish](https://github.com/Aiza-Lee/template_builder/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/Aiza-Lee/template_builder/actions/workflows/build-and-release.yml) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue.svg?logo=docker)](https://github.com/Aiza-Lee/template_builder/pkgs/container/template_builder)
 
 ## 介绍
 

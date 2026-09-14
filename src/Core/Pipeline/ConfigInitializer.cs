@@ -35,7 +35,8 @@ namespace Core.Pipeline {
                 }
 
                 File.WriteAllText(options.OutputPath.FullName, outputText, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                _logger.Info($"Wrote config file to \"{options.OutputPath.FullName}\".");
+                _logger.Info($"配置文件已生成：\"{options.OutputPath.FullName}\"。");
+                _logger.Info("下一步：① 编辑配置文件，按需调整选项  ② 运行 validate -s <源目录> 校验配置  ③ 运行 build -s <源目录> -o <输出.pdf> 生成 PDF");
                 _logger.Info("提示：你也可以通过 --template-dir <dir> 为每次构建覆盖 Main.tex 和/或 CodeBlock.tex。");
                 return ExitCodes.Success;
             } catch (MissingEmbeddedResourceException ex) {

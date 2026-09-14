@@ -252,10 +252,10 @@ namespace Utils {
             } else {
                 if (_strictness == ConfigStrictness.Strict) {
                     throw new UnknownConfigKeyException(
-                        $"Configuration key '{key}' is not registered in the embedded default configuration. Remove the typo or remove '{key}' from your config file."
+                        $"配置项 \"{key}\" 未在默认配置中注册，请检查是否拼写错误或删除该配置项。"
                     );
                 }
-                _logger?.Warning($"Key '{key}' is not registered. Skipping.");
+                _logger?.Warning($"[未知配置项] \"{key}\" 不在默认配置中，已跳过。如需自定义此行为，请运行 validate 子命令或检查配置文件。");
             }
         }
     }

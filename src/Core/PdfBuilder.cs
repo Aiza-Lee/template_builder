@@ -80,7 +80,7 @@ namespace Core {
             bool cleanupNeeded = true;
 
             for (int pass = 1; pass <= passCount; pass++) {
-                _logger.Info($"第 {pass} 轮编译...");
+                _logger.Info($"第 {pass} 轮编译（共 {passCount} 轮）...");
 
                 // 每次 pass 清空 buffer，使最终 dump 时只看到失败 pass 的 stderr。
                 _xelatexStderr.Clear();
@@ -105,6 +105,8 @@ namespace Core {
                         FlushStderrAsError();
                         return ExitCodes.XelatexFailure;
                     }
+                } else {
+                    _logger.Info($"第 {pass} 轮编译完成。");
                 }
             }
             _logger.Info("LaTeX 编译已成功完成。");
@@ -130,17 +132,26 @@ namespace Core {
         }
 
         /// <summary>
-        /// 编译失败时把累积的 stderr 一次性以 Error 级别输出。
+        /// 编译失败时把 stderr 中含 "!" 或 "Error:" 的行以 Error 级别输出，并附上完整日志路径提示。
         /// </summary>
         private void FlushStderrAsError() {
             if (_xelatexStderr.Length == 0) return;
-            _logger.Error("--- xelatex 标准错误输出 ---");
-            foreach (var line in _xelatexStderr.ToString().Split('\n')) {
-                var trimmed = line.TrimEnd('\r');
-                if (trimmed.Length > 0) {
-                    _logger.Error(trimmed);
+
+            var errorLines = _xelatexStderr.ToString()
+                .Split('\n')
+                .Select(l => l.TrimEnd('\r'))
+                .Where(l => l.Length > 0 && (l.Contains('!') || l.Contains("Error:")))
+                .ToList();
+
+            if (errorLines.Count > 0) {
+                _logger.Error("--- xelatex 错误摘要 ---");
+                foreach (var line in errorLines) {
+                    _logger.Error(line);
                 }
             }
+
+            var logPath = Path.Combine(_options.SourceDir.FullName, "build", "mid-output.log");
+            _logger.Error($"完整日志位于 \"{logPath}\"");
         }
 
         private XelatexResult RunXelatex(FileInfo midTexFileInfo, int pass, int timeoutSeconds) {
@@ -348,7 +359,7 @@ namespace Core {
             // 在 <<CONTENT>> 替换前扫描 Main.tex，避免误报尚未替换的 <<CONTENT>> 标记。
             foreach (var placeholder in TemplatePlaceholderScanner.FindUnresolved(mainTemplate.ToString())) {
                 if (placeholder == "<<CONTENT>>") continue;
-                _logger.Error($"Unresolved placeholder '{placeholder}' in Main.tex.");
+                _logger.Error($"Main.tex 中存在未替换的占位符 \"{placeholder}\"。");
                 _unresolvedPlaceholderCount++;
             }
 

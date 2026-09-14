@@ -163,8 +163,12 @@
 		// 排除的 glob 模式（Microsoft.Extensions.FileSystemGlobbing 语法）
 		"ignore_patterns": ["*ignore*", "build"],
 		// 扩展名→minted 语言映射的增量覆盖
-		// 字符串对数组："ext:lang"，与 CodeBlockGenerator._defaultExtMap 中 29 条默认映射合并
-		// 例：[".md:markdown", ".myext:cpp"]；非法条目（缺 : / 非 . 前缀 / 字段空）会被静默跳过
+		// 格式：字符串数组，每条为 "ext:lang"（扩展名含点前缀，语言名对应 minted/pygments 词法器）
+		// 与内置 _defaultExtMap（29 条）合并；相同扩展名时此处覆盖内置值；非法条目静默跳过。
+		// 示例（取消注释并按需修改）：
+		//   ".md:markdown"    — 让 .md 文件走 minted markdown 高亮
+		//   ".ts:typescript"  — 已内置；显式覆盖可改为其他 pygments 词法器名
+		//   ".myext:python"   — 自定义扩展名映射到 python 高亮
 		"code_language_overrides": [],
 		// 构建器行为调优
 		"build": {

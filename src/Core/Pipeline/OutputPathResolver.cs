@@ -34,7 +34,11 @@ namespace Core.Pipeline {
                 requested.Directory.Create();
             }
             var pdfFileName = Path.GetFileNameWithoutExtension(requested.Name) + ".pdf";
-            return new FileInfo(Path.Combine(requested.Directory.FullName, pdfFileName));
+            var resolved = new FileInfo(Path.Combine(requested.Directory.FullName, pdfFileName));
+            if (!string.Equals(requested.Name, resolved.Name, StringComparison.OrdinalIgnoreCase)) {
+                _logger.Info($"输出路径后缀已自动更正为 .pdf：\"{resolved.FullName}\"。");
+            }
+            return resolved;
         }
     }
 }

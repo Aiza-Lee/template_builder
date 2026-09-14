@@ -165,7 +165,7 @@ namespace Core {
             // 检查文件类型是否在包含列表中（大小写无关匹配，O(1) 查找）
             if (!_includeFileTypes.Contains(rawExt)) {
                 var extDisplay = rawExt.TrimStart('.');
-                _logger.Warning($"文件类型 \"{extDisplay}\" 不在包含列表中，跳过文件 \"{codeFile.FullName}\"。");
+                _logger.Debug($"文件类型 \"{extDisplay}\" 不在包含列表中，跳过文件 \"{codeFile.FullName}\"。");
                 return string.Empty;
             }
             var content = File.ReadAllText(codeFile.FullName);

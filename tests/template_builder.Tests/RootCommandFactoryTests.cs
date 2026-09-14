@@ -76,6 +76,23 @@ public class RootCommandFactoryTests {
     }
 
     [Fact]
+    public void Invoke_Validate_WithoutConfig_UsesDefaultConfig() {
+        // validate -c 现已可选；省略时应走 ConfigPathResolver 默认路径，而非直接 crash/InvalidArguments
+        var factory = new RootCommandFactory(new TestLogger());
+        var root = factory.CreateRootCommand();
+        using var tmp = TempDir.Create();
+        var srcDir = Path.Combine(tmp.Path, "src");
+        Directory.CreateDirectory(srcDir);
+
+        // 无 -c 参数 → 使用默认配置；源目录存在但可能没有配置文件(第一次运行会自动创建)
+        // 这里只验证返回码不是 2 (InvalidArguments)，以排除"参数缺失"错误
+        var result = root.Parse(new[] { "validate", "-s", srcDir }).Invoke();
+
+        Assert.NotEqual(2, result);
+    }
+
+
+    [Fact]
     public void Invoke_Init_WritesConfigFileAndReturnsSuccess() {
         var factory = new RootCommandFactory(new TestLogger());
         var root = factory.CreateRootCommand();

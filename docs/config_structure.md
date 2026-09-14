@@ -154,7 +154,7 @@
 }
 ```
 
-注：扩展名必须同时存在于内置 `CODE_LANGUAGES_EXTENSIONS` 白名单（26 种）才会走 minted 高亮；白名单外的扩展名仅作为 raw text 输出。
+注：`_languageMap` 是判断是否走 minted 高亮的唯一依据——内置默认映射覆盖 29 种扩展名（c/cpp/java/py/go 等），`code_language_overrides` 中的条目会在运行时合并覆盖默认映射；映射中不存在的扩展名仅作为 raw text 输出。
 
 ## 排版与设计刷新
 
@@ -239,7 +239,7 @@ microtype 默认开启 protrusion（字符悬挂伸出），关闭 expansion 与
 
 `PROGRAM` 段的 `ignore_patterns` 走 .NET glob（`Microsoft.Extensions.FileSystemGlobbing`）。`Matcher.Match(name).HasMatches = false` 表示被 exclude 命中。
 
-`PROGRAM.code_language_overrides` 走字符串对数组（`["ext:lang"]`）；扩展名必须先在代码内置的 `CODE_LANGUAGES_EXTENSIONS` 白名单里才会走 minted 高亮路径，否则仅以 raw text 输出。
+`PROGRAM.code_language_overrides` 走字符串对数组（`["ext:lang"]`）；判断是否走 minted 高亮的依据是内置 `_languageMap`（29 种扩展名默认映射）加上此处的覆盖条目，不在映射中的扩展名仅以 raw text 输出。
 
 ## 覆盖 LaTeX 模板
 
@@ -275,3 +275,50 @@ GitHub Actions 示例：
 
 `_minted/` 故意不被 `CleanupAuxiliaryFiles` 删除（`Cleanup` 只删 6 个 LaTeX 扩展 + `mid-output.tex`），保证跨 run 复用。
 
+## CI 推荐配置
+
+在 CI/CD 流水线（如 GitHub Actions）中，推荐在独立的 pre-check job 中运行 `validate --check-xelatex`，以在正式构建前提前暴露依赖缺失问题。
+
+### GitHub Actions 示例工作流
+
+```yaml
+jobs:
+  pre-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 TeX Live
+        run: sudo apt-get install -y texlive-xetex texlive-fonts-recommended python3-pygments
+      - name: 校验配置与依赖
+        run: |
+          dotnet run -- validate \
+            -s ./src \
+            -c ./config.jsonc \
+            --check-xelatex    # 提前验证 xelatex + pygmentize 在 PATH 上
+
+  build:
+    needs: pre-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建 PDF
+        run: |
+          dotnet run -- build \
+            -s ./src \
+            -o ./output.pdf \
+            -c ./config.jsonc
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-output
+          path: output.pdf
+```
+
+### 推荐配置说明
+
+| 场景 | 建议 |
+|------|------|
+| pre-check job | 加 `--check-xelatex` 标志，提前暴露 xelatex / pygmentize 依赖缺失 |
+| 多分支保护 | 在 branch protection rules 中要求 pre-check 通过后再合并 |
+| 缓存加速 | 使用 `minted_outputdir` + `actions/cache` 复用 minted 高亮缓存（见上方"构建速度"小节） |
+| JSON 输出 | 添加 `--format json` 可获得机器可读的校验报告，便于下游解析 |
