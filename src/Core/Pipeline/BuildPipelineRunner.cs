@@ -26,6 +26,8 @@ namespace Core.Pipeline {
                 texParser.ParseConfigFile(configJson, options.ConfigFile.FullName);
                 programParser.ParseConfigFile(configJson, options.ConfigFile.FullName);
 
+                ApplyConfigOverrides(options.ConfigOverrides, texParser, programParser, _logger);
+
                 return new PdfBuilder(_logger, options, texParser, programParser, _resMgr).Build();
             } catch (UnknownConfigKeyException ex) {
                 _logger.Error(ex.Message);
@@ -37,6 +39,32 @@ namespace Core.Pipeline {
             } catch (MissingEmbeddedResourceException ex) {
                 _logger.Error(ex.Message);
                 return ExitCodes.MissingEmbeddedResource;
+            }
+        }
+
+        /// <summary>
+        /// 把运行时配置覆盖应用到两个解析器上。
+        /// <para>
+        /// 键是<b>相对各自根对象</b>的（如 <c>LAYOUT_COLUMNS</c>、<c>BUILD_PASS_COUNT</c>），
+        /// 因此先试 TEX 解析器再试 PROGRAM 解析器。两个根对象的键集在实践中不相交
+        /// （TEX 与 PROGRAM 分组不同），故先命中即命中；两者都不认该键时记 Warning 并跳过，
+        /// 避免把键名拼写错误静默吞掉。
+        /// </para>
+        /// </summary>
+        internal static void ApplyConfigOverrides(
+            IReadOnlyDictionary<string, string>? overrides,
+            ConfigParser texParser,
+            ConfigParser programParser,
+            ILogger logger
+        ) {
+            if (overrides is not { Count: > 0 }) return;
+
+            foreach (var (key, value) in overrides) {
+                var applied = texParser.TrySetConfigValueFromString(key, value)
+                           || programParser.TrySetConfigValueFromString(key, value);
+                if (!applied) {
+                    logger.Warning($"[未知配置项] \"{key}\" 不在默认配置中，覆盖已跳过。");
+                }
             }
         }
     }

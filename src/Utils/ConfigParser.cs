@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Utils.Exceptions;
 
@@ -159,6 +160,53 @@ namespace Utils {
         public IEnumerable<KeyValuePair<string, string>> GetAllConfigsAsString() {
             foreach (var kvp in _configValues) {
                 yield return new(kvp.Key, kvp.Value.GetAsString());
+            }
+        }
+
+        /// <summary>
+        /// 以字符串形式覆盖一个<b>已注册</b>配置项的值，并按该键在默认配置中的 JSON 类型自动强制转换
+        /// （字符串 / 数值 / 布尔）。供需要在运行时注入配置值的上层使用（如 TUI 交互模式的快速配置项）。
+        /// <para>
+        /// 与 <see cref="ParseConfigFile"/> 的区别：此方法不解析文件，也不会因未知键而走
+        /// Strict/Lax 分支——键未注册时直接返回 false，由调用方决定如何提示。
+        /// </para>
+        /// </summary>
+        /// <param name="key">配置项键（相对根对象，大写、下划线分隔，如 <c>GLOBAL_MAIN_FONT</c>）</param>
+        /// <param name="rawValue">字符串形式的原始值</param>
+        /// <returns>键已注册且转换成功返回 true；键未注册、值非法或目标为复合类型（数组/对象）返回 false</returns>
+        public bool TrySetConfigValueFromString(string key, string rawValue) {
+            if (!_configValues.TryGetValue(key, out var existing)) return false;
+            if (!TryCoerceScalar(rawValue, existing.Value.ValueKind, out var element)) return false;
+            existing.Value = element;
+            _logger?.Debug($"Overriding config key: '{key}' with value: '{rawValue}'");
+            return true;
+        }
+
+        /// <summary>
+        /// 把字符串按目标 JSON 类型强制转换。仅支持标量（字符串 / 数值 / 布尔）；
+        /// 复合类型返回 false（配置覆盖场景下无意义，且难以从单行输入可靠构造）。
+        /// </summary>
+        private static bool TryCoerceScalar(string raw, JsonValueKind targetKind, out JsonElement element) {
+            element = default;
+            try {
+                switch (targetKind) {
+                    case JsonValueKind.Number:
+                        if (!decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var number)) return false;
+                        element = JsonDocument.Parse(number.ToString(CultureInfo.InvariantCulture)).RootElement.Clone();
+                        return true;
+                    case JsonValueKind.True:
+                    case JsonValueKind.False:
+                        if (!bool.TryParse(raw, out var flag)) return false;
+                        element = JsonDocument.Parse(flag ? "true" : "false").RootElement.Clone();
+                        return true;
+                    case JsonValueKind.String:
+                        element = JsonDocument.Parse(JsonSerializer.Serialize(raw)).RootElement.Clone();
+                        return true;
+                    default:
+                        return false;
+                }
+            } catch (JsonException) {
+                return false;
             }
         }
 

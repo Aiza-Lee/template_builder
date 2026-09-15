@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Core.Pipeline;
+using Core.Tui;
 using Utils;
 using Utils.Exceptions;
 
@@ -47,20 +48,29 @@ namespace Core.Commands {
             var cmd = new Command("build", "从源文件目录构建 PDF。");
 
             /* --source-files-folder -s */
+            // 非 Required：--tui 模式下由交互界面询问；非 --tui 时在 action 中显式报缺参（见下）
             var sourceFilesFolderOption = new Option<DirectoryInfo>("--source-files-folder", "-s") {
-                Description = "源文件目录的路径。",
+                Description = "源文件目录的路径。使用 --tui 时可省略，改为交互式输入。",
                 HelpName = "SOURCE_FILES_FOLDER",
-                Required = true,
+                Required = false,
             };
             cmd.Options.Add(sourceFilesFolderOption);
 
             /* --output -o */
             var outputOption = new Option<FileInfo>("--output", "-o") {
-                Description = "构建产物 PDF 的输出路径。",
+                Description = "构建产物 PDF 的输出路径。使用 --tui 时可省略，改为交互式输入。",
                 HelpName = "OUTPUT_PATH",
-                Required = true,
+                Required = false,
             };
             cmd.Options.Add(outputOption);
+
+            /* --tui */
+            var tuiOption = new Option<bool>("--tui") {
+                Description = "启动全屏交互模式：提示输入源目录 / 输出路径与常用配置项，并实时滚动构建日志。",
+                HelpName = "TUI",
+                DefaultValueFactory = (_) => false,
+            };
+            cmd.Options.Add(tuiOption);
 
             /* --verbose -v */
             var verboseOption = new Option<bool>("--verbose", "-v") {
@@ -88,12 +98,39 @@ namespace Core.Commands {
 
             cmd.SetAction((ParseResult pr) => {
                 _logger.SetLevel(pr.GetValue(verboseOption) ? LogLevel.DEBUG : LogLevel.INFO);
+
+                bool userProvidedAtCli = pr.Tokens.Any(t => t.Value == "--config" || t.Value == "-c");
+
+                if (pr.GetValue(tuiOption)) {
+                    // 必须在进入 TUI 前拦截非交互环境：否则 Spectre 读按键时会抛未捕获异常
+                    if (!TuiEnvironment.SupportsInteractiveUi()) {
+                        _logger.Error("--tui 需要交互式终端（TTY），当前标准输入或输出已被重定向。");
+                        _logger.Error("请在真实终端中运行，或改用非交互模式：build -s <源目录> -o <输出.pdf>。");
+                        return ExitCodes.InvalidArguments;
+                    }
+
+                    try {
+                        return new TuiRunner(_logger).Run(new TuiLaunchOptions(
+                            pr.GetValue(sourceFilesFolderOption),
+                            pr.GetValue(outputOption),
+                            pr.GetValue(configOption),
+                            userProvidedAtCli,
+                            pr.GetValue(templateDirOption),
+                            pr.GetValue(verboseOption),
+                            EnsureDefaultConfigFileExists
+                        ));
+                    } catch (MissingEmbeddedResourceException ex) {
+                        // 默认配置骨架的嵌入资源缺失：与命令行路径保持一致的退出码
+                        _logger.Error(ex.Message);
+                        return ExitCodes.MissingEmbeddedResource;
+                    }
+                }
+
                 try {
                     var resolver = new OutputPathResolver(_logger);
                     var src = resolver.ResolveSourceDir(pr.GetValue(sourceFilesFolderOption));
                     var outPdf = resolver.ResolveOutputPdf(pr.GetValue(outputOption));
 
-                    bool userProvidedAtCli = pr.Tokens.Any(t => t.Value == "--config" || t.Value == "-c");
                     var (cfg, userProvided) = new ConfigPathResolver(_logger).Resolve(
                         pr.GetValue(configOption),
                         userProvidedAtCli,

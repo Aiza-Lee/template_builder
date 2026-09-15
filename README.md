@@ -73,6 +73,22 @@ bash ./scripts/build.sh
 ./template_builder build -s "path/to/your/code/templates/folder" -o "output/file.pdf" [-c "path/to/config.json"] [-t "path/to/template/dir"] [-v]
 ```
 
+##### 交互模式 `--tui`
+
+加 `--tui` 进入全屏交互模式，适合不想记参数、或想临时试几组排版参数的时候：
+
+```bash
+./template_builder build --tui
+```
+
+流程为「源目录 → 输出路径 → 常用配置项 → 实时构建日志」四步：
+
+- `-s` / `-o` 在 `--tui` 下可省略，改为在界面中询问（仍可传入作为默认值）。
+- 界面先列出 12 项常用配置的当前值，勾选需要临时改动的项后逐项询问；**改动只作用于本次构建，不写回配置文件**。
+- 构建阶段日志实时滚动；构建结束后结果与 PDF 路径保留在屏幕上。
+
+> 终端需要支持全屏渲染（ANSI / TTY）。在 CI、管道或重定向输出等非交互环境下，`--tui` 会直接报错并返回退出码 `2`（而非崩溃），此时请改用普通命令行模式。
+
 #### `validate` —— 校验源 / 配置 / 模板完整性（不调 xelatex）
 
 CI 门禁友好，秒级返回。

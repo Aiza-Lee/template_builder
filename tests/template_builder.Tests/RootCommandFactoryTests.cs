@@ -43,6 +43,29 @@ public class RootCommandFactoryTests {
     }
 
     [Fact]
+    public void CreateRootCommand_BuildSubcommand_ExposesTuiOption() {
+        var factory = new RootCommandFactory(new TestLogger());
+
+        var root = factory.CreateRootCommand();
+        var build = root.Subcommands.Single(c => c.Name == "build");
+        var names = build.Options.Select(o => o.Name).ToHashSet();
+
+        Assert.Contains("--tui", names);
+    }
+
+    [Fact]
+    public void Invoke_Build_WithoutSourceAndOutput_ReturnsInvalidArguments() {
+        // -s / -o 改为可选（供 --tui 交互输入）后，非 --tui 路径必须显式报缺参，
+        // 且退出码为 InvalidArguments(2) 而非解析层的 1
+        var factory = new RootCommandFactory(new TestLogger());
+        var root = factory.CreateRootCommand();
+
+        var result = root.Parse(new[] { "build" }).Invoke();
+
+        Assert.Equal(2, result);
+    }
+
+    [Fact]
     public void Invoke_Build_WithNonExistentSourceFolder_ReturnsNonZero() {
         var factory = new RootCommandFactory(new TestLogger());
         var root = factory.CreateRootCommand();
