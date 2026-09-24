@@ -1,4 +1,7 @@
+using System;
+using System.IO;
 using Utils;
+using Utils.Exceptions;
 
 namespace Core.Pipeline {
     /// <summary>
@@ -38,7 +41,7 @@ namespace Core.Pipeline {
 
             if (userProvidedAtCli) {
                 var requestedPath = requested?.FullName ?? "<null>";
-                _logger.Warning($"未找到配置文件 \"{requestedPath}\"，将改用默认配置。");
+                throw new InvalidArgumentException($"指定的配置文件不存在：\"{requestedPath}\"");
             }
 
             if (defaultFallbackFactory == null) {

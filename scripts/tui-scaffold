@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# TUI Development Scaffolding & Visual Inspection Script
+# 专门用于无头环境与纯文本模式下生成全套 TUI 快照与视觉感知审查汇报
+# ==============================================================================
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="${1:-${ROOT_DIR}/preview/tui-scaffold}"
+
+echo "========================================================"
+echo " [TUI 脚手架] 生成全屏视图快照与排版感知汇报"
+echo " 输出目录: ${OUTPUT_DIR}"
+echo "========================================================"
+
+dotnet run --project "${ROOT_DIR}/template_builder.csproj" -- build --tui-scaffold "${OUTPUT_DIR}"
+
+echo ""
+echo "========================================================"
+echo " 快照生成完成！"
+echo " 审查总览文件: ${OUTPUT_DIR}/SUMMARY.md"
+echo "========================================================"

@@ -162,13 +162,16 @@
 		"include_file_types": [".cpp", ".c", ".java", ".json", ".tex", ".hpp", ".h", ".py", ".txt"],
 		// 排除的 glob 模式（Microsoft.Extensions.FileSystemGlobbing 语法）
 		"ignore_patterns": ["*ignore*", "build"],
-		// 扩展名→minted 语言映射的增量覆盖
-		// 格式：字符串数组，每条为 "ext:lang"（扩展名含点前缀，语言名对应 minted/pygments 词法器）
-		// 与内置 _defaultExtMap（29 条）合并；相同扩展名时此处覆盖内置值；非法条目静默跳过。
-		// 示例（取消注释并按需修改）：
-		//   ".md:markdown"    — 让 .md 文件走 minted markdown 高亮
-		//   ".ts:typescript"  — 已内置；显式覆盖可改为其他 pygments 词法器名
-		//   ".myext:python"   — 自定义扩展名映射到 python 高亮
+		// 扩展名→minted 语言映射的增量覆盖与渲染模式
+		// 格式：字符串数组，每条为 "ext:lang"（扩展名含点前缀，语言名对应 pygments 词法器，或使用 "raw" 显式插入原生 LaTeX）
+		// 渲染规则：
+		//   1. 编程语言与 Markdown：按对应词法器（如 python, cpp, markdown）进行代码高亮；
+		//   2. 普通文本与未知扩展名（如 .txt, .csv 或未映射文件）：统一以保真文本代码块（text）渲染，保留所有特殊字符与换行缩进，杜绝编译错误；
+		//   3. 原生 LaTeX 内容：仅未配置高亮覆盖的 .tex 文件，或显式配置为 "ext:raw" 的文件，按原生 LaTeX 代码直接插入正文；
+		// 示例：
+		//   ".md:markdown"    — 让 .md 文件走 minted markdown 高亮（已内置）
+		//   ".tex:latex"      — 将 .tex 自身作为 LaTeX 代码块高亮展示（而非直接插入正文）
+		//   ".snippet:raw"    — 显式按原生 LaTeX 语法插入正文
 		"code_language_overrides": [],
 		// 构建器行为调优
 		"build": {

@@ -26,6 +26,9 @@
 		<EmbeddedResource Include="Resources\Templates\CodeBlock.tex">
 			<LogicalName>Templates.CodeBlock.tex</LogicalName>
 		</EmbeddedResource>
+		<EmbeddedResource Include="Resources\DefaultConfig.schema.json">
+			<LogicalName>DefaultConfig.schema.json</LogicalName>
+		</EmbeddedResource>
 	</ItemGroup>
 
 	<ItemGroup>

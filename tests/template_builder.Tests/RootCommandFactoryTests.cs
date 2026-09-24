@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.IO;
 using System.Linq;
+using Core;
 using Core.Commands;
 using template_builder.Tests.Fixtures;
 using Utils;
@@ -126,6 +127,36 @@ public class RootCommandFactoryTests {
 
         Assert.Equal(0, result);
         Assert.True(File.Exists(outputPath));
+    }
+
+    [Fact]
+    public void Invoke_Init_ExistingFile_WithoutForce_ReturnsInvalidArguments() {
+        var factory = new RootCommandFactory(new TestLogger());
+        var root = factory.CreateRootCommand();
+        using var tmp = TempDir.Create();
+        var outputPath = Path.Combine(tmp.Path, "cfg.jsonc");
+        File.WriteAllText(outputPath, "{\"keep\": 1}");
+
+        var result = root.Parse(new[] { "init", "-o", outputPath }).Invoke();
+
+        Assert.Equal(ExitCodes.InvalidArguments, result);
+        Assert.Equal("{\"keep\": 1}", File.ReadAllText(outputPath));
+    }
+
+    [Fact]
+    public void Invoke_Init_ExistingFile_WithForce_CreatesBackupAndOverwrites() {
+        var factory = new RootCommandFactory(new TestLogger());
+        var root = factory.CreateRootCommand();
+        using var tmp = TempDir.Create();
+        var outputPath = Path.Combine(tmp.Path, "cfg.jsonc");
+        File.WriteAllText(outputPath, "{\"keep\": 1}");
+
+        var result = root.Parse(new[] { "init", "-o", outputPath, "--force" }).Invoke();
+
+        Assert.Equal(0, result);
+        Assert.NotEqual("{\"keep\": 1}", File.ReadAllText(outputPath));
+        Assert.True(File.Exists(outputPath + ".bak"));
+        Assert.Equal("{\"keep\": 1}", File.ReadAllText(outputPath + ".bak"));
     }
 
     [Fact]

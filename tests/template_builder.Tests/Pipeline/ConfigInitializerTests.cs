@@ -91,4 +91,42 @@ public class ConfigInitializerTests {
 
         Assert.Equal(5, exitCode);
     }
+
+    [Fact]
+    public void Run_ExistingFile_WithoutForce_ReturnsInvalidArguments_AndPreservesOriginal() {
+        using var tmp = TempDir.Create();
+        var outputPath = new FileInfo(Path.Combine(tmp.Path, "cfg.jsonc"));
+        const string originalContent = "{\"custom\": true}";
+        File.WriteAllText(outputPath.FullName, originalContent);
+
+        var logger = new TestLogger();
+        var runner = new ConfigInitializer(logger, new ManifestResourceManager());
+
+        var exitCode = runner.Run(new InitSubcommandOptions(outputPath, Force: false));
+
+        Assert.Equal(ExitCodes.InvalidArguments, exitCode);
+        Assert.Equal(originalContent, File.ReadAllText(outputPath.FullName));
+        Assert.False(File.Exists(outputPath.FullName + ".bak"));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.ERROR && e.Message.Contains("默认拒绝写入"));
+    }
+
+    [Fact]
+    public void Run_ExistingFile_WithForce_CreatesBackup_AndOverwrites() {
+        using var tmp = TempDir.Create();
+        var outputPath = new FileInfo(Path.Combine(tmp.Path, "cfg.jsonc"));
+        const string originalContent = "{\"custom\": true}";
+        File.WriteAllText(outputPath.FullName, originalContent);
+
+        var logger = new TestLogger();
+        var runner = new ConfigInitializer(logger, new ManifestResourceManager());
+
+        var exitCode = runner.Run(new InitSubcommandOptions(outputPath, Force: true));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        Assert.NotEqual(originalContent, File.ReadAllText(outputPath.FullName));
+        var backupPath = outputPath.FullName + ".bak";
+        Assert.True(File.Exists(backupPath));
+        Assert.Equal(originalContent, File.ReadAllText(backupPath));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO && e.Message.Contains("已备份原配置至"));
+    }
 }

@@ -12,6 +12,10 @@ namespace Utils {
 
         ReadonlyConfigValue this[string key] { get; }
 
+        bool TryGetConfigValue(string key, out ReadonlyConfigValue value);
+
+        bool ContainsKey(string key);
+
         IEnumerable<KeyValuePair<string, string>> GetAllConfigsAsString();
     }
 }

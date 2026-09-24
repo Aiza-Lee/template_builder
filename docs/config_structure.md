@@ -111,7 +111,7 @@
 |---|---|---|
 | `PROGRAM.include_file_types` | `[".cpp", ".c", ...]` | 包含的源文件扩展名（白名单） |
 | `PROGRAM.ignore_patterns` | `["*ignore*"]` | 排除的 glob 模式（`Microsoft.Extensions.FileSystemGlobbing` 语法） |
-| `PROGRAM.code_language_overrides` | `[]` | 扩展名→minted 语言映射的增量覆盖。字符串对数组 `["ext:lang"]`（如 `[".md:markdown", ".cpp:cpp"]`）。合并到代码内置 24 条默认映射上；非法条目（缺 `:` / 非 `.` 前缀 / 字段空）会被跳过 |
+| `PROGRAM.code_language_overrides` | `[]` | 扩展名→minted 语言映射与渲染模式的增量覆盖。字符串对数组 `["ext:lang"]`（如 `[".md:markdown", ".tex:latex", ".snippet:raw"]`）。内置默认映射包含常见编程语言、Markdown 及普通文本（`.txt`）；普通文本及未知扩展名默认以保真纯文本代码块（`text`）渲染；`.tex` 或指定为 `raw` 的文件按原生 LaTeX 语法解析 |
 | `PROGRAM.build.timeout_seconds` | `120` | 单次 xelatex pass 的超时秒数。超时则 Kill 整个进程树（防 minted/pygmentize 子进程残留）+ 报 `XelatexFailure` 退出。`0` = 不限时（pass 0 给 `WaitForExit`，）。值会被 clamp 到 `[0, 600]` |
 | `PROGRAM.build.pass_count` | `2` | xelatex 编译 pass 数（clamp 到 `[1, 5]`）。`1` 可省 ~50% xelatex 时间，但若保留 `\tableofcontents` 会导致页码显示 "?"（xelatex 自然行为，需 pass 2 解析交叉引用）。**用户责任**：选 1 时需自行确认能接受不完整的 ToC |
 
@@ -145,16 +145,23 @@
 }
 ```
 
-## 自定义 extension→language 映射
+## 自定义 extension→language 映射与渲染类型
 
 ```jsonc
 "PROGRAM": {
-    "include_file_types": [".py", ".cpp", ".md"],
-    "code_language_overrides": [".md:markdown", ".py:python3"]
+    "include_file_types": [".py", ".cpp", ".md", ".txt", ".tex"],
+    "code_language_overrides": [
+        ".md:markdown",     // 显式指定 pygments 高亮词法器
+        ".tex:latex",       // 将 .tex 自身作为代码块展示（而非嵌入 LaTeX 正文）
+        ".snippet:raw"      // 显式指示按原生 LaTeX 语法解析并插入正文
+    ]
 }
 ```
 
-注：`_languageMap` 是判断是否走 minted 高亮的唯一依据——内置默认映射覆盖 29 种扩展名（c/cpp/java/py/go 等），`code_language_overrides` 中的条目会在运行时合并覆盖默认映射；映射中不存在的扩展名仅作为 raw text 输出。
+注：渲染类型与代码块处理规则如下：
+1. **代码与 Markdown 高亮**：扩展名在映射表中对应具体词法器（如 `python`, `cpp`, `markdown`）时，采用对应语言的代码块高亮渲染；
+2. **普通文本与未知扩展名**：如 `.txt`、`.csv`、`.log` 等未知扩展名文件，统一采用纯文本代码块（`\begin{minted}{text}`）保真渲染，完整保留所有特殊符号（%、_、&、$、#、\ 等）、缩进与换行，杜绝 LaTeX 编译错误；
+3. **原生 LaTeX 内容**：仅未配置高亮覆盖的 `.tex` 文件，或用户显式配置为 `".ext:raw"` 的扩展名，才直接按原生 LaTeX 代码插入正文。若需将 `.tex` 自身作为代码展示，请显式覆盖为 `".tex:latex"`。
 
 ## 排版与设计刷新
 
@@ -239,7 +246,7 @@ microtype 默认开启 protrusion（字符悬挂伸出），关闭 expansion 与
 
 `PROGRAM` 段的 `ignore_patterns` 走 .NET glob（`Microsoft.Extensions.FileSystemGlobbing`）。`Matcher.Match(name).HasMatches = false` 表示被 exclude 命中。
 
-`PROGRAM.code_language_overrides` 走字符串对数组（`["ext:lang"]`）；判断是否走 minted 高亮的依据是内置 `_languageMap`（29 种扩展名默认映射）加上此处的覆盖条目，不在映射中的扩展名仅以 raw text 输出。
+`PROGRAM.code_language_overrides` 走字符串对数组（`["ext:lang"]`）；普通文本及未知扩展名默认统一以纯文本代码块（`\begin{minted}{text}`）保真渲染以防特殊字符编译报错；仅未配置覆盖的 `.tex` 文件或显式指定为 `".ext:raw"` 的扩展名按原生 LaTeX 语法插入正文。
 
 ## 覆盖 LaTeX 模板
 

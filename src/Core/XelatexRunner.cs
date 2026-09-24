@@ -6,7 +6,7 @@ namespace Core {
     /// <summary>
     /// xelatex 子进程单次运行结果。<see cref="TimedOut"/> 为 true 时 <see cref="ExitCode"/> 无意义（进程被 Kill）。
     /// </summary>
-    internal record XelatexResult(int ExitCode, string Stderr, bool TimedOut);
+    internal record XelatexResult(int ExitCode, string Stderr, bool TimedOut, string Stdout = "");
 
     /// <summary>
     /// xelatex 子进程的抽象。提取此接口为了让 <see cref="PdfBuilder"/> 的 xelatex 路径可单测（注入 fake runner），
@@ -25,7 +25,7 @@ namespace Core {
 
     /// <summary>
     /// 默认 <see cref="IXelatexRunner"/> 实现：用 <see cref="Process"/> 同步 spawn xelatex。
-    /// 把 stderr 合并到返回值而非留给调用方按行处理。
+    /// 把 stderr 与 stdout 完整捕获到返回值供编译诊断解析。
     /// </summary>
     internal class XelatexRunner : IXelatexRunner {
         private readonly ILogger _logger;
@@ -36,6 +36,7 @@ namespace Core {
 
         public XelatexResult Run(string workingDir, string arguments, int timeoutSeconds, IEnumerable<string>? extraFontDirs = null) {
             var stderr = new StringBuilder();
+            var stdout = new StringBuilder();
             using var proc = new Process {
                 StartInfo = new ProcessStartInfo {
                     FileName = "xelatex",
@@ -70,6 +71,7 @@ namespace Core {
             proc.OutputDataReceived += (_, a) => {
                 if (a.Data != null) {
                     _logger.Debug(a.Data);
+                    stdout.AppendLine(a.Data);
                 }
             };
 
@@ -81,7 +83,7 @@ namespace Core {
             } catch (Exception ex) {
                 _logger.Error($"启动 xelatex 失败：{ex.Message}");
                 _logger.Error("排查指引：未检测到 xelatex 命令或无法启动。请确认已安装 TeX 发行版（如 TeX Live、MacTeX 或 MiKTeX），并将 xelatex 所在 bin 目录添加至系统环境变量 PATH。");
-                return new XelatexResult(-1, stderr.ToString() + $"[failed to start: {ex.Message}]\n", false);
+                return new XelatexResult(-1, stderr.ToString() + $"[failed to start: {ex.Message}]\n", false, stdout.ToString());
             }
 
             proc.BeginErrorReadLine();
@@ -104,10 +106,10 @@ namespace Core {
                 }
                 // 兜底：再等 2s 让 Kill 生效（防 zombie 进程）
                 proc.WaitForExit(2000);
-                return new XelatexResult(-1, stderr.ToString() + $"[killed: timeout {timeoutSeconds}s]\n", true);
+                return new XelatexResult(-1, stderr.ToString() + $"[killed: timeout {timeoutSeconds}s]\n", true, stdout.ToString());
             }
 
-            return new XelatexResult(proc.ExitCode, stderr.ToString(), false);
+            return new XelatexResult(proc.ExitCode, stderr.ToString(), false, stdout.ToString());
         }
     }
 }

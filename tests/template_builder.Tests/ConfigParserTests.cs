@@ -330,5 +330,47 @@ public class ConfigParserTests {
         Assert.Contains(logger.Entries, entry =>
             entry.Level == LogLevel.DEBUG && entry.Message.StartsWith("Setting config key: 'AUTHOR'", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Indexer_UnregisteredKey_ReturnsEmptyStringNotJsonObject() {
+        var logger = new TestLogger();
+        var parser = new ConfigParser("TEX", logger);
+
+        var val = parser["NON_EXISTENT_KEY"].GetAsString();
+        Assert.Equal(string.Empty, val);
+        Assert.NotEqual("{}", val);
+        Assert.Single(logger.ErrorMessages);
+    }
+
+    [Fact]
+    public void TryGetConfigValue_RegisteredKey_ReturnsTrueAndValue_WithoutErrorLog() {
+        var logger = new TestLogger();
+        var parser = new ConfigParser("TEX", logger);
+
+        var found = parser.TryGetConfigValue("AUTHOR", out var val);
+        Assert.True(found);
+        Assert.Equal("Aiza", val.GetAsString());
+        Assert.Empty(logger.ErrorMessages);
+    }
+
+    [Fact]
+    public void TryGetConfigValue_UnregisteredKey_ReturnsFalse_WithoutErrorLog() {
+        var logger = new TestLogger();
+        var parser = new ConfigParser("TEX", logger);
+
+        var found = parser.TryGetConfigValue("NON_EXISTENT_KEY", out var val);
+        Assert.False(found);
+        Assert.Empty(logger.ErrorMessages);
+    }
+
+    [Fact]
+    public void ContainsKey_ReturnsCorrectStatus() {
+        var parser = new ConfigParser("TEX", new TestLogger());
+        Assert.True(parser.ContainsKey("AUTHOR"));
+        Assert.True(parser.ContainsKey("CODE_XRIGHTMARGIN"));
+        Assert.False(parser.ContainsKey("NON_EXISTENT_KEY"));
+        // PROGRAM 键在 TEX 解析器中不应当被识别
+        Assert.False(parser.ContainsKey("BUILD_PASS_COUNT"));
+    }
 }
 

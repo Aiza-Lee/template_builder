@@ -1,4 +1,5 @@
 using System.IO;
+using Core.Models;
 using Utils;
 using Utils.Exceptions;
 
@@ -24,15 +25,19 @@ namespace Core.Pipeline {
             }
             checks.Add(new ValidationCheck("source", "exists", true, options.SourceDir.FullName));
 
+            // Check 2: 配置文件存在
+            if (!options.ConfigFile.Exists) {
+                checks.Add(new ValidationCheck("config", "exists", false,
+                    $"未找到配置文件：{options.ConfigFile.FullName}"));
+                return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
+            }
+
             // Check 2/3: 配置文件可解析 + 严格模式 key 白名单
-            IConfigParser texParser;
-            IConfigParser programParser;
+            ProjectConfiguration projectConfig;
             try {
-                texParser = new ConfigParser("TEX", _logger, ConfigStrictness.Strict);
-                programParser = new ConfigParser("PROGRAM", _logger, ConfigStrictness.Strict);
+                projectConfig = new ProjectConfiguration(_logger, ConfigStrictness.Strict);
                 var configJson = File.ReadAllText(options.ConfigFile.FullName);
-                texParser.ParseConfigFile(configJson, options.ConfigFile.FullName);
-                programParser.ParseConfigFile(configJson, options.ConfigFile.FullName);
+                projectConfig.LoadProjectConfig(configJson, options.ConfigFile.FullName);
                 checks.Add(new ValidationCheck("config", "parses", true, options.ConfigFile.FullName));
             } catch (MalformedConfigException ex) {
                 checks.Add(new ValidationCheck("config", "parses", false, ex.Message));
@@ -41,6 +46,17 @@ namespace Core.Pipeline {
                 checks.Add(new ValidationCheck("config", "unknown_key", false, ex.Message));
                 return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
             }
+
+            // Check 3.5: 统一配置值合法性校验（类型、枚举、范围、正则约束及 LaTeX 尺寸）
+            var configValidation = Core.Validation.ConfigValidator.Validate(projectConfig);
+            if (!configValidation.IsValid) {
+                foreach (var err in configValidation.Errors) {
+                    checks.Add(new ValidationCheck("config", err.PropertyPath, false,
+                        $"{err.Message}（期望：{err.Expected}；建议：{err.Recommendation}）"));
+                }
+                return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
+            }
+            checks.Add(new ValidationCheck("config", "schema_validation", true, "类型、取值范围与枚举约束全部符合要求"));
 
             // Check 4: 嵌入式资源齐全
             try {
@@ -53,33 +69,24 @@ namespace Core.Pipeline {
                 return EmitReport(checks, ExitCodes.MissingEmbeddedResource, options.Format);
             }
 
-            // Check 5: 源码树能走通 + 章节深度 ≤ 4 (即 5 层 = section/subsection/.../subparagraph)
-            var ignorePatterns = programParser["IGNORE_PATTERNS"].GetAsStringArray();
-            int maxDepth = -1;
-            try {
-                foreach (var entry in SourceTreeWalker.Walk(options.SourceDir, ignorePatterns, _logger)) {
-                    if (entry.Depth > maxDepth) maxDepth = entry.Depth;
-                }
-                checks.Add(new ValidationCheck("source", "walk", true,
-                    $"最大深度 = {maxDepth}"));
-                if (maxDepth >= 5) {
-                    checks.Add(new ValidationCheck("source", "depth", false,
-                        $"章节深度 {maxDepth} 超过最大支持深度（4）"));
-                } else {
-                    checks.Add(new ValidationCheck("source", "depth", true,
-                        $"{maxDepth} ≤ 4"));
-                }
-            } catch (Exception ex) {
-                checks.Add(new ValidationCheck("source", "walk", false, ex.Message));
-                return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
+            // Check 5: 源码预检（存在性、空目录、全过滤状态及章节最大深度 ≤ 4）
+            var preflight = Core.Validation.SourcePreflight.Inspect(options.SourceDir, projectConfig, _logger);
+            if (!preflight.IsValid) {
+                checks.Add(new ValidationCheck("source", "preflight", false,
+                    $"{preflight.Message}（建议：{preflight.Recommendation}）"));
+                return EmitReport(checks, preflight.ExitCode, options.Format);
             }
+            checks.Add(new ValidationCheck("source", "walk", true,
+                $"匹配 {preflight.MatchedFiles} 个有效源文件（共发现 {preflight.TotalFiles} 个物理文件），最大深度 = {preflight.MaxDepth}"));
+            checks.Add(new ValidationCheck("source", "depth", true,
+                $"{preflight.MaxDepth} ≤ 4"));
 
             // Check 6: Main.tex 中 ##KEY## 都能在 TEX 段找到映射
             var missingPlaceholders = new List<string>();
             try {
                 var mainTexContent = ResolveTemplateContent("Main.tex", options.TemplateDir);
                 var texKeys = new HashSet<string>(
-                    texParser.GetAllConfigsAsString().Select(kvp => kvp.Key),
+                    projectConfig.TexParser.GetAllConfigsAsString().Select(kvp => kvp.Key),
                     StringComparer.Ordinal);
                 var referenced = TemplatePlaceholderScanner.FindMainPlaceholders(mainTexContent)
                     .Distinct(StringComparer.Ordinal)
@@ -98,15 +105,10 @@ namespace Core.Pipeline {
                 checks.Add(new ValidationCheck("placeholders", "##KEY##", false, ex.Message));
             }
 
-            // Check 7: 外部环境依赖检查（可选）
-            if (options.CheckXelatex) {
-                var xelatexFound = CheckXelatexOnPath();
-                checks.Add(new ValidationCheck("environment", "xelatex", xelatexFound,
-                    xelatexFound ? "已在 PATH 中找到" : "未在 PATH 中找到 xelatex（请安装 TeX Live / MacTeX / MiKTeX 并配置 PATH）"));
-
-                var pygmentizeFound = CheckPygmentizeOnPath();
-                checks.Add(new ValidationCheck("environment", "pygmentize", pygmentizeFound,
-                    pygmentizeFound ? "已在 PATH 中找到" : "未在 PATH 中找到 pygmentize（minted 宏包语法高亮依赖，可通过 pip install Pygments 安装）"));
+            // Check 7: 外部环境依赖检查（字体目录 + xelatex/pygmentize 可选）
+            var envResult = Core.Validation.EnvironmentPreflight.Inspect(projectConfig, options.SourceDir, options.CheckXelatex);
+            foreach (var envCheck in envResult.Checks) {
+                checks.Add(envCheck);
             }
 
             // Exit code priority: 3 (placeholder missing) > 6 (other soft failures)
@@ -157,36 +159,21 @@ namespace Core.Pipeline {
         }
 
         /// <summary>
-        /// 在 PATH 上查找指定命令的可执行文件（Windows 优先尝试 .exe / .cmd / .bat 等后缀）。
+        /// 在 PATH 上查找指定命令的可执行文件。保留以兼容外部单测。
         /// </summary>
-        internal static bool CheckExecutableOnPath(string executableName) {
-            var pathEnv = Environment.GetEnvironmentVariable("PATH");
-            if (string.IsNullOrEmpty(pathEnv)) return false;
-            var exeNames = OperatingSystem.IsWindows()
-                ? [executableName + ".exe", executableName + ".cmd", executableName + ".bat", executableName]
-                : new[] { executableName };
-            foreach (var dir in pathEnv.Split(Path.PathSeparator)) {
-                if (string.IsNullOrWhiteSpace(dir)) continue;
-                try {
-                    foreach (var name in exeNames) {
-                        var candidate = Path.Combine(dir.Trim(), name);
-                        if (File.Exists(candidate)) return true;
-                    }
-                } catch {
-                    // 非法路径条目（罕见），跳过
-                }
-            }
-            return false;
-        }
+        internal static bool CheckExecutableOnPath(string executableName) =>
+            Core.Validation.EnvironmentPreflight.CheckExecutableOnPath(executableName);
 
         /// <summary>
         /// 在 PATH 上查找 xelatex 可执行文件。
         /// </summary>
-        internal static bool CheckXelatexOnPath() => CheckExecutableOnPath("xelatex");
+        internal static bool CheckXelatexOnPath() =>
+            Core.Validation.EnvironmentPreflight.CheckXelatexOnPath();
 
         /// <summary>
-        /// 在 PATH 上查找 pygmentize 可执行文件（Python Pygments 宏包语法高亮依赖）。
+        /// 在 PATH 上查找 pygmentize 可执行文件。
         /// </summary>
-        internal static bool CheckPygmentizeOnPath() => CheckExecutableOnPath("pygmentize");
+        internal static bool CheckPygmentizeOnPath() =>
+            Core.Validation.EnvironmentPreflight.CheckPygmentizeOnPath();
     }
 }

@@ -29,6 +29,18 @@ namespace Core.Pipeline {
                     _ => resourceText,  // "jsonc" 或其他默认原样输出
                 };
 
+                // 检查目标文件是否已存在：默认拒绝覆盖，显式指定 Force 时创建备份后再覆盖
+                if (File.Exists(options.OutputPath.FullName)) {
+                    if (!options.Force) {
+                        _logger.Error($"目标配置文件 \"{options.OutputPath.FullName}\" 已存在。为防止已有配置被意外覆盖，默认拒绝写入。若确认覆盖并自动生成备份，请使用 --force (-f) 选项。");
+                        return ExitCodes.InvalidArguments;
+                    }
+
+                    var backupPath = options.OutputPath.FullName + ".bak";
+                    File.Copy(options.OutputPath.FullName, backupPath, overwrite: true);
+                    _logger.Info($"检测到已有配置文件，已备份原配置至 \"{backupPath}\"。");
+                }
+
                 // 确保父目录存在
                 if (options.OutputPath.Directory is { } parent && !parent.Exists) {
                     parent.Create();

@@ -38,7 +38,9 @@ namespace Core {
             { "css", "css" }, { "xml", "xml" }, { "json", "json" },
             { "sh", "bash" }, { "bat", "batch" }, { "ps1", "powershell" },
             { "swift", "swift" }, { "kt", "kotlin" }, { "m", "objective-c" },
-            { "sql", "sql" }, { "yaml", "yaml" }, { "yml", "yaml" }
+            { "sql", "sql" }, { "yaml", "yaml" }, { "yml", "yaml" },
+            { "txt", "text" }, { "text", "text" }, { "log", "text" },
+            { "md", "markdown" }, { "markdown", "markdown" }
         };
 
 
@@ -144,6 +146,8 @@ namespace Core {
                 }
                 pendingDirs.Clear();
 
+                var relPath = Path.GetRelativePath(sourceDirInfo.FullName, entry.Info.FullName).Replace('\\', '/');
+                strBuilder.AppendLine($"% [TB_SOURCE_FILE: {relPath}]");
                 InsertSection(strBuilder, entry.Info.Name, effectiveDepth);
                 strBuilder.AppendLine(codeBlock);
             }
@@ -172,20 +176,40 @@ namespace Core {
             content = ExpandTabs(content);
 
             var extKey = rawExt.StartsWith('.') ? rawExt[1..] : rawExt;
-            // _languageMap 作为「是否走 minted 代码块」的单一判断：在映射中 → minted，否则 → 纯文本内嵌
+
+            // [UX-06] 显式区分 Raw LaTeX 内容与代码/保真文本呈现：
+            // 1. 若语言映射显式配置为 "raw" 或 "latex-raw"（例如用户配置 ".custom:raw"），按原生 LaTeX 语法嵌入；
+            // 2. 若扩展名为 .tex 且用户未在 language_map 中覆盖为代码高亮语言（如覆盖为 "tex" 或 "latex" 时作为代码展示），按原生 LaTeX 语法嵌入。
+            bool isExplicitRawLatex = false;
             if (_languageMap.TryGetValue(extKey, out var language)) {
-                var codeBlock = new StringBuilder(CODE_BLOCK_TEMPLATE);
-                codeBlock.Replace("<<LANGUAGE>>", language);
-                codeBlock.Replace("<<CODE>>", content);
-                var rendered = codeBlock.ToString();
-                foreach (var placeholder in TemplatePlaceholderScanner.FindUnresolved(rendered)) {
-                    _logger.Error($"CodeBlock.tex 模板中存在未替换的占位符 \"{placeholder}\"（文件：{codeFile.Name}）。");
-                    _unresolvedPlaceholderCount++;
+                if (string.Equals(language, "raw", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(language, "latex-raw", StringComparison.OrdinalIgnoreCase)) {
+                    isExplicitRawLatex = true;
                 }
-                return rendered;
-            } else {
+            } else if (string.Equals(extKey, "tex", StringComparison.OrdinalIgnoreCase)) {
+                isExplicitRawLatex = true;
+            }
+
+            if (isExplicitRawLatex) {
                 return content;
             }
+
+            // 普通文本及未知扩展名：
+            // 若在映射中（如 python, csharp, text, markdown 等），走该语言高亮；
+            // 否则（未知扩展名，如 .csv, .env, .data 等）统一 fallback 为 "text" 纯文本代码块渲染，
+            // 确保特殊字符（%, _, &, $, # 等）和缩进换行被保真保留，严防编译错误。
+            var effectiveLanguage = !string.IsNullOrWhiteSpace(language) ? language : "text";
+
+            var codeBlock = new StringBuilder(CODE_BLOCK_TEMPLATE);
+            codeBlock.Replace("<<LANGUAGE>>", effectiveLanguage);
+            // 在插入代码正文前扫描模板占位符，避免源代码中含有的 ##...## 或 <<...>> 触发误报
+            foreach (var placeholder in TemplatePlaceholderScanner.FindUnresolved(codeBlock.ToString())) {
+                if (placeholder == "<<CODE>>") continue;
+                _logger.Error($"CodeBlock.tex 模板中存在未替换的占位符 \"{placeholder}\"（文件：{codeFile.Name}）。");
+                _unresolvedPlaceholderCount++;
+            }
+            codeBlock.Replace("<<CODE>>", content);
+            return codeBlock.ToString();
         }
 
         // 展开制表符

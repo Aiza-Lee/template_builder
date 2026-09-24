@@ -85,7 +85,7 @@ namespace Utils {
     /// </summary>
     internal class ConfigParser : IConfigParser {
         private readonly Dictionary<string, ConfigValue> _configValues = [];
-        private readonly ILogger _logger;
+        private readonly ILogger? _logger;
         private readonly string _rootObjectName;
         private readonly ConfigStrictness _strictness;
 
@@ -113,7 +113,7 @@ namespace Utils {
         /// <param name="rootObjectName">配置文件的根对象名称</param>
         /// <param name="logger">日志记录器，可选</param>
         /// <param name="strictness">对未知 key 的处理策略，默认为 Lax</param>
-        public ConfigParser(string rootObjectName, ILogger logger, ConfigStrictness strictness = ConfigStrictness.Lax)
+        public ConfigParser(string rootObjectName, ILogger? logger = null, ConfigStrictness strictness = ConfigStrictness.Lax)
             : this(rootObjectName, logger, DefaultConfigDocument, strictness) {
         }
 
@@ -124,7 +124,7 @@ namespace Utils {
         /// <param name="logger">日志记录器，可选</param>
         /// <param name="defaultDocument">默认配置 JsonDocument</param>
         /// <param name="strictness">对未知 key 的处理策略，默认为 Lax</param>
-        public ConfigParser(string rootObjectName, ILogger logger, JsonDocument defaultDocument, ConfigStrictness strictness = ConfigStrictness.Lax) {
+        public ConfigParser(string rootObjectName, ILogger? logger, JsonDocument defaultDocument, ConfigStrictness strictness = ConfigStrictness.Lax) {
             ArgumentNullException.ThrowIfNull(defaultDocument);
             _logger = logger;
             _rootObjectName = rootObjectName;
@@ -148,10 +148,27 @@ namespace Utils {
                     return new ReadonlyConfigValue(configValue);
                 } else {
                     _logger?.Error($"Key '{key}' is not registered. Returning empty ReadonlyConfigValue.");
-                    return new ReadonlyConfigValue(new ConfigValue(JsonDocument.Parse("{}").RootElement));
+                    return new ReadonlyConfigValue(new ConfigValue(JsonDocument.Parse("\"\"").RootElement));
                 }
             }
         }
+
+        /// <summary>
+        /// 尝试获取指定配置项。若配置项未注册，返回 false，且不记录 Error 日志。
+        /// </summary>
+        public bool TryGetConfigValue(string key, out ReadonlyConfigValue value) {
+            if (_configValues.TryGetValue(key, out var configValue)) {
+                value = new ReadonlyConfigValue(configValue);
+                return true;
+            }
+            value = default!;
+            return false;
+        }
+
+        /// <summary>
+        /// 判断指定配置项是否已注册。
+        /// </summary>
+        public bool ContainsKey(string key) => _configValues.ContainsKey(key);
 
         /// <summary>
         /// 获取所有配置项，键值对都为字符串类型
@@ -176,17 +193,16 @@ namespace Utils {
         /// <returns>键已注册且转换成功返回 true；键未注册、值非法或目标为复合类型（数组/对象）返回 false</returns>
         public bool TrySetConfigValueFromString(string key, string rawValue) {
             if (!_configValues.TryGetValue(key, out var existing)) return false;
-            if (!TryCoerceScalar(rawValue, existing.Value.ValueKind, out var element)) return false;
+            if (!TryCoerceValue(rawValue, existing.Value.ValueKind, out var element)) return false;
             existing.Value = element;
             _logger?.Debug($"Overriding config key: '{key}' with value: '{rawValue}'");
             return true;
         }
 
         /// <summary>
-        /// 把字符串按目标 JSON 类型强制转换。仅支持标量（字符串 / 数值 / 布尔）；
-        /// 复合类型返回 false（配置覆盖场景下无意义，且难以从单行输入可靠构造）。
+        /// 把字符串按目标 JSON 类型强制转换。支持标量（字符串 / 数值 / 布尔）以及字符串数组（逗号分隔或 JSON 数组语法）。
         /// </summary>
-        private static bool TryCoerceScalar(string raw, JsonValueKind targetKind, out JsonElement element) {
+        private static bool TryCoerceValue(string raw, JsonValueKind targetKind, out JsonElement element) {
             element = default;
             try {
                 switch (targetKind) {
@@ -201,6 +217,20 @@ namespace Utils {
                         return true;
                     case JsonValueKind.String:
                         element = JsonDocument.Parse(JsonSerializer.Serialize(raw)).RootElement.Clone();
+                        return true;
+                    case JsonValueKind.Array:
+                        var trimmed = raw.Trim();
+                        if (trimmed.StartsWith('[') && trimmed.EndsWith(']')) {
+                            var doc = JsonDocument.Parse(trimmed);
+                            if (doc.RootElement.ValueKind == JsonValueKind.Array) {
+                                element = doc.RootElement.Clone();
+                                return true;
+                            }
+                        }
+                        var items = string.IsNullOrWhiteSpace(trimmed)
+                            ? Array.Empty<string>()
+                            : trimmed.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        element = JsonSerializer.SerializeToElement(items);
                         return true;
                     default:
                         return false;

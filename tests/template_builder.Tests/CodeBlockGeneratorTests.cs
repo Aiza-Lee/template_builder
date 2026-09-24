@@ -570,4 +570,168 @@ public class CodeBlockGeneratorTests {
         Assert.Contains(@"#pragma once", output);
         Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.WARNING && e.Message.Contains("not in the include list"));
     }
+
+    [Fact]
+    public void Generate_WhenCodeContainsTemplatePlaceholders_DoesNotReportUnresolvedPlaceholders() {
+        using var tmp = TempDir.Create();
+        // 模拟项目中包含诸如 ##KEY##, <<CONTENT>>, <<CODE>> 占位符的 C# / 源码文件
+        var codeWithPlaceholders = """
+        // This is a comment containing ##KEY## and <<CONTENT>> and ##FOO##
+        string s = "<<CODE>>";
+        var regex = "##[A-Z0-9_]+##";
+        """;
+        File.WriteAllText(Path.Combine(tmp.Path, "Sample.cs"), codeWithPlaceholders);
+
+        var logger = new TestLogger();
+        var parser = new ConfigParser("PROGRAM", logger);
+        parser.ParseConfigFile("""
+        {
+            "PROGRAM": {
+                "include_file_types": [ ".cs" ]
+            }
+        }
+        """);
+        var generator = new CodeBlockGenerator(
+            logger, parser, 4, new DirectoryInfo(tmp.Path),
+            new ManifestResourceManager().GetResourceInString("Templates.CodeBlock.tex"),
+            sectionDepth: 5, escapeSectionNames: true);
+        var output = generator.Generate();
+
+        Assert.Contains(@"\begin{minted}{csharp}", output);
+        Assert.Contains(@"##KEY##", output);
+        Assert.Contains(@"<<CONTENT>>", output);
+        Assert.Equal(0, generator.UnresolvedPlaceholderCount);
+        Assert.Empty(logger.ErrorMessages);
+    }
+
+    // ============================================================
+    // [UX-06] 普通文本保真呈现与显式区分 LaTeX 内容
+    // ============================================================
+
+    [Fact]
+    public void Generate_PlainTextWithLatexSpecials_RenderedAsTextCodeBlockWithoutCrash() {
+        using var tmp = TempDir.Create();
+        var txtContent = @"result = a_b + 100% & $10 #test \ ^ ~ { }";
+        File.WriteAllText(Path.Combine(tmp.Path, "notes.txt"), txtContent);
+
+        var logger = new TestLogger();
+        var parser = new ConfigParser("PROGRAM", logger);
+        parser.ParseConfigFile("""
+        {
+            "PROGRAM": {
+                "include_file_types": [ ".txt" ]
+            }
+        }
+        """);
+        var generator = new CodeBlockGenerator(
+            logger, parser, 4, new DirectoryInfo(tmp.Path),
+            new ManifestResourceManager().GetResourceInString("Templates.CodeBlock.tex"),
+            sectionDepth: 5, escapeSectionNames: true);
+        var output = generator.Generate();
+
+        Assert.Contains(@"\begin{minted}{text}", output);
+        Assert.Contains(txtContent, output);
+        Assert.Contains(@"\end{minted}", output);
+    }
+
+    [Fact]
+    public void Generate_UnknownExtension_FallsBackToTextCodeBlock() {
+        using var tmp = TempDir.Create();
+        File.WriteAllText(Path.Combine(tmp.Path, "data.csv"), "id,name_value,discount%\n1,foo,50%");
+
+        var logger = new TestLogger();
+        var parser = new ConfigParser("PROGRAM", logger);
+        parser.ParseConfigFile("""
+        {
+            "PROGRAM": {
+                "include_file_types": [ ".csv" ]
+            }
+        }
+        """);
+        var generator = new CodeBlockGenerator(
+            logger, parser, 4, new DirectoryInfo(tmp.Path),
+            new ManifestResourceManager().GetResourceInString("Templates.CodeBlock.tex"),
+            sectionDepth: 5, escapeSectionNames: true);
+        var output = generator.Generate();
+
+        Assert.Contains(@"\begin{minted}{text}", output);
+        Assert.Contains("id,name_value,discount%", output);
+    }
+
+    [Fact]
+    public void Generate_TexFileWithoutLanguageOverride_InsertsAsRawLatex() {
+        using var tmp = TempDir.Create();
+        var rawLatex = @"\noindent \textbf{This is pure LaTeX macro}";
+        File.WriteAllText(Path.Combine(tmp.Path, "chapter.tex"), rawLatex);
+
+        var logger = new TestLogger();
+        var parser = new ConfigParser("PROGRAM", logger);
+        parser.ParseConfigFile("""
+        {
+            "PROGRAM": {
+                "include_file_types": [ ".tex" ]
+            }
+        }
+        """);
+        var generator = new CodeBlockGenerator(
+            logger, parser, 4, new DirectoryInfo(tmp.Path),
+            new ManifestResourceManager().GetResourceInString("Templates.CodeBlock.tex"),
+            sectionDepth: 5, escapeSectionNames: true);
+        var output = generator.Generate();
+
+        Assert.Contains(rawLatex, output);
+        Assert.DoesNotContain(@"\begin{minted}", output);
+    }
+
+    [Fact]
+    public void Generate_TexFileWithExplicitLanguageOverride_RendersAsCodeBlock() {
+        using var tmp = TempDir.Create();
+        var texContent = @"\documentclass{article}";
+        File.WriteAllText(Path.Combine(tmp.Path, "example.tex"), texContent);
+
+        var logger = new TestLogger();
+        var parser = new ConfigParser("PROGRAM", logger);
+        parser.ParseConfigFile("""
+        {
+            "PROGRAM": {
+                "include_file_types": [ ".tex" ],
+                "code_language_overrides": [ ".tex:latex" ]
+            }
+        }
+        """);
+        var generator = new CodeBlockGenerator(
+            logger, parser, 4, new DirectoryInfo(tmp.Path),
+            new ManifestResourceManager().GetResourceInString("Templates.CodeBlock.tex"),
+            sectionDepth: 5, escapeSectionNames: true);
+        var output = generator.Generate();
+
+        Assert.Contains(@"\begin{minted}{latex}", output);
+        Assert.Contains(texContent, output);
+    }
+
+    [Fact]
+    public void Generate_CustomExtensionWithRawOverride_InsertsAsRawLatex() {
+        using var tmp = TempDir.Create();
+        var rawContent = @"\emph{Custom Raw LaTeX}";
+        File.WriteAllText(Path.Combine(tmp.Path, "macro.snippet"), rawContent);
+
+        var logger = new TestLogger();
+        var parser = new ConfigParser("PROGRAM", logger);
+        parser.ParseConfigFile("""
+        {
+            "PROGRAM": {
+                "include_file_types": [ ".snippet" ],
+                "code_language_overrides": [ ".snippet:raw" ]
+            }
+        }
+        """);
+        var generator = new CodeBlockGenerator(
+            logger, parser, 4, new DirectoryInfo(tmp.Path),
+            new ManifestResourceManager().GetResourceInString("Templates.CodeBlock.tex"),
+            sectionDepth: 5, escapeSectionNames: true);
+        var output = generator.Generate();
+
+        Assert.Contains(rawContent, output);
+        Assert.DoesNotContain(@"\begin{minted}", output);
+    }
 }

@@ -28,6 +28,13 @@ jobs:
         with:
           dotnet-version: "9.0.x"
 
+      - name: Install TeX Live (XeLaTeX)
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            texlive-xetex \
+            texlive-fonts-recommended
+
       - name: Restore
         run: dotnet restore template_builder.sln
 

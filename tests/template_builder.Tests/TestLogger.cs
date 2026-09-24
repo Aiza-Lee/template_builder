@@ -7,6 +7,7 @@ internal sealed class TestLogger : ILogger {
     private readonly ConcurrentQueue<(LogLevel Level, string Message)> _entries = new();
 
     public IReadOnlyCollection<(LogLevel Level, string Message)> Entries => _entries.ToArray();
+    public IEnumerable<string> ErrorMessages => _entries.Where(e => e.Level == LogLevel.ERROR).Select(e => e.Message);
 
     public void Info(string message) => _entries.Enqueue((LogLevel.INFO, message));
 

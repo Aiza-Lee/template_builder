@@ -1,6 +1,7 @@
 using System.IO;
 using Core.Pipeline;
 using Utils;
+using Utils.Exceptions;
 using Xunit;
 
 namespace template_builder.Tests.Pipeline;
@@ -28,18 +29,32 @@ public class ConfigPathResolverTests {
     }
 
     [Fact]
-    public void Resolve_MissingRequested_FallsBackAndMarksNotUserProvided() {
+    public void Resolve_MissingRequestedWhenUserProvided_ThrowsInvalidArgumentException() {
         var logger = new TestLogger();
         var resolver = new ConfigPathResolver(logger);
 
         var missing = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json"));
         var fallback = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json"));
 
-        var (result, userProvided) = resolver.Resolve(missing, userProvidedAtCli: true, fallback);
+        var ex = Assert.Throws<InvalidArgumentException>(() =>
+            resolver.Resolve(missing, userProvidedAtCli: true, fallback));
+
+        Assert.Contains(missing.FullName, ex.Message);
+        Assert.Contains("不存在", ex.Message);
+    }
+
+    [Fact]
+    public void Resolve_MissingRequestedWhenNotUserProvided_FallsBackAndMarksNotUserProvided() {
+        var logger = new TestLogger();
+        var resolver = new ConfigPathResolver(logger);
+
+        var missing = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json"));
+        var fallback = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json"));
+
+        var (result, userProvided) = resolver.Resolve(missing, userProvidedAtCli: false, fallback);
 
         Assert.Equal(fallback.FullName, result.FullName);
-        Assert.False(userProvided); // 回退后不再严格
-        Assert.Contains(logger.Entries, e => e.Level == LogLevel.WARNING && e.Message.Contains("未找到配置文件"));
+        Assert.False(userProvided);
     }
 
     [Fact]

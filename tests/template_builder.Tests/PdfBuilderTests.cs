@@ -1199,30 +1199,71 @@ public class PdfBuilderTests {
     // ============================================================
 
     /// <summary>
-    /// Pass 1 返回非零退出码但 PDF 已经写出 → 走 cleanupNeeded=false 的
-    /// warning 分支（继续到 pass 2），不报 XelatexFailure。
-    /// 注意：Build() 会在调用 xelatex 前通过 PurgeBuildDir() 清理 build/ 目录，
-    /// 因此 PDF 必须由 xelatex 副作用（SideEffect）创建，而非在 Build() 前预创建。
+    /// [UX-05] 修正编译成功判定：XeLaTeX 只要返回非零退出码（如 ExitCode 1），
+    /// 即使工作目录中生成了临时 PDF 文件，也绝不判定为成功，必须返回 XelatexFailure (1) 并标记为 Failed；
+    /// 临时 PDF 仅作为 DiagnosticPdfPath 保留供排查，绝不覆盖目标 PDF 产物。
     /// </summary>
     [Fact]
-    public void Build_RunnerExitCode1PdfExists_WarningNotError() {
+    public void Build_RunnerExitCode1PdfExists_FailsAndIsolatesDiagnosticPdf() {
         var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
-        // fixture 的 sourceDir 是 tmp.Path/src，build/ 子目录是 tmp.Path/src/build
-        var buildDir = Path.Combine(tmp.Path, "src", "build");
+        var outputPdfPath = Path.Combine(tmp.Path, "output.pdf");
+        File.WriteAllText(outputPdfPath, "%PDF-1.4 ORIGINAL VALID CONTENT");
 
-        // Pass 1：模拟 xelatex 非零退出但生成了部分 PDF（副作用写文件），触发 warning 分支
-        runner.Results.Enqueue(new XelatexResult(1, "warning only", false));
-        runner.SideEffects.Enqueue((_, _) => {
-            Directory.CreateDirectory(buildDir);
-            File.WriteAllText(Path.Combine(buildDir, "mid-output.pdf"), "%PDF-1.4 stub");
+        // 模拟 xelatex 非零退出（如编译报错），但写入了半成品 mid-output.pdf
+        runner.Results.Enqueue(new XelatexResult(1, "! Package minted Error: missing pygmentize\nl.42 \\begin{minted}", false, "! Package minted Error: missing pygmentize\nl.42 \\begin{minted}"));
+        runner.SideEffects.Enqueue((workingDir, _) => {
+            Directory.CreateDirectory(workingDir);
+            File.WriteAllText(Path.Combine(workingDir, "mid-output.pdf"), "%PDF-1.4 CORRUPTED STUB");
         });
-        // Pass 2：模拟成功（无副作用）
-        runner.Results.Enqueue(new XelatexResult(0, "", false));
-        runner.SideEffects.Enqueue(null);
 
         try {
             var exitCode = builder.Build();
-            Assert.Equal(ExitCodes.Success, exitCode);
+            // 严禁非零退出伪装成功
+            Assert.Equal(ExitCodes.XelatexFailure, exitCode);
+
+            // 原始输出文件必须完好无损，绝不被半成品覆盖
+            var originalContent = File.ReadAllText(outputPdfPath);
+            Assert.Equal("%PDF-1.4 ORIGINAL VALID CONTENT", originalContent);
+
+            // 诊断产物被保留在构建目录
+            Assert.NotNull(builder.LastBuildResult);
+            Assert.Equal(Core.Models.BuildStatus.Failed, builder.LastBuildResult.Status);
+            Assert.NotNull(builder.LastBuildResult.DiagnosticPdfPath);
+            Assert.True(File.Exists(builder.LastBuildResult.DiagnosticPdfPath));
+
+            // 只执行了 1 轮编译，出问题立即中止，不盲目继续后续 pass
+            Assert.Single(runner.Calls);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// [UX-05] 验证构建失败时提取的诊断结果包含定位到的源码文件与修复建议。
+    /// </summary>
+    [Fact]
+    public void Build_RunnerExitCode1_PopulatesCulpritSourceAndRecommendation() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+        var codeFile = Path.Combine(tmp.Path, "src", "demo.py");
+        File.WriteAllText(codeFile, "print('hello world')\n");
+
+        runner.Results.Enqueue(new XelatexResult(
+            1,
+            "! Undefined control sequence.\nl.15 \\badcmd",
+            false,
+            "! Undefined control sequence.\nl.15 \\badcmd"
+        ));
+
+        try {
+            var exitCode = builder.Build();
+            Assert.Equal(ExitCodes.XelatexFailure, exitCode);
+
+            var res = builder.LastBuildResult;
+            Assert.NotNull(res);
+            Assert.Equal(Core.Models.BuildStatus.Failed, res.Status);
+            Assert.Contains("Undefined control sequence", res.FailureReason);
+            Assert.NotNull(res.Recommendation);
+            Assert.Contains("未定义", res.Recommendation);
         } finally {
             tmp.Dispose();
         }
@@ -1331,8 +1372,9 @@ public class PdfBuilderTests {
         File.WriteAllText(Path.Combine(buildDir, "mid-output.pdf"), "old pdf");
         string? generatedTex = null;
         runner.Results.Enqueue(new XelatexResult(0, "", false));
-        runner.SideEffects.Enqueue((_, _) => {
-            generatedTex = File.ReadAllText(Path.Combine(buildDir, "mid-output.tex"));
+        runner.SideEffects.Enqueue((workingDir, _) => {
+            generatedTex = File.ReadAllText(Path.Combine(workingDir, "mid-output.tex"));
+            File.WriteAllText(Path.Combine(workingDir, "mid-output.pdf"), "%PDF-1.4 stub");
         });
 
         try {
@@ -1348,7 +1390,7 @@ public class PdfBuilderTests {
     [Fact]
     public void Build_XelatexRunsInBuildDirectory_NotBaseDirectory() {
         var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
-        var expectedBuildDir = Path.Combine(tmp.Path, "src", "build");
+        var expectedBuildDir = Path.Combine(tmp.Path, "src", ".template_builder", "build");
         try {
             builder.Build();
             Assert.NotEmpty(runner.Calls);
@@ -1473,6 +1515,174 @@ public class PdfBuilderTests {
         } finally {
             tmp.Dispose();
         }
+    }
+
+    [Fact]
+    public void Build_UserFilesInBuildDir_PreservedOnSuccess() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+        var userBuildDir = Path.Combine(tmp.Path, "src", "build");
+        Directory.CreateDirectory(userBuildDir);
+        var userFile = Path.Combine(userBuildDir, "user_script.sh");
+        File.WriteAllText(userFile, "#!/bin/bash\necho hello");
+
+        runner.Results.Enqueue(new XelatexResult(0, "", false));
+        runner.SideEffects.Enqueue((workingDir, _) => {
+            File.WriteAllText(Path.Combine(workingDir, "mid-output.pdf"), "%PDF-1.4 valid");
+        });
+
+        try {
+            var exitCode = builder.Build();
+            Assert.Equal(ExitCodes.Success, exitCode);
+            Assert.True(File.Exists(userFile), "源目录 build/ 下的用户文件在成功构建后必须被保留");
+            Assert.Equal("#!/bin/bash\necho hello", File.ReadAllText(userFile));
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Build_UserFilesInBuildDir_PreservedOnFailure() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+        var userBuildDir = Path.Combine(tmp.Path, "src", "build");
+        Directory.CreateDirectory(userBuildDir);
+        var userFile = Path.Combine(userBuildDir, "user_data.bin");
+        File.WriteAllText(userFile, "precious user data");
+
+        // 模拟编译失败
+        runner.Results.Enqueue(new XelatexResult(1, "! Fatal error", false));
+
+        try {
+            var exitCode = builder.Build();
+            Assert.Equal(ExitCodes.XelatexFailure, exitCode);
+            Assert.True(File.Exists(userFile), "源目录 build/ 下的用户文件在编译失败时必须被保留");
+            Assert.Equal("precious user data", File.ReadAllText(userFile));
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Build_CompilationFailure_PreservesExistingOutputPdf() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+        var outPdfPath = Path.Combine(tmp.Path, "out.pdf");
+        const string originalPdfContent = "%PDF-1.4 previous good version";
+        File.WriteAllText(outPdfPath, originalPdfContent);
+
+        // 模拟编译失败
+        runner.Results.Enqueue(new XelatexResult(1, "error", false));
+
+        try {
+            var exitCode = builder.Build();
+            Assert.Equal(ExitCodes.XelatexFailure, exitCode);
+            Assert.True(File.Exists(outPdfPath));
+            Assert.Equal(originalPdfContent, File.ReadAllText(outPdfPath));
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Build_UnresolvedPlaceholders_PreservesExistingOutputPdf() {
+        // 使用一个会导致未解析占位符的 templateDir
+        using var templateDir = TempDir.Create();
+        File.WriteAllText(Path.Combine(templateDir.Path, "Main.tex"), "Doc with <<NON_EXISTENT_PLACEHOLDER>>");
+
+        using var tmp = TempDir.Create();
+        var srcDir = Path.Combine(tmp.Path, "src");
+        Directory.CreateDirectory(srcDir);
+        File.WriteAllText(Path.Combine(srcDir, "test.cs"), "class A {}");
+        var outPdf = Path.Combine(tmp.Path, "doc.pdf");
+        const string previousPdf = "%PDF-1.4 intact";
+        File.WriteAllText(outPdf, previousPdf);
+
+        var texParser = new ConfigParser("TEX", new TestLogger(), ConfigStrictness.Lax);
+        var progParser = new ConfigParser("PROGRAM", new TestLogger(), ConfigStrictness.Lax);
+        var resMgr = new ManifestResourceManager();
+        var runner = new FakeXelatexRunner();
+        var dummyConfig = new FileInfo(Path.Combine(tmp.Path, "cfg.json"));
+        File.WriteAllText(dummyConfig.FullName, "{}");
+        var options = new BuildSubcommandOptions(
+            new DirectoryInfo(srcDir),
+            new FileInfo(outPdf),
+            dummyConfig,
+            Verbose: false,
+            TemplateDir: new DirectoryInfo(templateDir.Path)
+        );
+
+        var builder = new PdfBuilder(new TestLogger(), options, texParser, progParser, resMgr, runner);
+        var exitCode = builder.Build();
+
+        Assert.Equal(ExitCodes.UnresolvedPlaceholders, exitCode);
+        Assert.True(File.Exists(outPdf));
+        Assert.Equal(previousPdf, File.ReadAllText(outPdf));
+    }
+
+    [Fact]
+    public void ExecuteBuild_SuccessfulCompilation_ReturnsStructuredSuccess() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+        try {
+            // 配置两轮编译成功并生成模拟有效 PDF
+            runner.Results.Enqueue(new XelatexResult(0, "", false));
+            runner.SideEffects.Enqueue((workingDir, args) => {
+                var pdfPath = Path.Combine(workingDir, "mid-output.pdf");
+                File.WriteAllText(pdfPath, "%PDF-1.4 simulated pdf");
+            });
+
+            runner.Results.Enqueue(new XelatexResult(0, "", false));
+            runner.SideEffects.Enqueue((workingDir, args) => {
+                var pdfPath = Path.Combine(workingDir, "mid-output.pdf");
+                File.WriteAllText(pdfPath, "%PDF-1.4 simulated pdf");
+            });
+
+            var result = builder.ExecuteBuild();
+
+            Assert.True(result.IsSuccess);
+            Assert.Equal(Core.Models.BuildStatus.Success, result.Status);
+            Assert.Equal(ExitCodes.Success, result.ExitCode);
+            Assert.NotNull(result.OutputPdf);
+            Assert.True(result.OutputPdf.Exists);
+            Assert.Equal(2, result.PassesCompleted);
+            Assert.True(result.Duration > TimeSpan.Zero);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void ExecuteBuild_ConstructedWithProjectConfiguration_RecordsConfigurationAndBuilds() {
+        using var tmp = TempDir.Create();
+        var srcDir = Path.Combine(tmp.Path, "src");
+        Directory.CreateDirectory(srcDir);
+        File.WriteAllText(Path.Combine(srcDir, "test.cs"), "class Program {}");
+        var outPdf = Path.Combine(tmp.Path, "out.pdf");
+        var cfgFile = Path.Combine(tmp.Path, "cfg.json");
+        File.WriteAllText(cfgFile, "{}");
+
+        var projectConfig = new Core.Models.ProjectConfiguration();
+        projectConfig.TrySetOverride("LAYOUT_COLUMNS", "1");
+
+        var options = new BuildSubcommandOptions(
+            new DirectoryInfo(srcDir),
+            new FileInfo(outPdf),
+            new FileInfo(cfgFile),
+            Verbose: false,
+            TemplateDir: null
+        );
+
+        var runner = new FakeXelatexRunner();
+        runner.SideEffects.Enqueue((workingDir, args) => {
+            File.WriteAllText(Path.Combine(workingDir, "mid-output.pdf"), "%PDF-1.4 mock");
+        });
+        runner.SideEffects.Enqueue((workingDir, args) => {
+            File.WriteAllText(Path.Combine(workingDir, "mid-output.pdf"), "%PDF-1.4 mock");
+        });
+
+        var builder = new PdfBuilder(new TestLogger(), options, projectConfig, new ManifestResourceManager(), runner);
+        Assert.Same(projectConfig, builder.ProjectConfig);
+
+        var result = builder.ExecuteBuild();
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
     }
 }
 

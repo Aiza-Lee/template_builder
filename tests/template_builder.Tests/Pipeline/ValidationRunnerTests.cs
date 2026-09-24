@@ -23,7 +23,7 @@ public class ValidationRunnerTests {
     }
 
     [Fact]
-    public void Run_HappyPath_EmptySource_ReturnsOk() {
+    public void Run_EmptySource_ReturnsValidationFailed() {
         var (tmp, sourceDir, configFile) = CreateHappyPathFixture();
         sourceDir.Delete(recursive: true);
         sourceDir.Create();  // 重新建一个空目录
@@ -31,7 +31,18 @@ public class ValidationRunnerTests {
 
         var exitCode = runner.Run(new ValidateSubcommandOptions(sourceDir, configFile));
 
-        Assert.Equal(0, exitCode);
+        Assert.Equal(ExitCodes.ValidationFailed, exitCode);
+        tmp.Dispose();
+    }
+
+    [Fact]
+    public void Run_HappyPath_ReturnsOk() {
+        var (tmp, sourceDir, configFile) = CreateHappyPathFixture();
+        var runner = new ValidationRunner(new TestLogger(), new ManifestResourceManager());
+
+        var exitCode = runner.Run(new ValidateSubcommandOptions(sourceDir, configFile));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
         tmp.Dispose();
     }
 
@@ -44,6 +55,18 @@ public class ValidationRunnerTests {
         var exitCode = runner.Run(new ValidateSubcommandOptions(missingDir, configFile));
 
         Assert.Equal(2, exitCode);
+        tmp.Dispose();
+    }
+
+    [Fact]
+    public void Run_MissingConfigFile_ReturnsInvalidArguments() {
+        var (tmp, sourceDir, _) = CreateHappyPathFixture();
+        var missingConfigFile = new FileInfo(Path.Combine(tmp.Path, "does-not-exist.json"));
+        var runner = new ValidationRunner(new TestLogger(), new ManifestResourceManager());
+
+        var exitCode = runner.Run(new ValidateSubcommandOptions(sourceDir, missingConfigFile));
+
+        Assert.Equal(ExitCodes.InvalidArguments, exitCode);
         tmp.Dispose();
     }
 

@@ -241,7 +241,7 @@
 						"type": "string",
 						"pattern": "^\\.[A-Za-z0-9]+$"
 					},
-					"description": "包含的源文件扩展名（白名单，需带 . 前缀）。"
+					"description": "包含的源文件扩展名（白名单，需带 . 前缀）。匹配的文件默认按代码/保真文本块渲染。"
 				},
 				"ignore_patterns": {
 					"type": "array",
@@ -254,7 +254,7 @@
 						"type": "string",
 						"pattern": "^\\.[A-Za-z0-9]+:[A-Za-z0-9_+\\-]+$"
 					},
-					"description": "扩展名→minted 语言映射的增量覆盖（\"ext:lang\"）。与 _defaultExtMap 29 条默认映射合并；非法条目被静默跳过。"
+					"description": "扩展名→minted 语言映射覆盖（\".ext:lang\"）。规则：已知编程语言按词法器高亮；普通文本与未知扩展名统一以纯文本代码块（text）渲染以保留字符原貌；使用 \".ext:raw\" 显式指示按原生 LaTeX 语法插入正文；未覆盖的 .tex 文件默认按原生 LaTeX 语法插入。"
 				},
 				"build": {
 					"type": "object",

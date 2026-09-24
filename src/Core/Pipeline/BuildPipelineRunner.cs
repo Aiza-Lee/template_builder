@@ -1,55 +1,129 @@
+using System.Collections.Generic;
+using System.IO;
+using Core.Models;
 using Utils;
 using Utils.Exceptions;
 
 namespace Core.Pipeline {
     /// <summary>
-    /// 构建流水线的最终装配点：读取配置 JSON、构造两个 <see cref="ConfigParser"/>、
-    /// 调用 <see cref="PdfBuilder.Build"/>，并把领域异常映射为退出码。
+    /// 构建流水线的最终装配点：读取配置 JSON、基于统一 <see cref="ProjectConfiguration"/> 管理配置与覆盖项、
+    /// 调用 <see cref="PdfBuilder.ExecuteBuild"/>，并把领域异常映射为退出码与结构化结果。
     /// </summary>
     internal sealed class BuildPipelineRunner(ILogger logger, ManifestResourceManager resMgr) {
         private readonly ILogger _logger = logger;
         private readonly ManifestResourceManager _resMgr = resMgr;
 
         /// <summary>
-        /// 执行一次构建。捕获 <see cref="MalformedConfigException"/>、
-        /// <see cref="MissingEmbeddedResourceException"/> 与 <see cref="UnknownConfigKeyException"/>，
-        /// 分别返回 <see cref="ExitCodes.MalformedConfig"/>、
-        /// <see cref="ExitCodes.MissingEmbeddedResource"/> 与 <see cref="ExitCodes.InvalidArguments"/>。
+        /// 执行构建流水线并返回结构化结果。支持传入已预先装配并微调的 <see cref="ProjectConfiguration"/>。
         /// </summary>
-        public int Run(BuildSubcommandOptions options, bool userProvidedConfig) {
+        public BuildResult RunBuild(
+            BuildSubcommandOptions options,
+            bool userProvidedConfig,
+            ProjectConfiguration? existingConfig = null
+        ) {
             try {
-                var strictness = userProvidedConfig ? ConfigStrictness.Strict : ConfigStrictness.Lax;
-                var texParser = new ConfigParser("TEX", _logger, strictness);
-                var programParser = new ConfigParser("PROGRAM", _logger, strictness);
+                ProjectConfiguration projectConfig;
+                if (existingConfig != null) {
+                    projectConfig = existingConfig;
+                    if (options.ConfigOverrides is { Count: > 0 }) {
+                        ApplyConfigOverrides(options.ConfigOverrides, projectConfig, _logger);
+                    }
+                } else {
+                    var strictness = userProvidedConfig ? ConfigStrictness.Strict : ConfigStrictness.Lax;
+                    projectConfig = new ProjectConfiguration(_logger, strictness);
 
-                var configJson = File.ReadAllText(options.ConfigFile.FullName);
-                texParser.ParseConfigFile(configJson, options.ConfigFile.FullName);
-                programParser.ParseConfigFile(configJson, options.ConfigFile.FullName);
+                    if (!options.ConfigFile.Exists) {
+                        _logger.Error($"未找到配置文件：{options.ConfigFile.FullName}");
+                        return BuildResult.CreateFailure(
+                            ExitCodes.InvalidArguments,
+                            BuildStatus.Failed,
+                            $"未找到配置文件：{options.ConfigFile.FullName}"
+                        );
+                    }
 
-                ApplyConfigOverrides(options.ConfigOverrides, texParser, programParser, _logger);
+                    var configJson = File.ReadAllText(options.ConfigFile.FullName);
+                    projectConfig.LoadProjectConfig(configJson, options.ConfigFile.FullName);
 
-                return new PdfBuilder(_logger, options, texParser, programParser, _resMgr).Build();
+                    if (options.ConfigOverrides is { Count: > 0 }) {
+                        ApplyConfigOverrides(options.ConfigOverrides, projectConfig, _logger);
+                    }
+                }
+
+                // 统一准入校验 1: 配置合法性校验（类型、枚举、范围、正则约束及 LaTeX 尺寸）
+                var configValidation = Core.Validation.ConfigValidator.Validate(projectConfig);
+                if (!configValidation.IsValid) {
+                    foreach (var err in configValidation.Errors) {
+                        _logger.Error($"[配置校验失败] {err.PropertyPath}: {err.Message} 当前值: \"{err.CurrentValue}\"，期望: {err.Expected}。建议: {err.Recommendation}");
+                    }
+                    var firstErr = configValidation.Errors[0];
+                    return BuildResult.CreateFailure(
+                        ExitCodes.InvalidArguments,
+                        BuildStatus.Failed,
+                        $"配置校验失败：{firstErr.Message}（期望：{firstErr.Expected}；建议：{firstErr.Recommendation}）",
+                        diagnostics: configValidation.Errors.Select(e => $"{e.PropertyPath}: {e.Message}").ToList()
+                    );
+                }
+
+                // 统一准入校验 2: 源文件预检（目录存在性、空目录、全过滤、超深目录）
+                var preflight = Core.Validation.SourcePreflight.Inspect(options.SourceDir, projectConfig, _logger);
+                if (!preflight.IsValid) {
+                    _logger.Error($"[源文件预检失败] {preflight.Message} 建议: {preflight.Recommendation}");
+                    return BuildResult.CreateFailure(
+                        preflight.ExitCode,
+                        BuildStatus.Failed,
+                        $"{preflight.Message}（建议：{preflight.Recommendation}）",
+                        diagnostics: [preflight.Message]
+                    );
+                }
+
+                return new PdfBuilder(_logger, options, projectConfig, _resMgr).ExecuteBuild();
             } catch (UnknownConfigKeyException ex) {
                 _logger.Error(ex.Message);
-                return ExitCodes.InvalidArguments;
+                return BuildResult.CreateFailure(ExitCodes.InvalidArguments, BuildStatus.Failed, ex.Message);
             } catch (MalformedConfigException ex) {
                 var where = ex.SourcePath != null ? $" (source: {ex.SourcePath})" : string.Empty;
                 _logger.Error($"{ex.Message}{where}");
-                return ExitCodes.MalformedConfig;
+                return BuildResult.CreateFailure(ExitCodes.MalformedConfig, BuildStatus.Failed, $"{ex.Message}{where}");
             } catch (MissingEmbeddedResourceException ex) {
                 _logger.Error(ex.Message);
-                return ExitCodes.MissingEmbeddedResource;
+                return BuildResult.CreateFailure(ExitCodes.MissingEmbeddedResource, BuildStatus.Failed, ex.Message);
+            } catch (InvalidCastException ex) {
+                _logger.Error($"[配置类型转换错误] {ex.Message}");
+                return BuildResult.CreateFailure(ExitCodes.InvalidArguments, BuildStatus.Failed, ex.Message);
             }
         }
 
         /// <summary>
-        /// 把运行时配置覆盖应用到两个解析器上。
-        /// <para>
-        /// 键是<b>相对各自根对象</b>的（如 <c>LAYOUT_COLUMNS</c>、<c>BUILD_PASS_COUNT</c>），
-        /// 因此先试 TEX 解析器再试 PROGRAM 解析器。两个根对象的键集在实践中不相交
-        /// （TEX 与 PROGRAM 分组不同），故先命中即命中；两者都不认该键时记 Warning 并跳过，
-        /// 避免把键名拼写错误静默吞掉。
-        /// </para>
+        /// 执行一次构建并返回退出码。保持与旧调用点兼容。
+        /// </summary>
+        public int Run(BuildSubcommandOptions options, bool userProvidedConfig) {
+            return RunBuild(options, userProvidedConfig).ExitCode;
+        }
+
+        /// <summary>
+        /// 把运行时配置覆盖应用到统一项目配置模型上。
+        /// </summary>
+        internal static void ApplyConfigOverrides(
+            IReadOnlyDictionary<string, string>? overrides,
+            ProjectConfiguration configuration,
+            ILogger logger
+        ) {
+            if (overrides is not { Count: > 0 }) return;
+
+            foreach (var (key, value) in overrides) {
+                var applied = configuration.TrySetOverride(key, value);
+                if (!applied) {
+                    if (configuration.TexParser.ContainsKey(key) || configuration.ProgramParser.ContainsKey(key)) {
+                        logger.Warning($"[配置覆盖失败] \"{key}\" 的值 \"{value}\" 无法转换为对应数据类型，覆盖已跳过。");
+                    } else {
+                        logger.Warning($"[未知配置项] \"{key}\" 不在默认配置中，覆盖已跳过。");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 兼容旧版基于两组独立解析器的覆盖应用重载。
         /// </summary>
         internal static void ApplyConfigOverrides(
             IReadOnlyDictionary<string, string>? overrides,
@@ -63,7 +137,11 @@ namespace Core.Pipeline {
                 var applied = texParser.TrySetConfigValueFromString(key, value)
                            || programParser.TrySetConfigValueFromString(key, value);
                 if (!applied) {
-                    logger.Warning($"[未知配置项] \"{key}\" 不在默认配置中，覆盖已跳过。");
+                    if (texParser.ContainsKey(key) || programParser.ContainsKey(key)) {
+                        logger.Warning($"[配置覆盖失败] \"{key}\" 的值 \"{value}\" 无法转换为对应数据类型，覆盖已跳过。");
+                    } else {
+                        logger.Warning($"[未知配置项] \"{key}\" 不在默认配置中，覆盖已跳过。");
+                    }
                 }
             }
         }

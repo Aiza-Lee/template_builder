@@ -96,8 +96,25 @@ namespace Core.Commands {
             };
             cmd.Options.Add(templateDirOption);
 
+            /* --tui-scaffold */
+            var tuiScaffoldOption = new Option<DirectoryInfo>("--tui-scaffold") {
+                Description = "生成 TUI 各视图的排版快照与视觉审查汇报，用于无头环境与纯文本感知，不进入交互会话。",
+                HelpName = "OUTPUT_DIR",
+                Required = false,
+            };
+            cmd.Options.Add(tuiScaffoldOption);
+
             cmd.SetAction((ParseResult pr) => {
                 _logger.SetLevel(pr.GetValue(verboseOption) ? LogLevel.DEBUG : LogLevel.INFO);
+
+                var scaffoldDir = pr.GetValue(tuiScaffoldOption);
+                if (scaffoldDir != null) {
+                    var targetDir = scaffoldDir.FullName;
+                    var generated = TuiScaffolding.GenerateAllSnapshots(targetDir);
+                    _logger.Info($"TUI 脚手架快照生成完成：共写入 {generated.Count} 个文件至 \"{targetDir}\"。");
+                    _logger.Info($"可直接查看 \"{Path.Combine(targetDir, "SUMMARY.md")}\" 审查排版与视觉感知效果。");
+                    return ExitCodes.Success;
+                }
 
                 bool userProvidedAtCli = pr.Tokens.Any(t => t.Value == "--config" || t.Value == "-c");
 
@@ -257,13 +274,20 @@ namespace Core.Commands {
             };
             cmd.Options.Add(formatOption);
 
+            /* --force / -f */
+            var forceOption = new Option<bool>("--force", "-f") {
+                Description = "覆盖已存在的配置文件，并自动保留 .bak 备份。",
+                DefaultValueFactory = (_) => false,
+            };
+            cmd.Options.Add(forceOption);
+
             cmd.SetAction((ParseResult pr) => {
                 var outputPath = pr.GetValue(outputOption)!;
                 // 确保父目录存在
                 if (outputPath.Directory is { } parent && !parent.Exists) {
                     parent.Create();
                 }
-                var options = new InitSubcommandOptions(outputPath, pr.GetValue(formatOption)!);
+                var options = new InitSubcommandOptions(outputPath, pr.GetValue(formatOption)!, pr.GetValue(forceOption));
                 return new ConfigInitializer(_logger, new ManifestResourceManager()).Run(options);
             });
 

@@ -64,11 +64,19 @@ public class ConfigParserOverrideTests {
     }
 
     [Fact]
-    public void TrySet_ArrayKey_ReturnsFalse() {
-        // 覆盖入口只支持标量：数组/对象无法从单行输入可靠构造，故显式拒绝
+    public void TrySet_ArrayKey_JsonSyntax_Succeeds() {
         var parser = NewTexParser();
 
-        Assert.False(parser.TrySetConfigValueFromString("METADATA_KEYWORDS", "[\"a\"]"));
+        Assert.True(parser.TrySetConfigValueFromString("METADATA_KEYWORDS", "[\"a\", \"b\"]"));
+        Assert.Equal(["a", "b"], parser["METADATA_KEYWORDS"].GetAsStringArray());
+    }
+
+    [Fact]
+    public void TrySet_ArrayKey_CommaSeparated_Succeeds() {
+        var parser = NewTexParser();
+
+        Assert.True(parser.TrySetConfigValueFromString("METADATA_KEYWORDS", "kw1, kw2"));
+        Assert.Equal(["kw1", "kw2"], parser["METADATA_KEYWORDS"].GetAsStringArray());
     }
 
     [Fact]
