@@ -18,6 +18,49 @@ namespace Core.Tui {
         public static IReadOnlyList<TuiCategoryGroup> Categories => s_data.Value.Categories;
         public static IReadOnlyList<TuiConfigField> FeaturedFields => s_data.Value.FeaturedFields;
 
+        /// <summary>
+        /// 按关键词搜索配置项（支持匹配键名、中文标签、功能说明、所属分类与 JSON 路径）。
+        /// 结果按匹配相关度智能排序（完全匹配 > 前缀匹配 > 标签包含 > 键名包含 > 分类/说明包含）。
+        /// </summary>
+        public static IReadOnlyList<TuiConfigField> SearchFields(string? query) {
+            if (string.IsNullOrWhiteSpace(query)) return Array.Empty<TuiConfigField>();
+            var q = query.Trim();
+
+            var matches = new List<(TuiConfigField Field, int Score)>();
+            foreach (var field in AllFields) {
+                int score = 0;
+                if (string.Equals(field.Key, q, StringComparison.OrdinalIgnoreCase)) {
+                    score = 100;
+                } else if (string.Equals(field.Label, q, StringComparison.OrdinalIgnoreCase)) {
+                    score = 90;
+                } else if (field.Key.StartsWith(q, StringComparison.OrdinalIgnoreCase)) {
+                    score = 80;
+                } else if (field.Label.StartsWith(q, StringComparison.OrdinalIgnoreCase)) {
+                    score = 75;
+                } else if (field.Label.Contains(q, StringComparison.OrdinalIgnoreCase)) {
+                    score = 60;
+                } else if (field.Key.Contains(q, StringComparison.OrdinalIgnoreCase)) {
+                    score = 50;
+                } else if (!string.IsNullOrEmpty(field.Category) && field.Category.Contains(q, StringComparison.OrdinalIgnoreCase)) {
+                    score = 30;
+                } else if (!string.IsNullOrEmpty(field.Description) && field.Description.Contains(q, StringComparison.OrdinalIgnoreCase)) {
+                    score = 20;
+                } else if (!string.IsNullOrEmpty(field.JsonPath) && field.JsonPath.Contains(q, StringComparison.OrdinalIgnoreCase)) {
+                    score = 10;
+                }
+
+                if (score > 0) {
+                    matches.Add((field, score));
+                }
+            }
+
+            return matches
+                .OrderByDescending(m => m.Score)
+                .ThenBy(m => m.Field.Key, StringComparer.Ordinal)
+                .Select(m => m.Field)
+                .ToList();
+        }
+
         private sealed record CatalogData(
             IReadOnlyList<TuiConfigField> AllFields,
             IReadOnlyDictionary<string, TuiConfigField> FieldsByKey,
@@ -31,7 +74,7 @@ namespace Core.Tui {
             ["TITLE_CONTENT"] = "文档标题",
             ["TITLE_NOTE"] = "副标题/说明",
             ["TITLE_DATE"] = "日期",
-            ["TITLE_FONT_SIZE_CMD"] = "标题字号命令",
+            ["TITLE_FONT_SIZE_CMD"] = "主标题字号",
             ["TITLE_ALIGNMENT"] = "标题对齐方式",
             ["TITLE_ESCAPE_LATEX_SPECIALS"] = "转义 LaTeX 特殊字符",
             ["CODE_MINTED_STYLE"] = "代码高亮样式",
@@ -44,10 +87,10 @@ namespace Core.Tui {
             ["CODE_LINE_NUMBERS"] = "显示代码行号",
             ["CODE_NUMBERS_SEP"] = "行号与代码间距",
             ["CODE_FRAME"] = "代码块边框",
-            ["CODE_AUTOGOBBLE"] = "代码自动缩进吸收",
+            ["CODE_AUTOGOBBLE"] = "自动清除段首公共空格",
             ["CODE_HIGHLIGHT_COLOR"] = "高亮行背景色",
             ["CODE_MATHESCAPE"] = "代码数学公式转义",
-            ["CODE_ESCAPEINSIDE"] = "代码块逃逸字符",
+            ["CODE_ESCAPEINSIDE"] = "代码内 LaTeX 逃逸字符",
             ["CODE_XLEFTMARGIN"] = "代码左边距",
             ["CODE_XRIGHTMARGIN"] = "代码右边距",
             ["CODE_FIRSTNUMBER"] = "起始行号",
@@ -55,7 +98,7 @@ namespace Core.Tui {
             ["CODE_NUMBERSTYLE"] = "行号字体样式",
             ["CODE_SHOWSPACES"] = "显示空格符号",
             ["CODE_SHOWTABS"] = "显示制表符符号",
-            ["CODE_MINTED_OUTPUTDIR"] = "minted 缓存目录",
+            ["CODE_MINTED_OUTPUTDIR"] = "高亮缓存目录覆盖",
             ["HYPERREF_ENABLE_COLORLINKS"] = "启用彩色超链接",
             ["HYPERREF_LINK_COLOR"] = "内部链接颜色",
             ["HYPERREF_FILE_COLOR"] = "文件链接颜色",
@@ -80,7 +123,7 @@ namespace Core.Tui {
             ["LAYOUT_SECTION_DEPTH"] = "章节编号深度",
             ["LAYOUT_TOC_DEPTH"] = "目录展示深度",
             ["LAYOUT_COLUMNS"] = "正文列数",
-            ["LAYOUT_TOC_IN_COLUMNS"] = "目录跟随双栏",
+            ["LAYOUT_TOC_IN_COLUMNS"] = "目录排版布局",
             ["LAYOUT_ESCAPE_SECTION_NAMES"] = "章节名转义特殊字符",
             ["FANCY_HEAD_LEFT"] = "页眉左侧内容",
             ["FANCY_HEAD_CENTER"] = "页眉居中内容",
@@ -113,27 +156,33 @@ namespace Core.Tui {
             ["TOC_DOT_LEADERS"] = "目录虚线引导符",
             ["DOCCLASS_BASE_FONT_SIZE"] = "正文字号",
             ["DOCCLASS_ORIENTATION"] = "页面方向",
-            ["DOCCLASS_FONTSET"] = "ctex 字体集预设",
+            ["DOCCLASS_FONTSET"] = "字体集预设",
             ["INCLUDE_FILE_TYPES"] = "包含源文件类型",
-            ["IGNORE_PATTERNS"] = "排除 Glob 模式",
+            ["IGNORE_PATTERNS"] = "排除文件通配模式",
             ["CODE_LANGUAGE_OVERRIDES"] = "代码语言覆盖映射",
-            ["BUILD_TIMEOUT_SECONDS"] = "编译超时秒数",
-            ["BUILD_PASS_COUNT"] = "XeLaTeX 编译轮数"
+            ["BUILD_TIMEOUT_SECONDS"] = "单次编译超时秒数",
+            ["BUILD_PASS_COUNT"] = "总编译轮数"
         };
 
         private static readonly string[] s_featuredKeys = [
             "TITLE_CONTENT",
             "AUTHOR",
+            "CODE_FONT_SIZE",
+            "CODE_LINE_HEIGHT",
+            "DOCCLASS_ORIENTATION",
+            "LAYOUT_COLUMNS",
+            "GEOMETRY_LEFT_MARGIN",
+            "GEOMETRY_RIGHT_MARGIN",
+            "GEOMETRY_TOP_MARGIN",
+            "GEOMETRY_BOTTOM_MARGIN",
+            "INCLUDE_FILE_TYPES",
+            "IGNORE_PATTERNS",
+            "DOCCLASS_BASE_FONT_SIZE",
+            "GEOMETRY_PAPER_SIZE",
+            "CODE_MINTED_STYLE",
             "GLOBAL_MAIN_FONT",
             "GLOBAL_CJK_MAIN_FONT",
-            "DOCCLASS_BASE_FONT_SIZE",
-            "LAYOUT_COLUMNS",
-            "GEOMETRY_PAPER_SIZE",
-            "DOCCLASS_ORIENTATION",
-            "CODE_MINTED_STYLE",
-            "LAYOUT_SECTION_DEPTH",
-            "GLOBAL_PAGE_STYLE",
-            "TYPESETTING_PARSKIP_ENABLED"
+            "LAYOUT_TOC_IN_COLUMNS"
         ];
 
         private static CatalogData LoadCatalog() {
@@ -157,7 +206,7 @@ namespace Core.Tui {
                 new(
                     "featured",
                     "常用核心配置",
-                    "高频调整项：标题、作者、字体、字号、列数、代码高亮等",
+                    "高频排版调整项：标题、作者、代码字号与行距、页面方向、分栏、边距及文件过滤",
                     s_featuredKeys.Where(k => byKey.ContainsKey(k)).Select(k => byKey[k]).ToList()
                 ),
                 new(
@@ -291,7 +340,9 @@ namespace Core.Tui {
         private static string? BuildConstraints(JsonElement spec, IReadOnlyList<string>? choices, string key) {
             var parts = new List<string>();
 
-            if (choices is { Count: > 0 }) {
+            if (key == "LAYOUT_TOC_IN_COLUMNS") {
+                parts.Add("可选值：false (跟随正文，与正文列数保持一致), true (独立单栏，目录独占单栏全宽排版)");
+            } else if (choices is { Count: > 0 }) {
                 parts.Add($"可选值：{string.Join(", ", choices)}");
             }
             if (spec.TryGetProperty("minimum", out var min)) {

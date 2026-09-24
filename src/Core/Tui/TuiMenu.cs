@@ -12,7 +12,8 @@ namespace Core.Tui {
         Clear,
         Inspect,
         Reload,
-        Save
+        Save,
+        Search
     }
 
     /// <summary>
@@ -37,6 +38,7 @@ namespace Core.Tui {
         public bool IsClear => Action == TuiMenuAction.Clear;
         public bool IsReload => Action == TuiMenuAction.Reload;
         public bool IsSave => Action == TuiMenuAction.Save;
+        public bool IsSearch => Action == TuiMenuAction.Search;
 
         public TuiMenuItem(
             string id,

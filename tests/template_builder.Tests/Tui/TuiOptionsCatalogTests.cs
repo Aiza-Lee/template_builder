@@ -17,9 +17,13 @@ public class TuiOptionsCatalogTests {
 
     [Fact]
     public void AllKeys_AreRegisteredInDefaultConfig() {
-        var parser = NewTexParser();
+        var texParser = NewTexParser();
+        var progParser = new ConfigParser("PROGRAM", new TestLogger());
 
         foreach (var field in TuiOptionsCatalog.Fields) {
+            var isProg = string.Equals(field.Section, "PROGRAM", StringComparison.OrdinalIgnoreCase);
+            var parser = isProg ? progParser : texParser;
+
             // 回写当前值即可验证键存在且类型可转换；未注册的键会返回 false
             var current = parser[field.Key].GetAsString();
             Assert.False(
@@ -77,7 +81,7 @@ public class TuiOptionsCatalogTests {
 
     [Fact]
     public void Catalog_ExposesAroundTenFastConfigItems() {
-        // 任务约定「约 10 项」：守住这个量级，避免清单无限膨胀成第二个配置文件
-        Assert.InRange(TuiOptionsCatalog.Fields.Count, 8, 15);
+        // UX-12 聚焦标题、作者、代码字号、行距、页面方向、分栏、边距和文件范围等高频调整项 (18 项)
+        Assert.InRange(TuiOptionsCatalog.Fields.Count, 8, 20);
     }
 }

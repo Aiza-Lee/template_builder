@@ -79,8 +79,8 @@
 | `TEX.geometry.column_rule` | `false` | twocolumn 时是否画分隔线（`\setlength{\columnseprule}{0.4pt}`；onecolumn 模式无效） |
 | `TEX.layout.section_depth` | `5` | `\setcounter{secnumdepth}{...}` 编号深度。同时决定 CodeBlockGenerator 截取的章节层级（深度超出 clamp 到最后一层而非报错） |
 | `TEX.layout.toc_depth` | `5` | `\setcounter{tocdepth}{...}` 目录深度 |
-| `TEX.layout.columns` | `2` | 1 或 2：正文总列数。`1` 适合演示/草稿，`2` 适合代码密集 |
-| `TEX.layout.toc_in_columns` | `false` | `true` = 目录单栏显示（更宽的章节标题）；`false` = 目录与正文同列数 |
+| `TEX.layout.columns` | `2` | 1 或 2：正文总列数。`1` 适合长行代码/普通屏幕阅读，`2` 适合代码高密排版（竞赛打印推荐） |
+| `TEX.layout.toc_in_columns` | `false` | 目录排版布局：`false` = 跟随正文（默认与正文列数相同，双栏正文下目录亦为双栏）；`true` = 独立单栏（目录独占单栏全宽排版，章节标题更宽展） |
 | `TEX.layout.escape_section_names` | `true` | CodeBlockGenerator 是否对章节名（目录名）做 LaTeX 转义。设 `false` 时目录名原样输出（若含 `_` `%` 等特殊字符由 xelatex 报错） |
 | `TEX.fancy.head_left` | `""` | 启用 fancy 后，header 左侧文本 |
 | `TEX.fancy.head_center` | `""` | header 中间 |

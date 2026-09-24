@@ -259,8 +259,8 @@ namespace Core.Tui {
             if (!string.IsNullOrWhiteSpace(field.Constraints)) {
                 console.MarkupLine($"[grey]内容约束：[/][yellow]{Markup.Escape(field.Constraints)}[/]");
             }
-            var dispCur = string.IsNullOrEmpty(currentValue) ? "<空>" : currentValue;
-            var dispDef = string.IsNullOrEmpty(defaultVal) ? "<空>" : defaultVal;
+            var dispCur = FormatFieldValueDisplay(currentValue, field.Key);
+            var dispDef = FormatFieldValueDisplay(defaultVal, field.Key);
             var isModified = !string.Equals(currentValue, defaultVal, StringComparison.Ordinal);
 
             console.MarkupLine($"[grey]默认取值：[/][grey]{Markup.Escape(dispDef)}[/]");
@@ -270,6 +270,18 @@ namespace Core.Tui {
                 console.MarkupLine($"[grey]当前取值：[/][green]{Markup.Escape(dispCur)}[/]");
             }
             console.WriteLine();
+        }
+
+        /// <summary>
+        /// 格式化字段取值展示（对特定键如目录排版布局提供直观中文别名）。
+        /// </summary>
+        public static string FormatFieldValueDisplay(string? value, string key) {
+            if (string.IsNullOrEmpty(value)) return "<空>";
+            if (key == "LAYOUT_TOC_IN_COLUMNS") {
+                if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)) return "独立单栏 (true)";
+                if (string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)) return "跟随正文 (false)";
+            }
+            return value;
         }
 
         /// <summary>
@@ -298,12 +310,12 @@ namespace Core.Tui {
             } else {
                 foreach (var (k, v) in overrides) {
                     var label = TuiSchemaCatalog.FieldsByKey.TryGetValue(k, out var f) ? f.Label : k;
-                    var dispV = string.IsNullOrEmpty(v) ? "<空>" : v;
+                    var dispV = FormatFieldValueDisplay(v, k);
                     if (configuration != null) {
                         var item = configuration.GetItem(k);
-                        var dispDef = item != null && !string.IsNullOrEmpty(item.BuiltinValue) ? item.BuiltinValue : "<空>";
+                        var dispDef = item != null && !string.IsNullOrEmpty(item.BuiltinValue) ? FormatFieldValueDisplay(item.BuiltinValue, k) : "<空>";
                         var dispProj = item != null && item.ProjectValue != null
-                            ? (string.IsNullOrEmpty(item.ProjectValue) ? "<空>" : item.ProjectValue)
+                            ? (string.IsNullOrEmpty(item.ProjectValue) ? "<空>" : FormatFieldValueDisplay(item.ProjectValue, k))
                             : "-";
                         table.AddRow(
                             $"[bold #ffd600]{Markup.Escape(label)}[/]",

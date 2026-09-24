@@ -1,279 +1,570 @@
 {
-	"$schema": "https://json-schema.org/draft/2020-12/schema",
-	"$id": "https://github.com/Aiza/template_builder/Resources/DefaultConfig.schema.json",
-	"title": "template_builder DefaultConfig",
-	"description": "配置文件 schema，对应 Resources/DefaultConfig.jsonc。运行时由 ConfigParser 读取（keys 转 UPPER_SNAKE_CASE）。",
-	"type": "object",
-	"additionalProperties": false,
-	"required": ["TEX", "PROGRAM"],
-	"properties": {
-		"$schema": {
-			"type": "string",
-			"description": "本 schema 路径。编辑器据此启用自动补全与校验。"
-		},
-		"TEX": {
-			"type": "object",
-			"additionalProperties": false,
-			"description": "驱动 LaTeX 文档布局与代码渲染。",
-			"properties": {
-				"author": { "type": "string" },
-				"subject": { "type": "string" },
-				"title": {
-					"type": "object",
-					"additionalProperties": false,
-					"properties": {
-						"content": { "type": "string" },
-						"note": { "type": "string" },
-						"date": { "type": "string" },
-						"font_size_cmd": { "type": "string" },
-						"alignment": {
-							"type": "string",
-							"enum": ["center", "flushleft", "flushright"]
-						},
-						"escape_latex_specials": { "type": "boolean" }
-					}
-				},
-				"code": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "代码块（minted）的样式与字体设置。",
-					"properties": {
-						"minted_style": { "type": "string" },
-						"font_family": { "type": "string" },
-						"font_size": { "type": "string" },
-						"line_height": { "type": "string" },
-						"tab_size": { "type": "integer", "minimum": 0 },
-						"bg_color": { "type": "string" },
-						"break_lines": { "type": "boolean" },
-						"line_numbers": { "type": "boolean" },
-						"numbers_sep": { "type": "string" },
-						"frame": {
-							"type": "string",
-							"enum": ["none", "leftline", "lines", "single"]
-						},
-						"autogobble": { "type": "boolean" },
-						"highlight_color": { "type": "string" },
-						"mathescape": { "type": "boolean" },
-						"escapeinside": { "type": "string" },
-						"xleftmargin": { "type": "string" },
-						"xrightmargin": { "type": "string" },
-						"firstnumber": {
-							"type": "string",
-							"pattern": "^(auto|\\d+)$"
-						},
-						"stepnumber": {
-							"type": "string",
-							"pattern": "^\\d+$"
-						},
-						"numberstyle": { "type": "string" },
-						"showspaces": { "type": "boolean" },
-						"showtabs": { "type": "boolean" },
-						"minted_outputdir": { "type": "string" }
-					}
-				},
-				"hyperref": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "PDF 超链接与书签。",
-					"properties": {
-						"enable_colorlinks": { "type": "boolean" },
-						"link_color": { "type": "string" },
-						"file_color": { "type": "string" },
-						"url_color": { "type": "string" },
-						"numbered_bookmarks": { "type": "boolean" },
-						"open_bookmarks": { "type": "boolean" },
-						"bookmarks_depth": { "type": "integer", "minimum": 0, "maximum": 5 },
-						"cite_color": { "type": "string" },
-						"anchor_color": { "type": "string" },
-						"pdf_border": { "type": "string" },
-						"pdf_lang": { "type": "string" }
-					}
-				},
-				"geometry": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "页面尺寸与边距（geometry 包）。",
-					"properties": {
-						"paper_size": { "type": "string" },
-						"left_margin": { "type": "string" },
-						"right_margin": { "type": "string" },
-						"top_margin": { "type": "string" },
-						"bottom_margin": { "type": "string" },
-						"column_sep": { "type": "string" },
-						"headheight": { "type": "string" },
-						"headsep": { "type": "string" },
-						"footskip": { "type": "string" },
-						"column_rule": { "type": "boolean" }
-					}
-				},
-				"layout": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "文档级布局：列数 / 目录深度。",
-					"properties": {
-						"section_depth": { "type": "integer", "minimum": 1, "maximum": 5 },
-						"toc_depth": { "type": "integer", "minimum": 0, "maximum": 5 },
-						"columns": { "type": "integer", "enum": [1, 2] },
-						"toc_in_columns": { "type": "boolean" },
-						"escape_section_names": { "type": "boolean" }
-					}
-				},
-				"fancy": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "fancy 头脚：使用前需设 GLOBAL.PAGE_STYLE = \"fancy\"。",
-					"properties": {
-						"head_left": { "type": "string" },
-						"head_center": { "type": "string" },
-						"head_right": { "type": "string" },
-						"foot_left": { "type": "string" },
-						"foot_center": { "type": "string" },
-						"foot_right": { "type": "string" },
-						"rule_width": { "type": "string" }
-					}
-				},
-				"typesetting": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "排版微调：microtype + parskip。",
-					"properties": {
-						"microtype": {
-							"type": "object",
-							"additionalProperties": false,
-							"properties": {
-								"protrusion": { "type": "boolean" },
-								"expansion": { "type": "boolean" },
-								"kerning": { "type": "boolean" }
-							}
-						},
-						"parskip": {
-							"type": "object",
-							"additionalProperties": false,
-							"properties": {
-								"enabled": { "type": "boolean" }
-							}
-						}
-					}
-				},
-				"section": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "titlesec section 标题格式。留空 = 使用 LaTeX 默认；填入格式串（如 \"\\Large\\bfseries\\color{blue}\"）覆盖。",
-					"properties": {
-						"format_section": { "type": "string" },
-						"format_subsection": { "type": "string" },
-						"format_subsubsection": { "type": "string" },
-						"format_paragraph": { "type": "string" },
-						"format_subparagraph": { "type": "string" },
-						"format_separator": { "type": "string" }
-					}
-				},
-				"metadata": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "PDF 元数据：hypersetup 的 pdfkeywords 字段。",
-					"properties": {
-						"keywords": {
-							"type": "array",
-							"items": { "type": "string" }
-						}
-					}
-				},
-				"global": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "文档级字体与页眉页脚。",
-					"properties": {
-						"main_font": { "type": "string" },
-						"cjk_main_font": { "type": "string" },
-						"cjk_sans_font": { "type": "string" },
-						"cjk_main_bold_font": { "type": "string" },
-						"cjk_main_italic_font": { "type": "string" },
-						"cjk_auto_fake_bold": { "type": "boolean" },
-						"cjk_auto_fake_slant": { "type": "boolean" },
-						"custom_font_dirs": {
-							"type": "array",
-							"items": { "type": "string" },
-							"description": "额外字体目录列表，免安装自动识别本地 TTF/OTF 字体。"
-						},
-						"page_style": {
-							"type": "string",
-							"enum": ["plain", "headings", "empty", "fancy"]
-						}
-					}
-				},
-				"toc": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "目录标题与引导符。",
-					"properties": {
-						"title": { "type": "string" },
-						"dot_leaders": { "type": "boolean" }
-					}
-				},
-				"docclass": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "\\documentclass[] 选项（与 geometry 协同）。",
-					"properties": {
-						"base_font_size": { "type": "string" },
-						"orientation": {
-							"type": "string",
-							"enum": ["landscape", "portrait"]
-						},
-						"fontset": {
-							"type": "string",
-							"enum": ["auto", "fandol", "ubuntu", "windows", "mac", "none"],
-							"description": "ctex 宏包的字体集预设。"
-						}
-					}
-				}
-			}
-		},
-		"PROGRAM": {
-			"type": "object",
-			"additionalProperties": false,
-			"description": "控制源码树处理。",
-			"properties": {
-				"include_file_types": {
-					"type": "array",
-					"items": {
-						"type": "string",
-						"pattern": "^\\.[A-Za-z0-9]+$"
-					},
-					"description": "包含的源文件扩展名（白名单，需带 . 前缀）。匹配的文件默认按代码/保真文本块渲染。"
-				},
-				"ignore_patterns": {
-					"type": "array",
-					"items": { "type": "string" },
-					"description": "排除的 glob 模式（Microsoft.Extensions.FileSystemGlobbing 语法）。"
-				},
-				"code_language_overrides": {
-					"type": "array",
-					"items": {
-						"type": "string",
-						"pattern": "^\\.[A-Za-z0-9]+:[A-Za-z0-9_+\\-]+$"
-					},
-					"description": "扩展名→minted 语言映射覆盖（\".ext:lang\"）。规则：已知编程语言按词法器高亮；普通文本与未知扩展名统一以纯文本代码块（text）渲染以保留字符原貌；使用 \".ext:raw\" 显式指示按原生 LaTeX 语法插入正文；未覆盖的 .tex 文件默认按原生 LaTeX 语法插入。"
-				},
-				"build": {
-					"type": "object",
-					"additionalProperties": false,
-					"description": "构建器行为调优。",
-					"properties": {
-						"timeout_seconds": {
-							"type": "integer",
-							"minimum": 0,
-							"description": "xelatex 单次 pass 的超时秒数；超时则 Kill(entireProcessTree=true) + 报 XelatexFailure。0 = 不限时。"
-						},
-						"pass_count": {
-							"type": "integer",
-							"enum": [1, 2],
-							"description": "xelatex 编译 pass 数。1 节省 ~50% 时间，但若保留 \\tableofcontents 会导致页码显示 \"?\"。"
-						}
-					}
-				}
-			}
-		}
-	}
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://github.com/Aiza/template_builder/Resources/DefaultConfig.schema.json",
+    "title": "template_builder DefaultConfig",
+    "description": "配置文件 schema，对应 Resources/DefaultConfig.jsonc。运行时由 ConfigParser 读取（keys 转 UPPER_SNAKE_CASE）。",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "TEX",
+        "PROGRAM"
+    ],
+    "properties": {
+        "$schema": {
+            "type": "string",
+            "description": "本 schema 路径。编辑器据此启用自动补全与校验。"
+        },
+        "TEX": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "驱动 LaTeX 文档布局与代码渲染。",
+            "properties": {
+                "author": {
+                    "type": "string",
+                    "description": "文档作者姓名。写入 PDF 元数据与标题页展示（如：Aiza）。若不希望显示作者可清空为 <空>。"
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "文档主题。写入 PDF 元数据（如：算法竞赛代码模板）。"
+                },
+                "title": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "content": {
+                            "type": "string",
+                            "description": "文档主标题。以大字号展示在首页封面或文档顶部（如：ACM-ICPC 算法模板）。"
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": "标题页额外说明或副标题。展示在主标题下方（如：2026 赛季修订版）。"
+                        },
+                        "date": {
+                            "type": "string",
+                            "description": "文档日期。默认使用 \\today 自动插入编译当日日期，亦可填写自定义日期文本（如：2026-09-24）。"
+                        },
+                        "font_size_cmd": {
+                            "type": "string",
+                            "description": "主标题字号与字重命令。控制主标题视觉尺寸，默认 \\Large\\bfseries（可选：\\LARGE\\bfseries, \\huge\\bfseries）。"
+                        },
+                        "alignment": {
+                            "type": "string",
+                            "enum": [
+                                "center",
+                                "flushleft",
+                                "flushright"
+                            ],
+                            "description": "标题页说明文字对齐环境。可选：center（居中对齐，默认）、flushleft（左对齐）、flushright（右对齐）。"
+                        },
+                        "escape_latex_specials": {
+                            "type": "boolean",
+                            "description": "是否对作者、主题、标题文本中的 LaTeX 特殊字符（_ % & $ # { } ^ ~ 等）自动转义。设为 true 可防止常见符号引发编译报错。"
+                        }
+                    }
+                },
+                "code": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "代码块（minted）的样式与字体设置。",
+                    "properties": {
+                        "minted_style": {
+                            "type": "string",
+                            "description": "代码高亮配色主题（基于 Pygments）。可选：bw（清晰黑白，打印首选）、friendly（柔和彩色）、vs（Visual Studio 风格）、xcode、colorful、monokai 等。"
+                        },
+                        "font_family": {
+                            "type": "string",
+                            "description": "代码块等宽字体族名。默认为 Fira Code，亦可填系统中已安装的等宽字体（如 Consolas, Courier New, JetBrains Mono）。"
+                        },
+                        "font_size": {
+                            "type": "string",
+                            "description": "代码文字字号。需带单位（如：6pt, 7pt, 8pt, 9pt, 10pt）。竞赛模板推荐 6pt ~ 7pt 紧凑版面以容纳更长单行。"
+                        },
+                        "line_height": {
+                            "type": "string",
+                            "description": "代码行距高度。需带单位（如：6pt, 7pt, 8pt）。通常与代码字号保持相同或略高，实现高密度紧凑排版。"
+                        },
+                        "tab_size": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "制表符 Tab 展开为空格的列数。必须为非负整数，默认为 4。修改时同时同步给代码文本展开与 LaTeX 代码排版。"
+                        },
+                        "bg_color": {
+                            "type": "string",
+                            "description": "代码块背景底色（xcolor 语法）。如：gray!3（浅灰微底色）、white（纯白无底色）、yellow!5（微黄暖色）。"
+                        },
+                        "break_lines": {
+                            "type": "boolean",
+                            "description": "超长代码行是否自动折行。开启（true）避免长行超出栏宽被截断，关闭（false）保持单行。"
+                        },
+                        "line_numbers": {
+                            "type": "boolean",
+                            "description": "是否在代码块左侧显示行号。开启（true）便于快速指代和查阅代码行位置。"
+                        },
+                        "numbers_sep": {
+                            "type": "string",
+                            "description": "行号与代码正文之间的间距。需带单位（如：2pt, 3pt, 5pt）。"
+                        },
+                        "frame": {
+                            "type": "string",
+                            "enum": [
+                                "none",
+                                "leftline",
+                                "lines",
+                                "single"
+                            ],
+                            "description": "代码块外框样式。可选：none（无边框，默认）、lines（上下单横线）、single（四周完整单线方框）、leftline（左侧装饰竖线）。"
+                        },
+                        "autogobble": {
+                            "type": "boolean",
+                            "description": "是否自动剥离代码段首公共的多余缩进空格。开启（true）可消除整段代码多余的共有左侧空白。"
+                        },
+                        "highlight_color": {
+                            "type": "string",
+                            "description": "代码重点行的高亮选区背景色（xcolor 语法，如：yellow!10、green!10）。"
+                        },
+                        "mathescape": {
+                            "type": "boolean",
+                            "description": "是否在代码注释中启用数学模式。开启（true）后代码注释中的 $...$ 会被渲染为 LaTeX 数学公式（如 $O(n \\log n)$）。"
+                        },
+                        "escapeinside": {
+                            "type": "string",
+                            "description": "代码块内允许逃逸为 LaTeX 命令的包围界定符（如 \"|_\"）。留空表示不启用代码内逃逸。"
+                        },
+                        "xleftmargin": {
+                            "type": "string",
+                            "description": "代码块相对于版心左边缘的额外缩进边距。需带单位（如：0pt, 5pt, 10pt）。留空跟随默认。"
+                        },
+                        "xrightmargin": {
+                            "type": "string",
+                            "description": "代码块相对于版心右边缘的额外缩进边距。需带单位（如：0pt, 5pt, 10pt）。留空跟随默认。"
+                        },
+                        "firstnumber": {
+                            "type": "string",
+                            "pattern": "^(auto|\\d+)$",
+                            "description": "代码块起始行号。默认 auto（自动延续上一块行号），或填具体数字（如 1）使每个文件从第 1 行重新编号。"
+                        },
+                        "stepnumber": {
+                            "type": "string",
+                            "pattern": "^\\d+$",
+                            "description": "代码行号显示间隔步长。默认为 1（每行标号）；若填 5 则仅在第 5、10、15... 行显示行号。"
+                        },
+                        "numberstyle": {
+                            "type": "string",
+                            "description": "行号字体大小与颜色命令（如：\\tiny\\color{gray}）。留空使用 LaTeX 默认样式。"
+                        },
+                        "showspaces": {
+                            "type": "boolean",
+                            "description": "是否将代码中的普通空格显式绘制为空格符号。默认 false 保持自然空白。"
+                        },
+                        "showtabs": {
+                            "type": "boolean",
+                            "description": "是否将制表符 Tab 显式绘制为特殊标记。默认 false 保持平整对齐。"
+                        },
+                        "minted_outputdir": {
+                            "type": "string",
+                            "description": "minted 语法高亮缓存目录覆盖。留空跟随默认隔离构建目录（.template_builder/build/_minted），CI 环境可指定固定路径以复用缓存加速。"
+                        }
+                    }
+                },
+                "hyperref": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "PDF 超链接与书签。",
+                    "properties": {
+                        "enable_colorlinks": {
+                            "type": "boolean",
+                            "description": "是否启用彩色超链接。开启（true）时内部引用、URL 和书签使用颜色区分；关闭（false）时使用边框或保持黑白。"
+                        },
+                        "link_color": {
+                            "type": "string",
+                            "description": "文档内部目录跳转与章节交叉引用链接颜色（如：blue, black, teal）。"
+                        },
+                        "file_color": {
+                            "type": "string",
+                            "description": "本地外部文件超链接颜色（如：magenta, darkgray）。"
+                        },
+                        "url_color": {
+                            "type": "string",
+                            "description": "互联网 URL 网址超链接颜色（如：cyan, blue）。"
+                        },
+                        "numbered_bookmarks": {
+                            "type": "boolean",
+                            "description": "PDF 侧边栏书签目录中是否显示章节编号（如：1.1、2.3.1）。开启有助于清晰识别目录层次。"
+                        },
+                        "open_bookmarks": {
+                            "type": "boolean",
+                            "description": "使用 PDF 阅读器打开文档时是否默认自动展开左侧书签树。默认 false（保持折叠）。"
+                        },
+                        "bookmarks_depth": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 5,
+                            "description": "PDF 侧边栏书签收录的最大章节深度（0 ~ 5）。默认 5，收录至最细粒度的子章节与代码文件名。"
+                        },
+                        "cite_color": {
+                            "type": "string",
+                            "description": "学术文献引用链接颜色（如：green, olive）。"
+                        },
+                        "anchor_color": {
+                            "type": "string",
+                            "description": "页面内部锚点链接颜色（如：black, navy）。"
+                        },
+                        "pdf_border": {
+                            "type": "string",
+                            "description": "超链接边框样式三元组（如：\"{0 0 0}\" 表示无边框，\"{0 0 1}\" 表示显示 1pt 细边框）。"
+                        },
+                        "pdf_lang": {
+                            "type": "string",
+                            "description": "PDF 文档元数据语言标识代码（如：zh-CN 简体中文、en-US 美式英语）。"
+                        }
+                    }
+                },
+                "geometry": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "页面尺寸与边距（geometry 包）。",
+                    "properties": {
+                        "paper_size": {
+                            "type": "string",
+                            "description": "纸张规格尺寸。可选：a4paper（国际标准 A4，默认）、letterpaper（美式信纸）、a5paper（便携 A5 小开本）。"
+                        },
+                        "left_margin": {
+                            "type": "string",
+                            "description": "页面版心左侧物理边距。需带单位（如：0.5in, 10mm, 1.5cm）。双栏竞赛打印通常设为 0.25in ~ 0.5in。"
+                        },
+                        "right_margin": {
+                            "type": "string",
+                            "description": "页面版心右侧物理边距。需带单位（如：0.5in, 10mm, 1.5cm）。通常与左边距对称。"
+                        },
+                        "top_margin": {
+                            "type": "string",
+                            "description": "页面版心顶部物理边距。需带单位（如：0.5in, 10mm, 1.5cm）。需留足页眉高度。"
+                        },
+                        "bottom_margin": {
+                            "type": "string",
+                            "description": "页面版心底部物理边距。需带单位（如：0.5in, 10mm, 1.5cm）。需留足页码与页脚空间。"
+                        },
+                        "column_sep": {
+                            "type": "string",
+                            "description": "双栏或多栏正文两栏之间的水平分栏间隙。需带单位（如：0.2in, 5mm, 10pt）。"
+                        },
+                        "headheight": {
+                            "type": "string",
+                            "description": "页眉区域占据的垂直高度。需带单位（如：12pt, 15pt）。"
+                        },
+                        "headsep": {
+                            "type": "string",
+                            "description": "页眉底端与正文顶端之间的垂直间隔。需带单位（如：8pt, 12pt）。"
+                        },
+                        "footskip": {
+                            "type": "string",
+                            "description": "正文底端与页脚基线之间的垂直距离。需带单位（如：15pt, 20pt）。"
+                        },
+                        "column_rule": {
+                            "type": "boolean",
+                            "description": "双栏之间是否绘制垂直分隔线条。开启（true）可在两栏中间绘制 0.4pt 分隔线，增强视觉界限。"
+                        }
+                    }
+                },
+                "layout": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "文档级布局：列数 / 目录深度。",
+                    "properties": {
+                        "section_depth": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 5,
+                            "description": "源码文件目录层级映射为 LaTeX 章节编号的最大深度（1 ~ 4）。4 对应 \\subparagraph，超过 4 层会被准入预检拦截。"
+                        },
+                        "toc_depth": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 5,
+                            "description": "PDF 目录中展示的章节标题深度（0 ~ 5）。默认 5，完整显示全部子章节与代码文件名。"
+                        },
+                        "columns": {
+                            "type": "integer",
+                            "enum": [
+                                1,
+                                2
+                            ],
+                            "description": "正文排版栏数。可选：1（单栏全宽，适合长行代码与普通屏幕阅读）、2（双栏排版，竞赛打印推荐，密度最高）。"
+                        },
+                        "toc_in_columns": {
+                            "type": "boolean",
+                            "description": "目录排版布局。false = 跟随正文（默认，双栏正文下目录亦为双栏）；true = 独立单栏（目录独占单栏全宽排版，章节标题更宽展）。"
+                        },
+                        "escape_section_names": {
+                            "type": "boolean",
+                            "description": "是否对文件夹名与文件名衍生的章节标题自动转义 LaTeX 特殊字符（_ % & $ 等）。默认 true 确保安全。"
+                        }
+                    }
+                },
+                "fancy": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "fancy 头脚：使用前需设 GLOBAL.PAGE_STYLE = \"fancy\"。",
+                    "properties": {
+                        "head_left": {
+                            "type": "string",
+                            "description": "页眉左侧区域文字。支持纯文本或 LaTeX 宏（如：\\leftmark 章节名）。"
+                        },
+                        "head_center": {
+                            "type": "string",
+                            "description": "页眉居中区域文字。默认为空。"
+                        },
+                        "head_right": {
+                            "type": "string",
+                            "description": "页眉右侧区域文字。默认为空或显示文档简写。"
+                        },
+                        "foot_left": {
+                            "type": "string",
+                            "description": "页脚左侧区域文字。默认为空。"
+                        },
+                        "foot_center": {
+                            "type": "string",
+                            "description": "页脚居中区域文字。默认为 \\thepage（显示当前页码）。"
+                        },
+                        "foot_right": {
+                            "type": "string",
+                            "description": "页脚右侧区域文字。默认为空。"
+                        },
+                        "rule_width": {
+                            "type": "string",
+                            "description": "页眉水平分割装饰线的线条粗细。需带单位（如：0.4pt 细线、0pt 无分割线）。"
+                        }
+                    }
+                },
+                "typesetting": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "排版微调：microtype + parskip。",
+                    "properties": {
+                        "microtype": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "protrusion": {
+                                    "type": "boolean",
+                                    "description": "微排版标点符号外凸（protrusion）。开启后标点微量突出版心边界，令文本右边缘视觉更加齐整。"
+                                },
+                                "expansion": {
+                                    "type": "boolean",
+                                    "description": "微排版字体微伸缩（expansion）。微量伸缩字符字形以减少两端对齐分栏排版中的过大单词间隙。"
+                                },
+                                "kerning": {
+                                    "type": "boolean",
+                                    "description": "微排版字偶间距增强（kerning）。优化特定字母组合之间的紧凑程度。"
+                                }
+                            }
+                        },
+                        "parskip": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "段间距排版模式。开启（true）使用垂直空白区分段落并取消段首首行缩进；关闭（false）保持传统段首缩进。"
+                                }
+                            }
+                        }
+                    }
+                },
+                "section": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "titlesec section 标题格式。留空 = 使用 LaTeX 默认；填入格式串（如 \"\\Large\\bfseries\\color{blue}\"）覆盖。",
+                    "properties": {
+                        "format_section": {
+                            "type": "string",
+                            "description": "一级章节（Section）标题字号与格式命令。默认 \\large\\bfseries。可自定义字号、颜色（如 \\large\\bfseries\\color{blue}）。"
+                        },
+                        "format_subsection": {
+                            "type": "string",
+                            "description": "二级章节（Subsection）标题字号与格式命令。默认 \\normalsize\\bfseries。"
+                        },
+                        "format_subsubsection": {
+                            "type": "string",
+                            "description": "三级章节（Subsubsection）标题字号与格式命令。默认 \\small\\bfseries。"
+                        },
+                        "format_paragraph": {
+                            "type": "string",
+                            "description": "四级章节（Paragraph）标题字号与格式命令。默认 \\small\\bfseries。"
+                        },
+                        "format_subparagraph": {
+                            "type": "string",
+                            "description": "五级章节（Subparagraph）标题字号与格式命令。默认 \\footnotesize\\bfseries。"
+                        },
+                        "format_separator": {
+                            "type": "string",
+                            "description": "章节序号与标题文字之间的水平间隔命令（如：\\quad 或 1em 空白）。"
+                        }
+                    }
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "PDF 元数据：hypersetup 的 pdfkeywords 字段。",
+                    "properties": {
+                        "keywords": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "PDF 文档元数据关键字列表字符串数组（如：[\"ACM\", \"ICPC\", \"Algorithms\"]）。"
+                        }
+                    }
+                },
+                "global": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "文档级字体与页眉页脚。",
+                    "properties": {
+                        "main_font": {
+                            "type": "string",
+                            "description": "西文正文主字体族名。默认为 Times New Roman，亦可填 Georgia、Libertinus Serif、Arial 等系统中已安装字体。"
+                        },
+                        "cjk_main_font": {
+                            "type": "string",
+                            "description": "中文正文主字体族名。默认为 SimSun（中易宋体），亦可填 Source Han Serif CN、Songti SC 等。"
+                        },
+                        "cjk_sans_font": {
+                            "type": "string",
+                            "description": "中文无衬线（黑体）字体族名。默认为 SimHei（中易黑体），亦可填 Source Han Sans CN、PingFang SC 等。"
+                        },
+                        "cjk_main_bold_font": {
+                            "type": "string",
+                            "description": "中文粗体专属字体文件名或路径覆盖。留空时使用 auto_fake_bold 自动伪粗体合成。"
+                        },
+                        "cjk_main_italic_font": {
+                            "type": "string",
+                            "description": "中文斜体专属字体文件名或路径覆盖。留空时使用 auto_fake_slant 自动伪斜体合成。"
+                        },
+                        "cjk_auto_fake_bold": {
+                            "type": "boolean",
+                            "description": "当中文正文字体缺少独立 Bold 粗体字重时，是否由 XeTeX 自动位移合成伪粗体。默认 true。"
+                        },
+                        "cjk_auto_fake_slant": {
+                            "type": "boolean",
+                            "description": "当中文正文字体缺少独立 Italic 斜体字重时，是否由 XeTeX 自动倾斜合成伪斜体。默认 true。"
+                        },
+                        "custom_font_dirs": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "本地免安装字体目录路径数组。放置在此目录中的 .ttf/.otf 字体无需安装到操作系统即可直接在配置中按字体名引用。"
+                        },
+                        "page_style": {
+                            "type": "string",
+                            "enum": [
+                                "plain",
+                                "headings",
+                                "empty",
+                                "fancy"
+                            ],
+                            "description": "全局页眉页脚样式机制。可选：fancy（自定义 fancyhdr 样式，默认）、empty（无页眉页脚纯净白页）。"
+                        }
+                    }
+                },
+                "toc": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "目录标题与引导符。",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "目录页顶部标题文本。默认为 \"目录\"（可自定义为 \"目 录\"、\"Table of Contents\" 等）。"
+                        },
+                        "dot_leaders": {
+                            "type": "boolean",
+                            "description": "目录标题与页码之间是否绘制虚线引导符（dot leaders）。开启（true）显示连线，关闭（false）留空。"
+                        }
+                    }
+                },
+                "docclass": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "\\documentclass[] 选项（与 geometry 协同）。",
+                    "properties": {
+                        "base_font_size": {
+                            "type": "string",
+                            "description": "正文基准字号尺寸。可选：10pt（默认，通用正文基准尺寸）、11pt、12pt。"
+                        },
+                        "orientation": {
+                            "type": "string",
+                            "enum": [
+                                "landscape",
+                                "portrait"
+                            ],
+                            "description": "页面打印与阅读方向。可选：landscape（横向排版，双栏竞赛模板推荐）、portrait（纵向常规排版）。"
+                        },
+                        "fontset": {
+                            "type": "string",
+                            "enum": [
+                                "auto",
+                                "fandol",
+                                "ubuntu",
+                                "windows",
+                                "mac",
+                                "none"
+                            ],
+                            "description": "ctex 宏包预置字体集。可选：windows（默认）、fandol（开源字体，无 Windows 字体时推荐）、ubuntu、mac、none、auto。"
+                        }
+                    }
+                }
+            }
+        },
+        "PROGRAM": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "控制源码树处理。",
+            "properties": {
+                "include_file_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^\\.[A-Za-z0-9]+$"
+                    },
+                    "description": "允许纳入文档编译的源文件扩展名白名单数组（需带英文句点，如：[\".cpp\", \".py\", \".java\", \".h\", \".txt\"]）。"
+                },
+                "ignore_patterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "排除源文件的 Glob 通配符模式数组（如：[\"**/.*\", \"**/build/**\", \"**/*.bak\", \"**/bin/**\"]）。"
+                },
+                "code_language_overrides": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^\\.[A-Za-z0-9]+:[A-Za-z0-9_+\\-]+$"
+                    },
+                    "description": "代码高亮语言映射覆盖规则数组。格式为 [\"扩展名:语言名\"]（如 [\".cu:cpp\", \".frag:glsl\", \".tex:latex\"]）。支持 \".ext:raw\" 显式指示按原生 LaTeX 语法插入正文。"
+                },
+                "build": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "构建器行为调优。",
+                    "properties": {
+                        "timeout_seconds": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "XeLaTeX 单次子进程执行最大超时秒数。默认 180 秒，超时自动中止进程防止挂起；0 表示不限时。"
+                        },
+                        "pass_count": {
+                            "type": "integer",
+                            "enum": [
+                                1,
+                                2
+                            ],
+                            "description": "XeLaTeX 编译总轮数。默认 2 轮（第 1 轮生成目录与页码辅助文件，第 2 轮对齐目录与全文档交叉引用）。设为 1 可节省约 50% 编译时间但首次构建目录可能缺页码。"
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

@@ -83,7 +83,7 @@
 			"section_depth": 5,			// \setcounter{secnumdepth}{...} 编号深度（同时决定 CodeBlockGenerator 截断章节层数）
 			"toc_depth": 5,				// \setcounter{tocdepth}{...} 目录深度
 			"columns": 2,				// 1 或 2：正文总列数
-			"toc_in_columns": false,		// true = 目录单栏显示（默认 false = 与正文同列数）
+			"toc_in_columns": false,		// 目录排版布局：false = 跟随正文（默认与正文列数相同，双栏正文下目录亦为双栏）；true = 独立单栏（目录独占全宽单栏排版）
 			"escape_section_names": true	// CodeBlockGenerator 是否对章节名（目录名）做 LatexEscaper 转义
 		},
 

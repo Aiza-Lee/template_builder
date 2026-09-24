@@ -71,9 +71,66 @@ public class TuiSchemaCatalogTests {
     }
 
     [Fact]
-    public void FeaturedFields_ContainsExactlyTwelveCuratedItems() {
+    public void FeaturedFields_ContainsEighteenCuratedItems() {
         var featured = TuiSchemaCatalog.FeaturedFields;
-        Assert.Equal(12, featured.Count);
+        Assert.Equal(18, featured.Count);
         Assert.Equal(featured.Count, featured.Select(f => f.Key).Distinct(StringComparer.Ordinal).Count());
+
+        var keys = featured.Select(f => f.Key).ToHashSet(StringComparer.Ordinal);
+        Assert.Contains("TITLE_CONTENT", keys);
+        Assert.Contains("AUTHOR", keys);
+        Assert.Contains("CODE_FONT_SIZE", keys);
+        Assert.Contains("CODE_LINE_HEIGHT", keys);
+        Assert.Contains("DOCCLASS_ORIENTATION", keys);
+        Assert.Contains("LAYOUT_COLUMNS", keys);
+        Assert.Contains("GEOMETRY_LEFT_MARGIN", keys);
+        Assert.Contains("GEOMETRY_RIGHT_MARGIN", keys);
+        Assert.Contains("GEOMETRY_TOP_MARGIN", keys);
+        Assert.Contains("GEOMETRY_BOTTOM_MARGIN", keys);
+        Assert.Contains("INCLUDE_FILE_TYPES", keys);
+        Assert.Contains("IGNORE_PATTERNS", keys);
+        Assert.Contains("LAYOUT_TOC_IN_COLUMNS", keys);
+    }
+
+    [Fact]
+    public void AllFields_HaveComprehensiveChineseDescriptions() {
+        foreach (var field in TuiSchemaCatalog.AllFields) {
+            Assert.False(
+                string.IsNullOrWhiteSpace(field.Description),
+                $"配置项 \"{field.Key}\" 的描述为空，UX-12 要求全量 93 个字段均具备清晰中文解释。"
+            );
+        }
+    }
+
+    [Theory]
+    [InlineData("AUTHOR", "AUTHOR")]
+    [InlineData("作者", "AUTHOR")]
+    [InlineData("font", "CODE_FONT_SIZE")]
+    [InlineData("字号", "CODE_FONT_SIZE")]
+    [InlineData("边距", "GEOMETRY_LEFT_MARGIN")]
+    [InlineData("目录", "LAYOUT_TOC_IN_COLUMNS")]
+    public void SearchFields_FindsExpectedFields(string query, string expectedKey) {
+        var results = TuiSchemaCatalog.SearchFields(query);
+        Assert.NotEmpty(results);
+        Assert.Contains(results, f => f.Key == expectedKey);
+    }
+
+    [Fact]
+    public void SearchFields_WithEmptyQuery_ReturnsEmptyList() {
+        Assert.Empty(TuiSchemaCatalog.SearchFields(null));
+        Assert.Empty(TuiSchemaCatalog.SearchFields(""));
+        Assert.Empty(TuiSchemaCatalog.SearchFields("   "));
+    }
+
+    [Fact]
+    public void FormatFieldValueDisplay_ClarifiesTocInColumns() {
+        var falseDisp = TuiViewRenderer.FormatFieldValueDisplay("false", "LAYOUT_TOC_IN_COLUMNS");
+        Assert.Equal("跟随正文 (false)", falseDisp);
+
+        var trueDisp = TuiViewRenderer.FormatFieldValueDisplay("true", "LAYOUT_TOC_IN_COLUMNS");
+        Assert.Equal("独立单栏 (true)", trueDisp);
+
+        var normalDisp = TuiViewRenderer.FormatFieldValueDisplay("true", "CODE_LINE_NUMBERS");
+        Assert.Equal("true", normalDisp);
     }
 }

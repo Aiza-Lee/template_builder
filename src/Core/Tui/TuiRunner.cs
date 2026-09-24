@@ -402,6 +402,9 @@ namespace Core.Tui {
                     menuItems.Add(new TuiMenuItem(cat.Id, cat.Title, details, isOverridden: overriddenCount > 0, tag: cat));
                 }
 
+                // 快速搜索定位配置项
+                menuItems.Add(new TuiMenuItem("SEARCH", "搜索配置项 (按中文名称/英文键名快速定位)", action: TuiMenuAction.Search));
+
                 if (activeOverrides.Count > 0) {
                     menuItems.Add(new TuiMenuItem("INSPECT", $"查看当前全部覆盖项 ({activeOverrides.Count} 项)", action: TuiMenuAction.Inspect));
                     menuItems.Add(new TuiMenuItem("CLEAR", "清空所有覆盖项 (恢复项目/内置配置)", action: TuiMenuAction.Clear));
@@ -481,6 +484,11 @@ namespace Core.Tui {
                     continue;
                 }
 
+                if (chosen.IsSearch) {
+                    SearchAndEditFields(config);
+                    continue;
+                }
+
                 if (chosen.Action == TuiMenuAction.Inspect) {
                     ShowOverridesTable(config.GetActiveOverrides(), config);
                     continue;
@@ -515,6 +523,60 @@ namespace Core.Tui {
             Console.ReadLine();
         }
 
+        private static void SearchAndEditFields(ProjectConfiguration config) {
+            while (true) {
+                AnsiConsole.MarkupLine("[bold cyan]🔍 搜索配置项[/]");
+                AnsiConsole.MarkupLine("[grey]支持输入中文名称、英文键名（如 font、margin、分栏、目录、作者）或功能说明关键字。[/]");
+
+                var query = TuiLineEditor.ReadLine("[bold]请输入搜索关键词[/] [grey](直接回车或按 Esc 返回)[/]：")?.Trim();
+                if (string.IsNullOrEmpty(query)) {
+                    break;
+                }
+
+                var matches = TuiSchemaCatalog.SearchFields(query);
+                if (matches.Count == 0) {
+                    AnsiConsole.MarkupLine($"[yellow]未找到匹配 \"{Markup.Escape(query)}\" 的配置项。[/]\n");
+                    continue;
+                }
+
+                string? lastSelectedFieldKey = null;
+                while (true) {
+                    var menuItems = new List<TuiMenuItem>();
+                    menuItems.Add(new TuiMenuItem("BACK", "返回重新搜索", action: TuiMenuAction.Back));
+
+                    foreach (var field in matches) {
+                        var item = config.GetItem(field.Key);
+                        var isOverridden = item?.IsOverridden == true;
+                        var cur = item?.EffectiveValue;
+                        var displayCur = TuiViewRenderer.FormatFieldValueDisplay(cur, field.Key);
+                        if (isOverridden) {
+                            displayCur += " [已覆盖]";
+                        } else if (item?.HasProjectValue == true) {
+                            displayCur += " [项目]";
+                        }
+                        var catPrefix = !string.IsNullOrEmpty(field.Category) ? $"[{field.Category}] " : "";
+                        menuItems.Add(new TuiMenuItem(field.Key, $"{catPrefix}{field.Label} ({field.Key})", displayCur, isOverridden: isOverridden, tag: field));
+                    }
+
+                    var chosen = TuiMenu.Prompt(
+                        $"搜索结果：找到 [bold green]{matches.Count}[/] 项匹配 \"[bold yellow]{Markup.Escape(query)}[/]\" 的配置：",
+                        menuItems,
+                        initialSelectedId: lastSelectedFieldKey
+                    );
+
+                    if (chosen.IsBack) {
+                        break;
+                    }
+
+                    lastSelectedFieldKey = chosen.Id;
+
+                    if (chosen.Tag is not TuiConfigField selectedField) continue;
+
+                    EditSingleField(selectedField, config);
+                }
+            }
+        }
+
         private static void EditCategoryFields(TuiCategoryGroup category, ProjectConfiguration config) {
             string? lastSelectedFieldKey = null;
             while (true) {
@@ -525,7 +587,7 @@ namespace Core.Tui {
                     var item = config.GetItem(field.Key);
                     var isOverridden = item?.IsOverridden == true;
                     var cur = item?.EffectiveValue;
-                    var displayCur = string.IsNullOrEmpty(cur) ? "<空>" : cur;
+                    var displayCur = TuiViewRenderer.FormatFieldValueDisplay(cur, field.Key);
                     if (isOverridden) {
                         displayCur += " [已覆盖]";
                     } else if (item?.HasProjectValue == true) {
@@ -621,8 +683,20 @@ namespace Core.Tui {
             menuItems.Add(new TuiMenuItem("BACK", "返回（不修改）", action: TuiMenuAction.Back));
 
             var isTrueCurrent = string.Equals(item.EffectiveValue, "true", StringComparison.OrdinalIgnoreCase);
-            var trueLabel = "开启 (true)";
-            var falseLabel = "关闭 (false)";
+            string trueLabel;
+            string falseLabel;
+            string promptTitle;
+
+            if (field.Key == "LAYOUT_TOC_IN_COLUMNS") {
+                promptTitle = $"[bold]请选择 {Markup.Escape(field.Label)}[/]：";
+                falseLabel = "跟随正文 (false - 与正文列数保持一致)";
+                trueLabel = "独立单栏 (true - 目录独占全宽页面)";
+            } else {
+                promptTitle = $"[bold]是否开启 {Markup.Escape(field.Label)}[/]：";
+                trueLabel = "开启 (true)";
+                falseLabel = "关闭 (false)";
+            }
+
             if (string.Equals(item.BuiltinValue, "true", StringComparison.OrdinalIgnoreCase)) trueLabel += " [内置默认]";
             if (string.Equals(item.BuiltinValue, "false", StringComparison.OrdinalIgnoreCase)) falseLabel += " [内置默认]";
             if (item.HasProjectValue) {
@@ -630,18 +704,25 @@ namespace Core.Tui {
                 if (string.Equals(item.ProjectValue, "false", StringComparison.OrdinalIgnoreCase)) falseLabel += " [项目配置]";
             }
 
-            menuItems.Add(new TuiMenuItem("true", trueLabel, isOverridden: isTrueCurrent));
-            menuItems.Add(new TuiMenuItem("false", falseLabel, isOverridden: !isTrueCurrent));
+            if (field.Key == "LAYOUT_TOC_IN_COLUMNS") {
+                menuItems.Add(new TuiMenuItem("false", falseLabel, isOverridden: !isTrueCurrent));
+                menuItems.Add(new TuiMenuItem("true", trueLabel, isOverridden: isTrueCurrent));
+            } else {
+                menuItems.Add(new TuiMenuItem("true", trueLabel, isOverridden: isTrueCurrent));
+                menuItems.Add(new TuiMenuItem("false", falseLabel, isOverridden: !isTrueCurrent));
+            }
 
             if (item.HasProjectValue && item.IsOverridden) {
-                menuItems.Add(new TuiMenuItem("__RESET_PROJECT__", $"恢复项目配置值 ({item.ProjectValue})"));
+                var projDisplay = TuiViewRenderer.FormatFieldValueDisplay(item.ProjectValue, field.Key);
+                menuItems.Add(new TuiMenuItem("__RESET_PROJECT__", $"恢复项目配置值 ({projDisplay})"));
             }
 
             if (item.BuiltinValue != null && (item.IsOverridden || !string.Equals(item.EffectiveValue, item.BuiltinValue, StringComparison.OrdinalIgnoreCase))) {
-                menuItems.Add(new TuiMenuItem("__RESET_BUILTIN__", $"恢复内置默认值 ({item.BuiltinValue})"));
+                var builtinDisplay = TuiViewRenderer.FormatFieldValueDisplay(item.BuiltinValue, field.Key);
+                menuItems.Add(new TuiMenuItem("__RESET_BUILTIN__", $"恢复内置默认值 ({builtinDisplay})"));
             }
 
-            var chosen = TuiMenu.Prompt($"[bold]是否开启 {Markup.Escape(field.Label)}[/]：", menuItems);
+            var chosen = TuiMenu.Prompt(promptTitle, menuItems);
             if (chosen.IsBack) {
                 AnsiConsole.MarkupLine("[grey]已取消，未作任何修改。[/]");
                 return;
