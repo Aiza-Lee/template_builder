@@ -20,22 +20,34 @@ LaTeX 生成工具，将算法代码模板编译成PDF文档。
 
 #### 1. 使用便捷脚本运行：
 
+便捷脚本 `./scripts/docker-run.sh` 默认直接使用 GHCR 发布的预构建镜像 `ghcr.io/aiza-lee/template_builder:latest`（若本地有自构建镜像亦会自动识别），且会根据终端 TTY 状态智能分配交互参数（TTY 环境自动支持 TUI 交互，CI/管道/重定向环境自动禁用 `-t`，杜绝非交互报错）：
+
 ```bash
 # 生成默认配置文件骨架
 ./scripts/docker-run.sh init -o config.jsonc
 
-# 校验源目录与配置
+# 校验源目录与配置（支持 text 与 json 协议）
 ./scripts/docker-run.sh validate -s ./my_templates -c config.jsonc
 
 # 编译生成 PDF
 ./scripts/docker-run.sh build -s ./my_templates -c config.jsonc -o ./output.pdf
+
+# 启动全屏交互模式（终端自动启用 TTY 交互）
+./scripts/docker-run.sh build --tui
 ```
+
+若需指定其他镜像或自构建镜像，可通过环境变量覆盖：`TEMPLATE_BUILDER_IMAGE=my_image:tag ./scripts/docker-run.sh ...`。
 
 #### 2. 或直接使用原生 Docker 命令：
 
 ```bash
+# 非交互命令行编译（管道与 CI 友好）：
 docker run --rm -u "$(id -u):$(id -g)" -v "$(pwd)":/workspace ghcr.io/aiza-lee/template_builder:latest \
     build -s ./my_templates -c config.jsonc -o ./output.pdf
+
+# 启动全屏交互模式（需显式分配伪终端 -it）：
+docker run --rm -it -u "$(id -u):$(id -g)" -v "$(pwd)":/workspace ghcr.io/aiza-lee/template_builder:latest \
+    build --tui
 ```
 
 #### 3. 自定义字体支持（免安装）：
