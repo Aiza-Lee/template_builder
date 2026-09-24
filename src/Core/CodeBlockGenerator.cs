@@ -53,6 +53,8 @@ namespace Core {
         /// <summary>章节名是否走 LatexEscaper；用户可在 TEX.layout.escape_section_names 关闭。</summary>
         private readonly bool _escapeSectionNames;
 
+        /// <summary>小样生成文件数量上限（可选，用于排版快速试看）。</summary>
+        private readonly int? _maxFiles;
 
         public CodeBlockGenerator(
             ILogger logger,
@@ -61,13 +63,15 @@ namespace Core {
             DirectoryInfo sourceDir,
             string codeBlockTemplate,
             int sectionDepth,
-            bool escapeSectionNames
+            bool escapeSectionNames,
+            int? maxFiles = null
         ) {
             _logger = logger;
             _sourceDirInfo = sourceDir;
             _programConfigParser = programConfigParser;
             _tabSize = tabSize;
             _escapeSectionNames = escapeSectionNames;
+            _maxFiles = maxFiles;
 
             CODE_BLOCK_TEMPLATE = codeBlockTemplate;
             var includeFileTypes = _programConfigParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
@@ -125,6 +129,7 @@ namespace Core {
             var strBuilder = new StringBuilder();
             var lastIndex = _sectionCommands.Length - 1;
             var pendingDirs = new List<(int Depth, string Title, int EffectiveDepth)>();
+            int emittedFileCount = 0;
 
             foreach (var (node, isDir) in plan.GetInOrderEntries()) {
                 // 弹出深度不小于当前 entry 深度（即已离开该分支）的未决目录
@@ -141,6 +146,10 @@ namespace Core {
                     continue;
                 }
 
+                if (_maxFiles.HasValue && emittedFileCount >= _maxFiles.Value) {
+                    break;
+                }
+
                 var codeBlock = GenerateCodeBlock_File((FileInfo)node.Info);
                 if (string.IsNullOrEmpty(codeBlock)) continue;
 
@@ -153,6 +162,7 @@ namespace Core {
                 strBuilder.AppendLine($"% [TB_SOURCE_FILE: {node.RelativePath}]");
                 InsertSection(strBuilder, node.DisplayTitle, effectiveDepth);
                 strBuilder.AppendLine(codeBlock);
+                emittedFileCount++;
             }
             return strBuilder.ToString();
         }

@@ -526,12 +526,17 @@ namespace Core {
             var keywords = string.Join(", ", _texConfigParser["METADATA_KEYWORDS"].GetAsStringArray());
             mainTemplate.Replace("<<METADATA_KEYWORDS>>", keywords);
 
-            // Layout runtime: documentclass columns + TOC/body column toggles
+            // Layout runtime: documentclass columns
             var columns = _texConfigParser["LAYOUT_COLUMNS"].GetAsInt();
-            var tocInColumns = _texConfigParser["LAYOUT_TOC_IN_COLUMNS"].GetAsBool();
             mainTemplate.Replace("<<DOC_CLASS_COLUMNS>>", columns == 2 ? "twocolumn" : "");
-            mainTemplate.Replace("<<LAYOUT_TOC_OPENING>>", columns == 2 ? (tocInColumns ? @"\onecolumn" : @"\twocolumn") : "");
-            mainTemplate.Replace("<<LAYOUT_BODY_OPENING>>", columns == 2 && tocInColumns ? @"\twocolumn" : "");
+
+            // 封面与目录独立模块及列数自适应同步
+            mainTemplate.Replace("<<COVER_PAGE_BLOCK>>", BuildCoverBlock());
+            mainTemplate.Replace("<<TOC_BLOCK>>", BuildTocBlock());
+            mainTemplate.Replace("<<LAYOUT_BODY_OPENING>>", BuildBodyOpening());
+
+            // 保持对旧自定义模板中 <<LAYOUT_TOC_OPENING>> 的兼容
+            mainTemplate.Replace("<<LAYOUT_TOC_OPENING>>", "");
 
             // ctex fontset 选项处理：auto / 空 → 留空（由 ctex 自动决定）；显式指定时注入 ,fontset={fontset}
             var fontset = _texConfigParser["DOCCLASS_FONTSET"].GetAsString();
@@ -577,7 +582,8 @@ namespace Core {
             string codeBlockTemplateContent = ResolveTemplateContent("CodeBlock.tex");
             var codeBlockGen = new CodeBlockGenerator(
                 _logger, _programConfigParser, tabSize, _options.SourceDir,
-                codeBlockTemplateContent, sectionDepth, escapeSectionNames);
+                codeBlockTemplateContent, sectionDepth, escapeSectionNames,
+                _options.SampleFileLimit);
             string codeBlocks = codeBlockGen.Generate();
             _unresolvedPlaceholderCount += codeBlockGen.UnresolvedPlaceholderCount;
 
@@ -688,6 +694,108 @@ namespace Core {
         }
 
         /// <summary>
+        /// 当用户未显式配置标题时，从项目源目录名合理推导标题。
+        /// </summary>
+        internal string ResolveEffectiveTitle() {
+            var configured = _texConfigParser["TITLE_CONTENT"].GetAsString();
+            if (!string.IsNullOrWhiteSpace(configured)) {
+                return configured;
+            }
+
+            var dir = _options.SourceDir;
+            var name = dir.Name;
+            if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..") {
+                try {
+                    name = new DirectoryInfo(dir.FullName).Name;
+                } catch {
+                    name = null;
+                }
+            }
+            if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..") {
+                name = "Code Template";
+            }
+            return name;
+        }
+
+        /// <summary>
+        /// 动态构造独立封面页 TeX 块。若 TITLE_ENABLE_COVER=false，返回空字符串，彻底消除空白页缺陷。
+        /// </summary>
+        internal string BuildCoverBlock() {
+            var enableCover = _texConfigParser["TITLE_ENABLE_COVER"].GetAsBool(false);
+            if (!enableCover) return string.Empty;
+
+            var sb = new StringBuilder();
+            var columns = _texConfigParser["LAYOUT_COLUMNS"].GetAsInt();
+            if (columns == 2) {
+                sb.AppendLine(@"	\onecolumn");
+            }
+            sb.AppendLine(@"	\maketitle");
+            var note = _texConfigParser["TITLE_NOTE"].GetAsString();
+            if (!string.IsNullOrWhiteSpace(note)) {
+                sb.AppendLine(@"	\begin{##TITLE_ALIGNMENT##}");
+                sb.AppendLine(@"		##TITLE_NOTE##");
+                sb.AppendLine(@"	\end{##TITLE_ALIGNMENT##}");
+            }
+            sb.AppendLine(@"	\clearpage");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 动态构造文档目录 TeX 块。若 TOC_ENABLE_TOC=false，返回空字符串。
+        /// </summary>
+        internal string BuildTocBlock() {
+            var enableToc = _texConfigParser["TOC_ENABLE_TOC"].GetAsBool(true);
+            if (!enableToc) return string.Empty;
+
+            var enableCover = _texConfigParser["TITLE_ENABLE_COVER"].GetAsBool(false);
+            var columns = _texConfigParser["LAYOUT_COLUMNS"].GetAsInt();
+            var tocInColumns = _texConfigParser["LAYOUT_TOC_IN_COLUMNS"].GetAsBool(false);
+            var tocDotLeaders = _texConfigParser["TOC_DOT_LEADERS"].GetAsBool(true);
+
+            var sb = new StringBuilder();
+            if (columns == 2) {
+                if (tocInColumns) {
+                    if (!enableCover) {
+                        sb.AppendLine(@"	\onecolumn");
+                    }
+                } else {
+                    if (enableCover) {
+                        sb.AppendLine(@"	\twocolumn");
+                    }
+                }
+            }
+
+            sb.AppendLine(@"	\renewcommand{\contentsname}{##TOC_TITLE##}");
+            if (!tocDotLeaders) {
+                sb.AppendLine(@"	\def\@dotsep{10000}");
+            }
+            sb.AppendLine(@"	\tableofcontents");
+            sb.AppendLine(@"	\clearpage");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 动态判断正文开始前的列数切换。在双栏排版下，若前面封面或目录使文档进入单栏模式，则在此恢复 \twocolumn。
+        /// </summary>
+        internal string BuildBodyOpening() {
+            var columns = _texConfigParser["LAYOUT_COLUMNS"].GetAsInt();
+            if (columns != 2) return string.Empty;
+
+            var enableCover = _texConfigParser["TITLE_ENABLE_COVER"].GetAsBool(false);
+            var enableToc = _texConfigParser["TOC_ENABLE_TOC"].GetAsBool(true);
+            var tocInColumns = _texConfigParser["LAYOUT_TOC_IN_COLUMNS"].GetAsBool(false);
+
+            bool isCurrentlyOneColumn;
+            if (enableToc) {
+                isCurrentlyOneColumn = tocInColumns;
+            } else {
+                isCurrentlyOneColumn = enableCover;
+            }
+
+            return isCurrentlyOneColumn ? "\t\\twocolumn\n" : string.Empty;
+        }
+
+        /// <summary>
         /// 需要做 LaTeX 转义的占位符键（用户可见的文本字段）。
         /// </summary>
         private static readonly IReadOnlySet<string> _keysToEscape = new HashSet<string>(StringComparer.Ordinal) {
@@ -708,13 +816,17 @@ namespace Core {
         /// </remarks>
         /// <param name="content">要替换的模板内容</param>
         private void ReplaceMainPlaceholders(StringBuilder content) {
-            var escapeEnabled = _texConfigParser["TITLE_ESCAPE_LATEX_SPECIALS"].GetAsBool();
+            var escapeEnabled = _texConfigParser["TITLE_ESCAPE_LATEX_SPECIALS"].GetAsBool(true);
             // 1. 构造 key→value 字典（对 4 个用户文本字段做 LaTeX 转义）
             var lookup = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var (key, value) in _texConfigParser.GetAllConfigsAsString()) {
+                var effectiveValue = value;
+                if (key == "TITLE_CONTENT" && string.IsNullOrWhiteSpace(effectiveValue)) {
+                    effectiveValue = ResolveEffectiveTitle();
+                }
                 lookup[key] = escapeEnabled && _keysToEscape.Contains(key)
-                    ? LatexEscaper.Escape(value)
-                    : value;
+                    ? LatexEscaper.Escape(effectiveValue)
+                    : effectiveValue;
             }
             // 2. 多次 Regex.Replace 直到稳定（兼容值含 ##OTHER## 的递归替换）
             var text = content.ToString();

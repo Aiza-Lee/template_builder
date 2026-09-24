@@ -21,23 +21,27 @@
             "properties": {
                 "author": {
                     "type": "string",
-                    "description": "文档作者姓名。写入 PDF 元数据与标题页展示（如：Aiza）。若不希望显示作者可清空为 <空>。"
+                    "description": "文档作者姓名。写入 PDF 元数据与标题页展示。默认留空，不带入任何个人署名。"
                 },
                 "subject": {
                     "type": "string",
-                    "description": "文档主题。写入 PDF 元数据（如：算法竞赛代码模板）。"
+                    "description": "文档主题。写入 PDF 元数据。默认留空。"
                 },
                 "title": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
+                        "enable_cover": {
+                            "type": "boolean",
+                            "description": "是否生成独立封面页。设为 false（默认）时不生成封面页，避免占用首张纸面与意外空白页；设为 true 时生成独立封面。"
+                        },
                         "content": {
                             "type": "string",
-                            "description": "文档主标题。以大字号展示在首页封面或文档顶部（如：ACM-ICPC 算法模板）。"
+                            "description": "文档主标题。以大字号展示在首页封面或文档顶部。默认留空，构建时自动由源目录名合理推导。"
                         },
                         "note": {
                             "type": "string",
-                            "description": "标题页额外说明或副标题。展示在主标题下方（如：2026 赛季修订版）。"
+                            "description": "标题页额外说明或副标题。展示在主标题下方。默认留空。"
                         },
                         "date": {
                             "type": "string",
@@ -471,8 +475,12 @@
                 "toc": {
                     "type": "object",
                     "additionalProperties": false,
-                    "description": "目录标题与引导符。",
+                    "description": "目录开关、标题与引导符。",
                     "properties": {
+                        "enable_toc": {
+                            "type": "boolean",
+                            "description": "是否生成文档目录。设为 true（默认）时输出目录；设为 false 时不生成目录，第 1 页直接开始代码正文。"
+                        },
                         "title": {
                             "type": "string",
                             "description": "目录页顶部标题文本。默认为 \"目录\"（可自定义为 \"目 录\"、\"Table of Contents\" 等）。"

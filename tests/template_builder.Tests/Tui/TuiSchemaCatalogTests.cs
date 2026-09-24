@@ -8,9 +8,9 @@ public class TuiSchemaCatalogTests {
     [Fact]
     public void AllFields_DiscoversAllExpectedProperties() {
         var fields = TuiSchemaCatalog.AllFields;
-        // Schema 中共 88 个 TEX 属性与 7 个 PROGRAM 属性，共 95 个
-        Assert.Equal(95, fields.Count);
-        Assert.Equal(95, fields.Select(f => f.Key).Distinct(StringComparer.Ordinal).Count());
+        // Schema 中共 90 个 TEX 属性与 7 个 PROGRAM 属性，共 97 个
+        Assert.Equal(97, fields.Count);
+        Assert.Equal(97, fields.Select(f => f.Key).Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]
@@ -71,14 +71,16 @@ public class TuiSchemaCatalogTests {
     }
 
     [Fact]
-    public void FeaturedFields_ContainsEighteenCuratedItems() {
+    public void FeaturedFields_ContainsTwentyCuratedItems() {
         var featured = TuiSchemaCatalog.FeaturedFields;
-        Assert.Equal(18, featured.Count);
+        Assert.Equal(20, featured.Count);
         Assert.Equal(featured.Count, featured.Select(f => f.Key).Distinct(StringComparer.Ordinal).Count());
 
         var keys = featured.Select(f => f.Key).ToHashSet(StringComparer.Ordinal);
         Assert.Contains("TITLE_CONTENT", keys);
         Assert.Contains("AUTHOR", keys);
+        Assert.Contains("TITLE_ENABLE_COVER", keys);
+        Assert.Contains("TOC_ENABLE_TOC", keys);
         Assert.Contains("CODE_FONT_SIZE", keys);
         Assert.Contains("CODE_LINE_HEIGHT", keys);
         Assert.Contains("DOCCLASS_ORIENTATION", keys);

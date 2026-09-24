@@ -26,10 +26,11 @@
 
 | 路径 | 默认值 | 说明 |
 |---|---|---|
-| `TEX.author` | `"Aiza"` | PDF 作者（`pdfauthor` + `\author`）。`escape_latex_specials=true` 时自动转义 `_` `%` `&` 等 |
-| `TEX.subject` | `"文档主题"` | PDF 主题（`pdfsubject`）。自动转义 |
-| `TEX.title.content` | `"文档标题"` | 文档主标题（`\title` + `pdftitle`）。自动转义 |
-| `TEX.title.note` | `"标题页额外内容"` | 标题页额外内容。使用 `\begin{<alignment>}…\end{<alignment>}`（center/flushleft/flushright） |
+| `TEX.author` | `""` | PDF 作者（`pdfauthor` + `\author`）。默认留空；`escape_latex_specials=true` 时自动转义 `_` `%` `&` 等 |
+| `TEX.subject` | `""` | PDF 主题（`pdfsubject`）。默认留空；自动转义 |
+| `TEX.title.content` | `""` | 文档主标题（`\title` + `pdftitle`）。默认留空时自动从源码目录名合理推导并转义 |
+| `TEX.title.enable_cover` | `false` | 是否生成独立封面页（`\maketitle` 与独立分页）。默认 `false`，正文直接从首页紧凑开始，彻底消除空白页 |
+| `TEX.title.note` | `""` | 标题页额外内容。默认留空；使用 `\begin{<alignment>}…\end{<alignment>}`（center/flushleft/flushright） |
 | `TEX.title.date` | `"\\today"` | `\date{}` 的值 |
 | `TEX.title.font_size_cmd` | `"\\Large\\bfseries"` | `\title{...}` 内嵌的字号/字重命令 |
 | `TEX.title.alignment` | `"center"` | 标题页 note 区域 LaTeX 环境名：`center` / `flushleft` / `flushright` |
@@ -96,6 +97,7 @@
 | `TEX.section.format_subparagraph` | `""` | subparagraph 格式 |
 | `TEX.section.format_separator` | `"1em"` | `\titleformat{<level>}{...}{...}{<this>}{...}` 第 4 个参数（标题与编号之间的水平间距），全部 5 个层级共用 |
 | `TEX.metadata.keywords` | `[]` | PDF 关键词数组。写入 `pdfkeywords={kw1, kw2}` |
+| `TEX.toc.enable_toc` | `true` | 是否生成文档目录（`\tableofcontents`）。设为 `false` 可完全跳过目录生成并消除目录分页 |
 | `TEX.toc.title` | `"目录"` | `\renewcommand{\contentsname}{...}`：目录标题 |
 | `TEX.toc.dot_leaders` | `true` | `true` = 保留 LaTeX 默认引导点；`false` = `\def\@dotsep{10000}` 取消引导点 |
 | `TEX.global.main_font` | `"Times New Roman"` | 西文主字体（`\setmainfont`） |
@@ -210,12 +212,45 @@ microtype 默认开启 protrusion（字符悬挂伸出），关闭 expansion 与
 模板中的 `##KEY##` 由 `PdfBuilder.ReplaceMainPlaceholders` 用 `TEX` 段对应大写下划线 key 的值替换（如 `TEX.geometry.paper_size` → `##GEOMETRY_PAPER_SIZE##`）。
 
 `<<KEY>>` 是 **runtime** 占位符，由 `PdfBuilder.GenerateTexContent` 在 `ReplaceMainPlaceholders` 之前单独替换：
+- `<<COVER_PAGE_BLOCK>>` → 当 `TEX.title.enable_cover=true` 时动态生成的封面块（含 `\maketitle` 与独立分页），为 `false` 时为空，彻底消除无用空白页
+- `<<TOC_BLOCK>>` → 当 `TEX.toc.enable_toc=true` 时动态生成的目录块（含 `\tableofcontents` 与分页），为 `false` 时为空
+- `<<LAYOUT_TOC_OPENING>>` / `<<LAYOUT_BODY_OPENING>>` → 结合 `TEX.layout.columns`、`toc_in_columns` 与封面/目录状态自适应计算的列控制指令
 - `<<MINTED_OUTPUTDIR>>` → minted 输出目录
 - `<<METADATA_KEYWORDS>>` → `TEX.metadata.keywords` 数组拼接为 `"kw1, kw2"`
-- `<<DOC_CLASS_COLUMNS>>` / `<<LAYOUT_TOC_OPENING>>` / `<<LAYOUT_BODY_OPENING>>` → 来自 `TEX.layout.columns` + `toc_in_columns` 的布局控制
+- `<<DOC_CLASS_COLUMNS>>` → 来自 `TEX.layout.columns` 的文档类基础分栏参数
 - `<<CJK_FONT_BLOCK>>` → 动态拼装的 `\setCJKmainfont{...}[...]` 块（含 BoldFont/ItalicFont 空值剔除 + AutoFake 开关）
 - `<<TOC_DOT_LEADERS_LINE>>` → 默认空；`TEX.toc.dot_leaders=false` 时替换为 `\def\@dotsep{10000}`
 - `<<CONTENT>>` → CodeBlockGenerator 生成的代码块正文（在 `ReplaceMainPlaceholders` 之后才替换）
+
+## 排版预设与源码小样预览 (UX-14)
+
+### 1. 排版预设体系 (Presets)
+
+template_builder 内置了 3 种面向不同用户核心诉求的排版预设，可通过命令行 `--preset <id>` 或 TUI 导航中心「应用排版预设」快速切换，同时保留后续细粒度自定义覆盖能力：
+
+| 预设 ID | 预设名称 | 适用场景 | 核心排版参数 |
+|---|---|---|---|
+| `competition` | 比赛打印预设 | ICPC/CCPC 现场赛携带代码手册，最大化信息密度 | 横向 A4、双栏排版、代码 6pt / 行高 6pt、边距 1cm、跟随正文双栏目录 |
+| `reading` | 屏幕阅读预设 | 电脑、平板屏幕自习阅读与代码审阅，舒适护眼 | 纵向 A4、单栏排版、代码 9pt / 行高 13pt、代码自动换行、parskip 现代段间距 |
+| `compact` | 紧凑速查预设 | 兼顾随身打印便携与长代码行可读性的速查手册 | 纵向 A4、双栏排版、代码 7pt / 行高 8pt、单栏独立全宽目录 |
+
+预设应用规则：
+- **基线提升**：预设直接覆盖当前会话中的关联排版字段；未在预设中定义的其他个性化设置保持不变；
+- **增量叠加**：应用预设后，仍可在 TUI 菜单中或通过特定参数对单个字段（如字体、页边距、语言）进行细调覆盖。
+
+### 2. 源码小样预览 (Sample Preview)
+
+在构建包含数十甚至数百个源文件的庞大工程前，使用小样功能可以毫秒/秒级编译 1~2 页 PDF，以最小成本验证中文字体、超长行折行、代码高亮与目录样式：
+
+- **命令行使用**：
+  ```bash
+  # 抽取前 2 个文件快速生成排版小样
+  ./template_builder build -s ./my_templates -o ./proof.pdf --sample
+
+  # 指定抽取前 3 个源文件
+  ./template_builder build -s ./my_templates -o ./proof.pdf --sample 3 --preset reading
+  ```
+- **TUI 交互使用**：在 TUI 导航中心直接选择「编译排版小样」，构建成功后可一键调用系统默认阅读器查看真实渲染效果，确认满意后再执行全量构建。
 
 ## 性能调优
 

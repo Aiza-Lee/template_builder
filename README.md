@@ -82,22 +82,27 @@ bash ./scripts/build.sh
 #### `build` —— 编译源目录为 PDF
 
 ```bash
-./template_builder build -s "path/to/your/code/templates/folder" -o "output/file.pdf" [-c "path/to/config.json"] [-t "path/to/template/dir"] [-v]
+./template_builder build -s "path/to/your/code/templates/folder" -o "output/file.pdf" [-c "path/to/config.json"] [--preset competition|reading|compact] [--sample [COUNT]] [-t "path/to/template/dir"] [-v]
 ```
+
+核心构建选项：
+- `--preset <competition|reading|compact>`：直接套用排版预设（比赛打印 / 屏幕阅读 / 紧凑速查），快速切换纸张方向、栏数、字号与行距；
+- `--sample [COUNT]`：排版小样预览，仅抽取前 COUNT 个源文件（默认 2 个）极速编译 1~2 页 PDF，秒级验证中文字体、超长行折行与版面效果；
+- 默认 PDF 无任何开发者个人署名或占位说明，文档主标题未指定时自动从源码目录名合理推导并转义；独立封面与目录均具备独立开关且不产生空白页。
 
 ##### 交互模式 `--tui`
 
-加 `--tui` 进入全屏交互模式，适合不想记参数、或想临时试几组排版参数的时候：
+加 `--tui` 进入全屏交互模式，适合不想记参数、或想直观调试排版与即时预览：
 
 ```bash
 ./template_builder build --tui
 ```
 
-流程为「源目录 → 输出路径 → 常用配置项 → 实时构建日志」四步：
+流程基于「参数输入 → 导航控制中心 → 实时构建与日志 → 结果操作中心」闭环状态机：
 
-- `-s` / `-o` 在 `--tui` 下可省略，改为在界面中询问（仍可传入作为默认值）。
-- 界面先列出 12 项常用配置的当前值，勾选需要临时改动的项后逐项询问；**改动只作用于本次构建，不写回配置文件**。
-- 构建阶段日志实时滚动；构建结束后结果与 PDF 路径保留在屏幕上。
+- `-s` / `-o` 在 `--tui` 下可省略，改为在界面中询问（仍可传入作为默认值）；
+- 导航中心支持：直接构建、编译排版小样（`--sample`）、应用排版预设（`--preset`）、预览收录文件与章节树、调整核心常用排版配置、搜索并修改全量 90+ 项高级配置、保存修改至配置文件；
+- 构建结束后可在结果中心查看产物元数据、打开系统阅读器查看 PDF，或直接返回修改配置继续编译。
 
 > 终端需要支持全屏渲染（ANSI / TTY）。在 CI、管道或重定向输出等非交互环境下，`--tui` 会直接报错并返回退出码 `2`（而非崩溃），此时请改用普通命令行模式。
 

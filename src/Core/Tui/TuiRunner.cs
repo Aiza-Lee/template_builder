@@ -409,6 +409,12 @@ namespace Core.Tui {
                 // 源码收录与章节树构建前预览
                 menuItems.Add(new TuiMenuItem("PREVIEW", "预览收录文件与章节树 (构建前检查/排除原因/章节顺序)", action: TuiMenuAction.Preview));
 
+                // 排版预设方案
+                menuItems.Add(new TuiMenuItem("PRESET", "应用排版预设 (比赛打印 / 屏幕阅读 / 紧凑速查)", action: TuiMenuAction.Preset));
+
+                // 编译排版小样
+                menuItems.Add(new TuiMenuItem("SAMPLE", "编译排版小样 (提取前 2~3 个文件快速生成 1~2 页 PDF 确认版效)", action: TuiMenuAction.Sample));
+
                 if (activeOverrides.Count > 0) {
                     menuItems.Add(new TuiMenuItem("INSPECT", $"查看当前全部覆盖项 ({activeOverrides.Count} 项)", action: TuiMenuAction.Inspect));
                     menuItems.Add(new TuiMenuItem("CLEAR", "清空所有覆盖项 (恢复项目/内置配置)", action: TuiMenuAction.Clear));
@@ -498,6 +504,16 @@ namespace Core.Tui {
                     continue;
                 }
 
+                if (chosen.IsPreset) {
+                    PromptApplyPreset(config);
+                    continue;
+                }
+
+                if (chosen.IsSample) {
+                    PromptRunSampleBuild(session, launch, sink);
+                    continue;
+                }
+
                 if (chosen.Action == TuiMenuAction.Inspect) {
                     ShowOverridesTable(config.GetActiveOverrides(), config);
                     continue;
@@ -560,6 +576,134 @@ namespace Core.Tui {
                 if (chosen.Id == "MODE_ALL") filterMode = SourceTreeFilterMode.All;
                 else if (chosen.Id == "MODE_INCLUDED") filterMode = SourceTreeFilterMode.IncludedOnly;
                 else if (chosen.Id == "MODE_EXCLUDED") filterMode = SourceTreeFilterMode.ExcludedOnly;
+            }
+        }
+
+        private static void PromptApplyPreset(ProjectConfiguration config) {
+            AnsiConsole.Clear();
+            AnsiConsole.MarkupLine("[bold cyan]🎨 排版预设方案库[/]");
+            AnsiConsole.MarkupLine("[grey]快速应用面向不同阅读与打印场景的最佳配置组合。[/]");
+            AnsiConsole.WriteLine();
+
+            var choices = LayoutPresets.All.Select(p => $"{p.Name} — {p.Tagline}").ToList();
+            choices.Add("返回 (不应用预设)");
+
+            var prompt = new SelectionPrompt<string>()
+                .Title("[bold yellow]请选择要应用的排版预设：[/]")
+                .PageSize(10)
+                .AddChoices(choices);
+
+            var selected = AnsiConsole.Prompt(prompt);
+            if (selected.StartsWith("返回", StringComparison.Ordinal)) {
+                return;
+            }
+
+            var chosenPreset = LayoutPresets.All.FirstOrDefault(p => selected.StartsWith(p.Name, StringComparison.Ordinal));
+            if (chosenPreset == null) return;
+
+            LayoutPresets.Apply(config, chosenPreset);
+
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine($"[bold green]✔ 已成功应用预设：{Markup.Escape(chosenPreset.Name)}[/]");
+            AnsiConsole.MarkupLine($"[grey]预设说明：{Markup.Escape(chosenPreset.Description)}[/]");
+            AnsiConsole.WriteLine();
+
+            var table = new Table().Border(TableBorder.Rounded);
+            table.AddColumn("[bold]配置项[/]");
+            table.AddColumn("[bold]预设值[/]");
+            table.AddColumn("[bold]中文说明[/]");
+
+            foreach (var (k, v) in chosenPreset.Settings) {
+                var label = TuiSchemaCatalog.FieldsByKey.TryGetValue(k, out var field) ? field.Label : k;
+                table.AddRow($"[yellow]{k}[/]", $"[green]{v}[/]", $"[grey]{label}[/]");
+            }
+
+            AnsiConsole.Write(table);
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[grey]按任意键返回主配置菜单...[/]");
+            Console.ReadKey(intercept: true);
+        }
+
+        private static void PromptRunSampleBuild(ProjectSession session, TuiLaunchOptions launch, ILogger sink) {
+            var config = session.Configuration ?? new ProjectConfiguration(null, ConfigStrictness.Lax);
+            if (session.SourceDir == null || !session.SourceDir.Exists) {
+                AnsiConsole.MarkupLine("[bold red]✘ 源目录未指定或不存在，无法生成小样。[/]");
+                AnsiConsole.MarkupLine("[grey]按任意键返回...[/]");
+                Console.ReadKey(intercept: true);
+                return;
+            }
+
+            var validation = Core.Validation.ConfigValidator.Validate(config);
+            if (!validation.IsValid) {
+                AnsiConsole.MarkupLine($"[bold red]✘ 当前配置存在 {validation.Errors.Count} 处错误，无法编译小样：[/]");
+                foreach (var err in validation.Errors) {
+                    AnsiConsole.MarkupLine($"  [red]• {Markup.Escape(err.PropertyPath)}[/]: {Markup.Escape(err.Message)}");
+                }
+                AnsiConsole.MarkupLine("[grey]按任意键返回调整配置...[/]");
+                Console.ReadKey(intercept: true);
+                return;
+            }
+
+            var fileCountStr = TuiLineEditor.ReadLine(
+                "[bold]小样抽样文件数量[/] [grey](默认 2 个，输入数字，支持 ←/→ 移动光标)[/]：",
+                "2",
+                raw => {
+                    if (string.IsNullOrWhiteSpace(raw)) return (true, null);
+                    return int.TryParse(raw.Trim(), out var n) && n > 0 && n <= 20
+                        ? (true, null)
+                        : (false, "请输入 1 到 20 之间的正整数");
+                }
+            );
+            int sampleLimit = int.TryParse(fileCountStr?.Trim(), out var limit) && limit > 0 ? limit : 2;
+
+            var previewDir = Path.Combine(
+                session.SourceDir.Parent?.FullName ?? session.SourceDir.FullName,
+                "preview"
+            );
+            Directory.CreateDirectory(previewDir);
+            var samplePdfPath = Path.Combine(previewDir, $"{session.SourceDir.Name}-sample.pdf");
+            var samplePdfFile = new FileInfo(samplePdfPath);
+
+            var tempConfigFile = session.ConfigFile ?? new FileInfo(Path.Combine(session.SourceDir.FullName, "build", "mid-config.json"));
+
+            var sampleOptions = new BuildSubcommandOptions(
+                session.SourceDir,
+                samplePdfFile,
+                tempConfigFile,
+                session.Verbose,
+                session.TemplateDir,
+                config.GetActiveOverrides(),
+                SampleFileLimit: sampleLimit
+            );
+
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine($"[bold cyan]正在提取前 {sampleLimit} 个源码文件编译排版小样...[/]");
+
+            var pipeline = new BuildPipelineRunner(sink, new ManifestResourceManager());
+            var result = pipeline.Run(sampleOptions, userProvidedConfig: session.UserProvidedConfig);
+
+            AnsiConsole.WriteLine();
+            if (result == ExitCodes.Success) {
+                AnsiConsole.MarkupLine($"[bold green]✔ 小样生成成功！产物已写入：[/] [yellow]{Markup.Escape(samplePdfFile.FullName)}[/]");
+                AnsiConsole.MarkupLine("[grey]提示：小样已应用当前生效的所有排版预设与运行时配置覆盖。[/]");
+                AnsiConsole.WriteLine();
+
+                var openChoice = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title("[yellow]小样操作选项：[/]")
+                        .AddChoices(
+                            "打开小样 PDF 进行视觉审查",
+                            "返回配置导航中心继续微调"
+                        )
+                );
+
+                if (openChoice.StartsWith("打开", StringComparison.Ordinal)) {
+                    OpenPdfWithSystemViewer(samplePdfFile.FullName);
+                }
+            } else {
+                AnsiConsole.MarkupLine($"[bold red]✘ 小样编译未成功（退出码 {result}）。请检查编译诊断或调整排版参数。[/]");
+                AnsiConsole.MarkupLine("[grey]按任意键返回配置菜单...[/]");
+                Console.ReadKey(intercept: true);
             }
         }
 

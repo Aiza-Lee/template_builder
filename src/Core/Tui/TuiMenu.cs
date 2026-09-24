@@ -14,7 +14,9 @@ namespace Core.Tui {
         Reload,
         Save,
         Search,
-        Preview
+        Preview,
+        Preset,
+        Sample
     }
 
     /// <summary>
@@ -41,6 +43,8 @@ namespace Core.Tui {
         public bool IsSave => Action == TuiMenuAction.Save;
         public bool IsSearch => Action == TuiMenuAction.Search;
         public bool IsPreview => Action == TuiMenuAction.Preview;
+        public bool IsPreset => Action == TuiMenuAction.Preset;
+        public bool IsSample => Action == TuiMenuAction.Sample;
 
         public TuiMenuItem(
             string id,

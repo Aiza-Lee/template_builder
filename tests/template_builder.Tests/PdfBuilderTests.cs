@@ -221,18 +221,32 @@ public class PdfBuilderTests {
     }
 
     [Fact]
-    public void GenerateTexContent_LayoutColumns2TocInColumnsFalse_EmitsTwocolumnBeforeToc() {
+    public void GenerateTexContent_LayoutColumns2TocInColumnsFalse_DefaultNoCover_NoRedundantToggles() {
         var (tmp, builder) = CreateBuilderFixture(
             """{ "TEX": { "layout": { "columns": 2, "toc_in_columns": false } } }""");
         try {
             var tex = builder.GenerateTexContent_ForTest();
             Assert.Contains(@"\documentclass[10pt,landscape,twocolumn]{ctexart}", tex);
-            // body region（\begin{document} 之后）应该有 1 个 \onecolumn（title）+ 1 个 \twocolumn（TOC 前）
+            // 默认无独立封面页：documentclass 已经为 twocolumn，无需 \onecolumn 和 \twocolumn 冗余切换，无空白页
             var body = BodyRegion(tex);
-            var oneCount = CountOccurrences(body, @"\onecolumn");
-            var twoCount = CountOccurrences(body, @"\twocolumn");
-            Assert.Equal(1, oneCount);
-            Assert.Equal(1, twoCount);
+            Assert.Equal(0, CountOccurrences(body, @"\onecolumn"));
+            Assert.Equal(0, CountOccurrences(body, @"\twocolumn"));
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void GenerateTexContent_LayoutColumns2TocInColumnsFalse_WithCover_EmitsOnecolumnThenTwocolumn() {
+        var (tmp, builder) = CreateBuilderFixture(
+            """{ "TEX": { "title": { "enable_cover": true }, "layout": { "columns": 2, "toc_in_columns": false } } }""");
+        try {
+            var tex = builder.GenerateTexContent_ForTest();
+            Assert.Contains(@"\documentclass[10pt,landscape,twocolumn]{ctexart}", tex);
+            // 启用封面页：封面 1 个 \onecolumn + TOC 前恢复 1 个 \twocolumn
+            var body = BodyRegion(tex);
+            Assert.Equal(1, CountOccurrences(body, @"\onecolumn"));
+            Assert.Equal(1, CountOccurrences(body, @"\twocolumn"));
         } finally {
             tmp.Dispose();
         }
@@ -245,9 +259,9 @@ public class PdfBuilderTests {
         try {
             var tex = builder.GenerateTexContent_ForTest();
             Assert.Contains(@"\documentclass[10pt,landscape,twocolumn]{ctexart}", tex);
-            // body region：2 个 \onecolumn（title + TOC 前）+ 1 个 \twocolumn（body 前）
+            // 独立单栏目录：TOC 前切 1 个 \onecolumn + 正文前切 1 个 \twocolumn
             var body = BodyRegion(tex);
-            Assert.Equal(2, CountOccurrences(body, @"\onecolumn"));
+            Assert.Equal(1, CountOccurrences(body, @"\onecolumn"));
             Assert.Equal(1, CountOccurrences(body, @"\twocolumn"));
         } finally {
             tmp.Dispose();
@@ -262,8 +276,8 @@ public class PdfBuilderTests {
             var tex = builder.GenerateTexContent_ForTest();
             Assert.Contains(@"\documentclass[10pt,landscape,]{ctexart}", tex);
             var body = BodyRegion(tex);
-            // columns=1: body 区域只有 1 个 \onecolumn（title），没有 \twocolumn
-            Assert.Equal(1, CountOccurrences(body, @"\onecolumn"));
+            // columns=1 且默认无封面：全程单栏，body 区域无 \onecolumn 也无 \twocolumn
+            Assert.Equal(0, CountOccurrences(body, @"\onecolumn"));
             Assert.Equal(0, CountOccurrences(body, @"\twocolumn"));
         } finally {
             tmp.Dispose();
@@ -638,7 +652,7 @@ public class PdfBuilderTests {
     [Fact]
     public void GenerateTexContent_TitleAlignmentFlushleft_EmitsFlushleftEnv() {
         var (tmp, builder) = CreateBuilderFixture(
-            """{ "TEX": { "title": { "alignment": "flushleft" } } }""");
+            """{ "TEX": { "title": { "enable_cover": true, "note": "额外说明", "alignment": "flushleft" } } }""");
         try {
             var tex = builder.GenerateTexContent_ForTest();
             Assert.Contains(@"\begin{flushleft}", tex);
@@ -651,7 +665,7 @@ public class PdfBuilderTests {
     [Fact]
     public void GenerateTexContent_TitleAlignmentFlushright_EmitsFlushrightEnv() {
         var (tmp, builder) = CreateBuilderFixture(
-            """{ "TEX": { "title": { "alignment": "flushright" } } }""");
+            """{ "TEX": { "title": { "enable_cover": true, "note": "额外说明", "alignment": "flushright" } } }""");
         try {
             var tex = builder.GenerateTexContent_ForTest();
             Assert.Contains(@"\begin{flushright}", tex);
@@ -662,12 +676,26 @@ public class PdfBuilderTests {
     }
 
     [Fact]
-    public void GenerateTexContent_TitleAlignmentDefault_IsCenter() {
-        var (tmp, builder) = CreateBuilderFixture("{}");
+    public void GenerateTexContent_TitleAlignmentDefault_IsCenter_WhenCoverEnabled() {
+        var (tmp, builder) = CreateBuilderFixture(
+            """{ "TEX": { "title": { "enable_cover": true, "note": "额外说明" } } }""");
         try {
             var tex = builder.GenerateTexContent_ForTest();
             Assert.Contains(@"\begin{center}", tex);
             Assert.Contains(@"\end{center}", tex);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void GenerateTexContent_DefaultConfig_OmitsCoverPageAndAlignment() {
+        var (tmp, builder) = CreateBuilderFixture("{}");
+        try {
+            var tex = builder.GenerateTexContent_ForTest();
+            // 默认配置不输出独立封面页，避免占用首张纸面与意外空白页
+            Assert.DoesNotContain(@"\maketitle", tex);
+            Assert.DoesNotContain(@"\begin{center}", tex);
         } finally {
             tmp.Dispose();
         }
@@ -1352,12 +1380,12 @@ public class PdfBuilderTests {
     [Fact]
     public void ReplaceMainPlaceholders_ValueContainsAnotherPlaceholder_ExpandsBoth() {
         var (tmp, builder) = CreateBuilderFixture(
-            """{ "TEX": { "global": { "main_font": "##AUTHOR##" } } }""");
+            """{ "TEX": { "author": "CustomAuthor", "global": { "main_font": "##AUTHOR##" } } }""");
         try {
             var tex = builder.GenerateTexContent_ForTest();
-            // ##AUTHOR## 已被 AUTHOR 的值（"Aiza"）替换
+            // ##AUTHOR## 已被 AUTHOR 的值（"CustomAuthor"）替换
             Assert.DoesNotContain("##AUTHOR##", tex);
-            Assert.Contains(@"\setmainfont{Aiza}", tex);
+            Assert.Contains(@"\setmainfont{CustomAuthor}", tex);
         } finally {
             tmp.Dispose();
         }

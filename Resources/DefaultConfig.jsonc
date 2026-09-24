@@ -4,13 +4,14 @@
 
 	// ===== TEX section: drives the LaTeX document layout & code rendering =====
 	"TEX": {
-		"author": "Aiza",
-		"subject": "文档主题",
+		"author": "",
+		"subject": "",
 
-		// 标题页：content 为主标题，note 为副标题/额外说明，date 默认 \today
+		// 标题页：enable_cover 控制是否输出独立封面；content 为主标题（留空自动由源目录名推导）；note 为副标题/额外说明，date 默认 \today
 		"title": {
-			"content": "文档标题",
-			"note": "标题页额外内容",
+			"enable_cover": false,			// 是否生成独立封面页（默认 false，不生成独立封面页，避免占用首页与空白页）
+			"content": "",					// 文档主标题（留空时构建器将自动根据源目录名合理推导）
+			"note": "",						// 标题页副标题/额外说明（默认留空）
 			"date": "\\today",
 			// \title 命令内嵌的字号/字重命令；默认 \Large\bfseries
 			"font_size_cmd": "\\Large\\bfseries",
@@ -142,8 +143,9 @@
 			"page_style": "plain"				// plain / headings / empty / fancy
 		},
 
-		// 目录标题与引导符
+		// 目录开关、标题与引导符
 		"toc": {
+			"enable_toc": true,			// 是否生成文档目录（默认 true；设为 false 时直接开始代码正文）
 			"title": "目录",			// \renewcommand{\contentsname}{...}
 			"dot_leaders": true		// true = 保留引导点（默认行为）；false = 关掉 dot leaders
 		},

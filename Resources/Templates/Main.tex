@@ -100,10 +100,10 @@
 	pdflang=##HYPERREF_PDF_LANG##,						% PDF 语言标识，如: zh-CN
 	bookmarksnumbered=##HYPERREF_NUMBERED_BOOKMARKS##,	% 书签是否包含编号: true/false
 	bookmarksopen=##HYPERREF_OPEN_BOOKMARKS##,			% 是否默认展开书签: true/false
-	pdftitle={##TITLE_CONTENT##},						% PDF文档标题
-	pdfauthor={##AUTHOR##},								% PDF文档作者
-	pdfsubject={##SUBJECT##},							% PDF文档主题
-	pdfkeywords={<<METADATA_KEYWORDS>>}					% PDF文档关键词（runtime 拼接）
+	pdftitle={##TITLE_CONTENT##},						% PDF document title
+	pdfauthor={##AUTHOR##},								% PDF author
+	pdfsubject={##SUBJECT##},							% PDF subject
+	pdfkeywords={<<METADATA_KEYWORDS>>}					% PDF keywords (runtime)
 }
 
 \IfFontExistsTF{##CODE_FONT_FAMILY##}{
@@ -181,27 +181,16 @@
 \titleformat{\paragraph}{##SECTION_FORMAT_PARAGRAPH##}{\theparagraph}{##SECTION_FORMAT_SEPARATOR##}{}
 \titleformat{\subparagraph}{##SECTION_FORMAT_SUBPARAGRAPH##}{\thesubparagraph}{##SECTION_FORMAT_SEPARATOR##}{}
 
-% 文档标题元数据设置
-\title{##TITLE_FONT_SIZE_CMD## ##TITLE_CONTENT##}			% 文档标题
-\author{##AUTHOR##}			% 作者名称
+% Title metadata setup
+\title{##TITLE_FONT_SIZE_CMD## ##TITLE_CONTENT##}			% document title
+\author{##AUTHOR##}			% author
 \date{##TITLE_DATE##}
 
 \begin{document}
 
-	\onecolumn			% 标题页和目录为单栏格式
-	\maketitle			% 生成标题页
-	\begin{##TITLE_ALIGNMENT##}
-		##TITLE_NOTE##	% 标题页额外内容
-	\end{##TITLE_ALIGNMENT##}
-
-	\newpage
-	\renewcommand{\contentsname}{##TOC_TITLE##}	% 目录标题
-	<<TOC_DOT_LEADERS_LINE>>	% runtime: dot leaders 开关（默认空；dot_leaders=false 时取消引导点）
-	<<LAYOUT_TOC_OPENING>>	% 目录前布局切换（runtime，根据 columns / toc_in_columns 决定）
-	\tableofcontents	% 生成目录
-
-	\newpage
-	<<LAYOUT_BODY_OPENING>>	% 正文前布局切换（runtime，仅 columns=2 + toc_in_columns=true 时需要）
+	<<COVER_PAGE_BLOCK>>	% runtime: 独立封面页（enable_cover=true 时生成，避免占用首页与意外空白页）
+	<<TOC_BLOCK>>			% runtime: 文档目录（enable_toc=true 时生成）
+	<<LAYOUT_BODY_OPENING>>	% runtime: 正文前列数同步（双栏排版下根据前面单栏模块状态自动恢复双栏模式）
 	<<CONTENT>>			% 正文内容
 
 \end{document}

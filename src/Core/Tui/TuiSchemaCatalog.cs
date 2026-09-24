@@ -71,6 +71,7 @@ namespace Core.Tui {
         private static readonly Dictionary<string, string> s_friendlyLabels = new(StringComparer.Ordinal) {
             ["AUTHOR"] = "作者",
             ["SUBJECT"] = "文档主题",
+            ["TITLE_ENABLE_COVER"] = "启用独立封面页",
             ["TITLE_CONTENT"] = "文档标题",
             ["TITLE_NOTE"] = "副标题/说明",
             ["TITLE_DATE"] = "日期",
@@ -152,6 +153,7 @@ namespace Core.Tui {
             ["GLOBAL_CJK_AUTO_FAKE_SLANT"] = "伪斜体合成",
             ["GLOBAL_CUSTOM_FONT_DIRS"] = "自定义本地字体目录",
             ["GLOBAL_PAGE_STYLE"] = "页眉页脚样式",
+            ["TOC_ENABLE_TOC"] = "生成文档目录",
             ["TOC_TITLE"] = "目录标题文本",
             ["TOC_DOT_LEADERS"] = "目录虚线引导符",
             ["DOCCLASS_BASE_FONT_SIZE"] = "正文字号",
@@ -169,6 +171,8 @@ namespace Core.Tui {
         private static readonly string[] s_featuredKeys = [
             "TITLE_CONTENT",
             "AUTHOR",
+            "TITLE_ENABLE_COVER",
+            "TOC_ENABLE_TOC",
             "CODE_FONT_SIZE",
             "CODE_LINE_HEIGHT",
             "DOCCLASS_ORIENTATION",

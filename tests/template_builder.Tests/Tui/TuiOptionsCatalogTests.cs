@@ -25,11 +25,11 @@ public class TuiOptionsCatalogTests {
             var parser = isProg ? progParser : texParser;
 
             // 回写当前值即可验证键存在且类型可转换；未注册的键会返回 false
-            var current = parser[field.Key].GetAsString();
-            Assert.False(
-                string.IsNullOrEmpty(current),
-                $"配置键 \"{field.Key}\"（{field.Label}）在默认配置中取不到值，键名可能有误。"
+            Assert.True(
+                parser.ContainsKey(field.Key),
+                $"配置键 \"{field.Key}\"（{field.Label}）在默认配置中未注册。"
             );
+            var current = parser[field.Key].GetAsString();
             Assert.True(
                 parser.TrySetConfigValueFromString(field.Key, current),
                 $"配置键 \"{field.Key}\"（{field.Label}）未被默认配置注册或类型不匹配。"

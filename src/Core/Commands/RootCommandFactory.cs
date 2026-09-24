@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Core.Models;
 using Core.Pipeline;
 using Core.Tui;
 using Utils;
@@ -101,6 +102,22 @@ namespace Core.Commands {
             };
             cmd.Options.Add(templateDirOption);
 
+            /* --preset */
+            var presetOption = new Option<string>("--preset") {
+                Description = "应用排版预设方案：competition (比赛打印)、reading (屏幕阅读)、compact (紧凑速查)。",
+                HelpName = "PRESET",
+                Required = false,
+            };
+            cmd.Options.Add(presetOption);
+
+            /* --sample */
+            var sampleOption = new Option<int?>("--sample") {
+                Description = "生成排版小样（仅编译前 N 个源码文件，默认 3 个），用于快速确认版心与字体效果。",
+                HelpName = "COUNT",
+                Arity = ArgumentArity.ZeroOrOne,
+            };
+            cmd.Options.Add(sampleOption);
+
             /* --tui-scaffold */
             var tuiScaffoldOption = new Option<DirectoryInfo>("--tui-scaffold") {
                 Description = "生成 TUI 各视图的排版快照与视觉审查汇报，用于无头环境与纯文本感知，不进入交互会话。",
@@ -149,6 +166,27 @@ namespace Core.Commands {
                 }
 
                 try {
+                    var presetName = pr.GetValue(presetOption);
+                    Dictionary<string, string>? overrides = null;
+                    if (!string.IsNullOrWhiteSpace(presetName)) {
+                        var preset = LayoutPresets.FindById(presetName);
+                        if (preset == null) {
+                            var available = string.Join(", ", LayoutPresets.All.Select(p => p.Id));
+                            _logger.Error($"未知的排版预设 \"{presetName}\"。可选预设方案：{available}。");
+                            return ExitCodes.InvalidArguments;
+                        }
+                        overrides = new Dictionary<string, string>(preset.Settings, StringComparer.OrdinalIgnoreCase);
+                    }
+
+                    int? sampleLimit = null;
+                    if (pr.Tokens.Any(t => t.Value == "--sample" || t.Value.StartsWith("--sample="))) {
+                        sampleLimit = pr.GetValue(sampleOption) ?? 3;
+                        if (sampleLimit <= 0) {
+                            _logger.Error("小样文件数量必须为大于 0 的正整数。");
+                            return ExitCodes.InvalidArguments;
+                        }
+                    }
+
                     var resolver = new OutputPathResolver(_logger);
                     var src = resolver.ResolveSourceDir(pr.GetValue(sourceFilesFolderOption));
                     var outPdf = resolver.ResolveOutputPdf(pr.GetValue(outputOption));
@@ -162,7 +200,9 @@ namespace Core.Commands {
                     var options = new BuildSubcommandOptions(
                         src, outPdf, cfg,
                         pr.GetValue(verboseOption),
-                        pr.GetValue(templateDirOption)
+                        pr.GetValue(templateDirOption),
+                        overrides,
+                        sampleLimit
                     );
                     return new BuildPipelineRunner(_logger, new ManifestResourceManager())
                         .Run(options, userProvided);

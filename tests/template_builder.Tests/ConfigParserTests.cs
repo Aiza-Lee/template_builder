@@ -45,7 +45,7 @@ public class ConfigParserTests {
 
         Assert.Contains(logger.Entries, entry =>
             entry.Level == LogLevel.ERROR && entry.Message.Contains("does not contain 'TEX'", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal("Aiza", parser["AUTHOR"].GetAsString());
+        Assert.Equal("", parser["AUTHOR"].GetAsString());
     }
 
     [Fact]
@@ -288,7 +288,7 @@ public class ConfigParserTests {
         var texParser = new ConfigParser("TEX", logger);
         var programParser = new ConfigParser("PROGRAM", logger);
 
-        Assert.Equal("Aiza", texParser["AUTHOR"].GetAsString());
+        Assert.Equal("", texParser["AUTHOR"].GetAsString());
         var extensions = programParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
         Assert.Contains(".cpp", extensions);
         Assert.Contains(".py", extensions);
@@ -349,7 +349,7 @@ public class ConfigParserTests {
 
         var found = parser.TryGetConfigValue("AUTHOR", out var val);
         Assert.True(found);
-        Assert.Equal("Aiza", val.GetAsString());
+        Assert.Equal("", val.GetAsString());
         Assert.Empty(logger.ErrorMessages);
     }
 
