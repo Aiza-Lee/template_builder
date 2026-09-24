@@ -9,9 +9,10 @@ namespace Core.Pipeline {
     /// 构建流水线的最终装配点：读取配置 JSON、基于统一 <see cref="ProjectConfiguration"/> 管理配置与覆盖项、
     /// 调用 <see cref="PdfBuilder.ExecuteBuild"/>，并把领域异常映射为退出码与结构化结果。
     /// </summary>
-    internal sealed class BuildPipelineRunner(ILogger logger, ManifestResourceManager resMgr) {
+    internal sealed class BuildPipelineRunner(ILogger logger, ManifestResourceManager resMgr, IXelatexRunner? runner = null) {
         private readonly ILogger _logger = logger;
         private readonly ManifestResourceManager _resMgr = resMgr;
+        private readonly IXelatexRunner? _runner = runner;
 
         /// <summary>
         /// 执行构建流水线并返回结构化结果。支持传入已预先装配并微调的 <see cref="ProjectConfiguration"/>。
@@ -76,7 +77,7 @@ namespace Core.Pipeline {
                     );
                 }
 
-                return new PdfBuilder(_logger, options, projectConfig, _resMgr).ExecuteBuild();
+                return new PdfBuilder(_logger, options, projectConfig, _resMgr, _runner).ExecuteBuild();
             } catch (UnknownConfigKeyException ex) {
                 _logger.Error(ex.Message);
                 return BuildResult.CreateFailure(ExitCodes.InvalidArguments, BuildStatus.Failed, ex.Message);

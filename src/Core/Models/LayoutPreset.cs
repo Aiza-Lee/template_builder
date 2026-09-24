@@ -17,7 +17,12 @@ namespace Core.Models {
         string Tagline,
         string Description,
         IReadOnlyDictionary<string, string> Settings
-    );
+    ) {
+        /// <summary>
+        /// 将本预设应用至项目配置会话中。
+        /// </summary>
+        public void Apply(ProjectConfiguration configuration) => LayoutPresets.Apply(configuration, this);
+    }
 
     /// <summary>
     /// 内置排版预设中心。

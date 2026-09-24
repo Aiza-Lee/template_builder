@@ -226,9 +226,9 @@ namespace Core.Tui {
             }
 
             var sourceDesc = item.Source switch {
-                ConfigSource.Override => "[bold #ffd600][运行时覆盖][/]",
-                ConfigSource.Project => "[cyan][项目配置文件][/]",
-                _ => "[grey][内置默认][/]"
+                ConfigSource.Override => "[bold #ffd600][[运行时覆盖]][/]",
+                ConfigSource.Project => "[cyan][[项目配置文件]][/]",
+                _ => "[grey][[内置默认]][/]"
             };
 
             if (item.IsOverridden) {
@@ -396,7 +396,11 @@ namespace Core.Tui {
             var logTable = new Table().Border(TableBorder.None).HideHeaders();
             logTable.AddColumn("LogLine");
             foreach (var line in sampleLogs) {
-                logTable.AddRow(line);
+                try {
+                    logTable.AddRow(new Markup(line));
+                } catch {
+                    logTable.AddRow(new Text(line));
+                }
             }
 
             console.Write(new Panel(logTable).Header("[bold]实时编译日志[/]").Border(BoxBorder.Square));

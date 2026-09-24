@@ -22,12 +22,16 @@ public class TuiScaffoldingTests {
         Assert.True(File.Exists(Path.Combine(outDir, "05_step2_field_card.txt")));
         Assert.True(File.Exists(Path.Combine(outDir, "06_overrides_table.txt")));
         Assert.True(File.Exists(Path.Combine(outDir, "07_step3_dashboard.txt")));
+        Assert.True(File.Exists(Path.Combine(outDir, "08_step2_source_tree_preview.txt")));
+        Assert.True(File.Exists(Path.Combine(outDir, "09_step2_presets_preview.txt")));
 
         var summaryContent = File.ReadAllText(Path.Combine(outDir, "SUMMARY.md"));
         Assert.Contains("品牌霓虹艺术字 Banner", summaryContent);
         Assert.Contains("步骤 1: 路径与运行参数向导", summaryContent);
         Assert.Contains("步骤 2: 配置调优分类导航", summaryContent);
         Assert.Contains("步骤 3: 实时监控与完成仪表板", summaryContent);
+        Assert.Contains("步骤 2: 源码收录与章节结构预检面板", summaryContent);
+        Assert.Contains("步骤 2: 排版预设体系概览与选择", summaryContent);
     }
 
     [Fact]

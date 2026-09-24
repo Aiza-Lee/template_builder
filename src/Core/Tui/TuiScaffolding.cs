@@ -135,6 +135,45 @@ namespace Core.Tui {
                 ("07_step3_dashboard", "步骤 3: 实时监控与完成仪表板", c => {
                     TuiViewRenderer.RenderBreadcrumb(c, 3, "执行构建与实时监控");
                     TuiViewRenderer.RenderDashboard(c, sampleLogs, TimeSpan.FromSeconds(6.28), ExitCodes.Success);
+                }),
+                ("08_step2_source_tree_preview", "步骤 2: 源码收录与章节结构预检面板", c => {
+                    var mockTempDir = Path.Combine(Path.GetTempPath(), "tui_scaffold_sample_" + Guid.NewGuid().ToString("N"));
+                    try {
+                        Directory.CreateDirectory(mockTempDir);
+                        var mathDir = Path.Combine(mockTempDir, "01_数学算法");
+                        var graphDir = Path.Combine(mockTempDir, "02_图论算法");
+                        Directory.CreateDirectory(mathDir);
+                        Directory.CreateDirectory(graphDir);
+                        File.WriteAllText(Path.Combine(mathDir, "01_matrix_快速幂.cpp"), "// matrix exp");
+                        File.WriteAllText(Path.Combine(mathDir, "02_fft_快速傅里叶.cpp"), "// fft");
+                        File.WriteAllText(Path.Combine(graphDir, "01_dinic_最大流.cpp"), "// dinic");
+                        File.WriteAllText(Path.Combine(mockTempDir, "readme.md"), "# notes");
+
+                        var nullLogger = new Utils.Logger(TextWriter.Null, TextWriter.Null);
+                        var prog = new Utils.ConfigParser("PROGRAM", nullLogger);
+                        var plan = Core.SourceTree.SourceTreePlan.Build(new DirectoryInfo(mockTempDir), prog, 5, nullLogger);
+                        TuiViewRenderer.RenderSourceTreePreview(c, plan, Core.SourceTree.SourceTreeFilterMode.All);
+                    } finally {
+                        if (Directory.Exists(mockTempDir)) {
+                            try { Directory.Delete(mockTempDir, true); } catch { }
+                        }
+                    }
+                }),
+                ("09_step2_presets_preview", "步骤 2: 排版预设体系概览与选择", c => {
+                    var table = new Table().Border(TableBorder.Rounded).Title("[bold #00f5d4]排版预设体系概览[/]");
+                    table.AddColumn(new TableColumn("[bold]预设 ID[/]"));
+                    table.AddColumn(new TableColumn("[bold]预设名称[/]"));
+                    table.AddColumn(new TableColumn("[bold]核心特征[/]"));
+                    table.AddColumn(new TableColumn("[bold]适用场景[/]"));
+                    foreach (var preset in Core.Models.LayoutPresets.All) {
+                        table.AddRow(
+                            $"[cyan]{preset.Id}[/]",
+                            $"[bold]{Markup.Escape(preset.Name)}[/]",
+                            $"[grey]{Markup.Escape(preset.Tagline)}[/]",
+                            $"[yellow]{Markup.Escape(preset.Description)}[/]"
+                        );
+                    }
+                    c.Write(table);
                 })
             };
 

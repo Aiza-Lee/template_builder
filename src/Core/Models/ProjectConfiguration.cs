@@ -146,6 +146,24 @@ namespace Core.Models {
             return false;
         }
 
+        /// <summary>
+        /// 将所有配置项重置回内置默认值（清空所有运行时覆盖并清除项目配置覆盖效果）。
+        /// </summary>
+        public void ResetAllToBuiltin() {
+            foreach (var key in _items.Keys.ToList()) {
+                ResetToBuiltin(key);
+            }
+        }
+
+        /// <summary>
+        /// 从指定的 JSON 配置文件路径加载并初始化统一项目配置模型。
+        /// </summary>
+        public static ProjectConfiguration FromFile(string path, ILogger? logger = null, ConfigStrictness strictness = ConfigStrictness.Lax) {
+            var config = new ProjectConfiguration(logger, strictness);
+            config.LoadProjectConfig(File.ReadAllText(path), path);
+            return config;
+        }
+
         public bool ResetToProject(string key) => ClearOverride(key);
 
         public IReadOnlyDictionary<string, string> GetActiveOverrides() {
