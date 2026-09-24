@@ -17,6 +17,7 @@ namespace Core.Models {
         public bool Verbose { get; set; }
         public ProjectConfiguration Configuration { get; set; }
         public BuildResult? LastBuildResult { get; set; }
+        public string? LastFocusedCategoryId { get; set; }
 
         public ProjectSession(ProjectConfiguration configuration) {
             Configuration = configuration;

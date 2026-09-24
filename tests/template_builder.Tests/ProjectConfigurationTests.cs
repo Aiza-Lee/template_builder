@@ -260,4 +260,77 @@ public class ProjectConfigurationTests {
         Assert.Single(failResult.Diagnostics);
         Assert.Equal(1, failResult.PassesCompleted);
     }
+
+    [Fact]
+    public void SaveToFile_CreatesValidJsonAndPromotesOverridesToProjectValues() {
+        using var tmp = TempDir.Create();
+        var targetFile = Path.Combine(tmp.Path, "saved_config.json");
+
+        var config = new ProjectConfiguration();
+        config.TrySetOverride("CODE_FONT_SIZE", "9pt");
+        config.TrySetOverride("CODE_MINTED_STYLE", "monokai");
+        config.TrySetOverride("AUTHOR", "Custom Author");
+
+        Assert.Equal(3, config.GetActiveOverrides().Count);
+        Assert.True(config.GetItem("CODE_FONT_SIZE")!.IsOverridden);
+
+        // 保存到文件
+        config.SaveToFile(targetFile);
+
+        Assert.True(File.Exists(targetFile));
+
+        // 验证内存状态：覆盖项已全部晋升为 ProjectValue，覆盖状态被清空
+        Assert.Empty(config.GetActiveOverrides());
+        var savedItem = config.GetItem("CODE_FONT_SIZE")!;
+        Assert.False(savedItem.IsOverridden);
+        Assert.True(savedItem.HasProjectValue);
+        Assert.Equal("9pt", savedItem.EffectiveValue);
+        Assert.Equal(ConfigSource.Project, savedItem.Source);
+
+        // 验证文件持久化：重新加载后依然为 9pt、monokai、Custom Author
+        var freshConfig = new ProjectConfiguration();
+        freshConfig.LoadProjectConfig(File.ReadAllText(targetFile), targetFile);
+
+        Assert.Equal("9pt", freshConfig.GetEffectiveValue("CODE_FONT_SIZE"));
+        Assert.Equal("monokai", freshConfig.GetEffectiveValue("CODE_MINTED_STYLE"));
+        Assert.Equal("Custom Author", freshConfig.GetEffectiveValue("AUTHOR"));
+    }
+
+    [Fact]
+    public void SaveToFile_PreservesCustomSettingsWhenUpdatingExistingFile() {
+        using var tmp = TempDir.Create();
+        var targetFile = Path.Combine(tmp.Path, "existing_config.json");
+        const string initialJson = """
+        {
+            "$schema": "./DefaultConfig.schema.json",
+            "TEX": {
+                "author": "Initial Author",
+                "layout": {
+                    "columns": 1
+                }
+            }
+        }
+        """;
+        File.WriteAllText(targetFile, initialJson);
+
+        var config = new ProjectConfiguration();
+        config.LoadProjectConfig(initialJson, targetFile);
+
+        // 覆盖 columns 为 2，设置新标题
+        config.TrySetOverride("LAYOUT_COLUMNS", "2");
+        config.TrySetOverride("TITLE_CONTENT", "My New Document");
+
+        config.SaveToFile(targetFile);
+
+        var content = File.ReadAllText(targetFile);
+        Assert.Contains("My New Document", content);
+        Assert.Contains("\"columns\": 2", content);
+
+        var freshConfig = new ProjectConfiguration();
+        freshConfig.LoadProjectConfig(content, targetFile);
+        Assert.Equal("2", freshConfig.GetEffectiveValue("LAYOUT_COLUMNS"));
+        Assert.Equal("My New Document", freshConfig.GetEffectiveValue("TITLE_CONTENT"));
+        Assert.Equal("Initial Author", freshConfig.GetEffectiveValue("AUTHOR"));
+    }
 }
+

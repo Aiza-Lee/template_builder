@@ -62,4 +62,29 @@ public class TuiMenuTests {
         Assert.Same(TuiMenuItem.BackSentinel, chosen);
         Assert.True(chosen.IsBack);
     }
+
+    [Fact]
+    public void Prompt_WithInitialSelectedId_SelectsMatchingItemByDefault() {
+        var items = new List<TuiMenuItem> {
+            new("BUILD", "开始构建", action: TuiMenuAction.Build),
+            new("CATEGORY_CODE", "代码块排版"),
+            new("CATEGORY_FONTS", "字体与微排版"),
+            new("BACK", "返回", action: TuiMenuAction.Back)
+        };
+
+        // 验证 initialSelectedId 准确设定默认选中的 index（非交互环境与交互环境初始焦点）
+        var chosen = TuiMenu.Prompt("标题", items, initialSelectedId: "CATEGORY_FONTS");
+        Assert.NotNull(chosen);
+        Assert.Equal("CATEGORY_FONTS", chosen.Id);
+    }
+
+    [Fact]
+    public void SaveAction_IsSaveFlag_TrueOnlyForSaveAction() {
+        var saveItem = new TuiMenuItem("SAVE", "保存配置", action: TuiMenuAction.Save);
+        var buildItem = new TuiMenuItem("BUILD", "开始构建", action: TuiMenuAction.Build);
+
+        Assert.True(saveItem.IsSave);
+        Assert.False(buildItem.IsSave);
+    }
 }
+

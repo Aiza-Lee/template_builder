@@ -11,7 +11,8 @@ namespace Core.Tui {
         Build,
         Clear,
         Inspect,
-        Reload
+        Reload,
+        Save
     }
 
     /// <summary>
@@ -35,6 +36,7 @@ namespace Core.Tui {
         public bool IsBuild => Action == TuiMenuAction.Build;
         public bool IsClear => Action == TuiMenuAction.Clear;
         public bool IsReload => Action == TuiMenuAction.Reload;
+        public bool IsSave => Action == TuiMenuAction.Save;
 
         public TuiMenuItem(
             string id,
@@ -66,10 +68,20 @@ namespace Core.Tui {
             string titleMarkup,
             IReadOnlyList<TuiMenuItem> items,
             int pageSize = 14,
-            int defaultIndex = 0
+            int defaultIndex = 0,
+            string? initialSelectedId = null
         ) {
             if (items == null || items.Count == 0) {
                 return TuiMenuItem.BackSentinel;
+            }
+
+            if (!string.IsNullOrEmpty(initialSelectedId)) {
+                for (int i = 0; i < items.Count; i++) {
+                    if (string.Equals(items[i].Id, initialSelectedId, StringComparison.OrdinalIgnoreCase)) {
+                        defaultIndex = i;
+                        break;
+                    }
+                }
             }
 
             if (Console.IsInputRedirected || !TuiEnvironment.SupportsInteractiveUi()) {

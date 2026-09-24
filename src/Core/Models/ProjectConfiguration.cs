@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Core.Tui;
 using Utils;
 using Utils.Exceptions;
 
@@ -166,5 +170,123 @@ namespace Core.Models {
         public string? GetEffectiveValue(string key) => GetItem(key)?.EffectiveValue;
         public ConfigSource? GetSource(string key) => GetItem(key)?.Source;
         public bool IsOverridden(string key) => GetItem(key)?.IsOverridden == true;
+
+        /// <summary>
+        /// 将当前项目配置与全部生效覆盖持久化保存到指定的 JSON 配置文件。
+        /// 保存后，所有运行时覆盖将晋升为项目配置值（HasProjectValue = true），覆盖状态被清空。
+        /// </summary>
+        public void SaveToFile(string targetPath) {
+            JsonObject rootNode;
+            if (File.Exists(targetPath)) {
+                try {
+                    var existingJson = File.ReadAllText(targetPath);
+                    rootNode = JsonNode.Parse(existingJson, null, new JsonDocumentOptions {
+                        CommentHandling = JsonCommentHandling.Skip,
+                        AllowTrailingCommas = true
+                    }) as JsonObject ?? new JsonObject();
+                } catch {
+                    rootNode = new JsonObject();
+                }
+            } else {
+                try {
+                    var defaultJson = new ManifestResourceManager().GetResourceInString("DefaultConfig.jsonc");
+                    rootNode = JsonNode.Parse(defaultJson, null, new JsonDocumentOptions {
+                        CommentHandling = JsonCommentHandling.Skip,
+                        AllowTrailingCommas = true
+                    }) as JsonObject ?? new JsonObject();
+                } catch {
+                    rootNode = new JsonObject();
+                }
+            }
+
+            if (rootNode["$schema"] == null) {
+                rootNode["$schema"] = "./DefaultConfig.schema.json";
+            }
+
+            // 更新所有有项目值或覆盖值的配置项
+            foreach (var field in TuiSchemaCatalog.AllFields) {
+                var item = GetItem(field.Key);
+                if (item == null) continue;
+
+                // 仅当用户覆盖了该项，或者该项原本就有项目值时写回
+                if (!item.IsOverridden && !item.HasProjectValue) continue;
+
+                var val = item.EffectiveValue ?? string.Empty;
+                SetNodeValueByPath(rootNode, field, val);
+            }
+
+            var dir = Path.GetDirectoryName(Path.GetFullPath(targetPath));
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) {
+                Directory.CreateDirectory(dir);
+            }
+
+            var options = new JsonSerializerOptions {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+            File.WriteAllText(targetPath, rootNode.ToJsonString(options));
+
+            // 保存后将所有已生效的覆盖项转变为 ProjectValue，清空 OverrideValue
+            foreach (var item in _items.Values) {
+                if (item.IsOverridden && item.OverrideValue != null) {
+                    item.SetProjectValue(item.OverrideValue);
+                    item.ClearOverride();
+                }
+            }
+        }
+
+        private static void SetNodeValueByPath(JsonObject root, TuiConfigField field, string val) {
+            if (string.IsNullOrEmpty(field.JsonPath)) return;
+
+            var parts = field.JsonPath.Split('.');
+            if (parts.Length < 2) return;
+
+            JsonObject current = root;
+            for (int i = 0; i < parts.Length - 1; i++) {
+                var part = parts[i];
+                if (current[part] is JsonObject childObj) {
+                    current = childObj;
+                } else {
+                    var newObj = new JsonObject();
+                    current[part] = newObj;
+                    current = newObj;
+                }
+            }
+
+            var leafKey = parts[^1];
+            if (field.Kind == TuiFieldKind.Toggle || field.ExpectedType == "boolean") {
+                if (bool.TryParse(val, out var b)) {
+                    current[leafKey] = b;
+                    return;
+                }
+            } else if (field.Kind == TuiFieldKind.Number || field.ExpectedType is "integer" or "number") {
+                if (int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)) {
+                    current[leafKey] = n;
+                    return;
+                }
+                if (decimal.TryParse(val, NumberStyles.Number, CultureInfo.InvariantCulture, out var d)) {
+                    current[leafKey] = d;
+                    return;
+                }
+            } else if (field.Kind == TuiFieldKind.Array || field.ExpectedType == "array") {
+                try {
+                    var parsed = JsonNode.Parse(val);
+                    if (parsed is JsonArray arr) {
+                        current[leafKey] = arr;
+                        return;
+                    }
+                } catch { }
+
+                var items = val.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var jsonArr = new JsonArray();
+                foreach (var s in items) {
+                    jsonArr.Add(s);
+                }
+                current[leafKey] = jsonArr;
+                return;
+            }
+
+            current[leafKey] = val;
+        }
     }
 }

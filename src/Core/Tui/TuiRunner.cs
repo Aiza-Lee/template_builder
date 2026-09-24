@@ -30,54 +30,84 @@ namespace Core.Tui {
                 Verbose = launch.Verbose
             };
 
+            var currentStep = 1;
+            var sink = new TuiLogSink(LogCapacity);
+            sink.SetLevel(session.Verbose ? LogLevel.DEBUG : LogLevel.INFO);
+
             while (true) {
-                // 步骤 1: 路径与运行参数向导 (与非 TUI 参数全面对齐)
-                RenderBreadcrumb(1, "基础路径与运行参数");
-                session.SourceDir = PromptSourceDir(session.SourceDir);
-                session.OutputPdf = PromptOutputPdf(session.OutputPdf, session.SourceDir);
+                switch (currentStep) {
+                    case 1: {
+                        // 步骤 1: 路径与运行参数向导 (与非 TUI 参数全面对齐)
+                        RenderBreadcrumb(1, "基础路径与运行参数");
+                        session.SourceDir = PromptSourceDir(session.SourceDir);
+                        session.OutputPdf = PromptOutputPdf(session.OutputPdf, session.SourceDir);
 
-                var oldConfigPath = session.ConfigFile?.FullName;
-                var (configFile, userProvided) = PromptConfigFile(launch, session.ConfigFile, session.UserProvidedConfig);
-                session.ConfigFile = configFile;
-                session.UserProvidedConfig = userProvided;
+                        var oldConfigPath = session.ConfigFile?.FullName;
+                        var (configFile, userProvided) = PromptConfigFile(launch, session.ConfigFile, session.UserProvidedConfig);
+                        session.ConfigFile = configFile;
+                        session.UserProvidedConfig = userProvided;
 
-                var (templateDir, verbose) = PromptAdvancedOptions(launch, session.TemplateDir, session.Verbose);
-                session.TemplateDir = templateDir;
-                session.Verbose = verbose;
+                        var (templateDir, verbose) = PromptAdvancedOptions(launch, session.TemplateDir, session.Verbose);
+                        session.TemplateDir = templateDir;
+                        session.Verbose = verbose;
+                        sink.SetLevel(session.Verbose ? LogLevel.DEBUG : LogLevel.INFO);
 
-                // 首次进入或用户在向导中切换了配置文件时，加载项目配置（带损坏/缺失恢复机制）
-                if (!string.Equals(oldConfigPath, configFile.FullName, StringComparison.OrdinalIgnoreCase)
-                    || session.Configuration == null || session.Configuration.Items.Count == 0) {
-                    LoadOrRecoverConfiguration(session, launch, _bootstrapLogger);
+                        // 首次进入或用户在向导中切换了配置文件时，加载项目配置（带损坏/缺失恢复机制）
+                        if (!string.Equals(oldConfigPath, configFile.FullName, StringComparison.OrdinalIgnoreCase)
+                            || session.Configuration == null || session.Configuration.Items.Count == 0) {
+                            LoadOrRecoverConfiguration(session, launch, _bootstrapLogger);
+                        }
+
+                        currentStep = 2;
+                        break;
+                    }
+
+                    case 2: {
+                        // 步骤 2: 配置调优中心 (7 大分类 + 全量 Schema 动态覆盖)
+                        AnsiConsole.WriteLine();
+                        RenderBreadcrumb(2, "配置调优中心");
+                        var goBack = PromptConfigMenu(session, launch, sink);
+
+                        if (goBack) {
+                            AnsiConsole.MarkupLine("[yellow]正在返回步骤 1：重新设置基础路径与运行参数...[/]");
+                            AnsiConsole.WriteLine();
+                            currentStep = 1;
+                        } else {
+                            currentStep = 3;
+                        }
+                        break;
+                    }
+
+                    case 3: {
+                        // 步骤 3: 实时监控与构建仪表板
+                        AnsiConsole.WriteLine();
+                        RenderBreadcrumb(3, "执行构建与实时监控");
+                        _ = RunBuild(
+                            session.SourceDir!,
+                            session.OutputPdf!,
+                            session.ConfigFile ?? new FileInfo("config.json"),
+                            session.UserProvidedConfig,
+                            session.TemplateDir,
+                            session.Verbose,
+                            session.Configuration?.GetActiveOverrides() ?? new Dictionary<string, string>(),
+                            sink,
+                            session
+                        );
+
+                        currentStep = 4;
+                        break;
+                    }
+
+                    case 4: {
+                        // 步骤 4: 构建结果操作与连续调整中心
+                        var nextStep = PromptResultActionMenu(session, launch, sink);
+                        if (nextStep == 0) {
+                            return session.LastBuildResult?.ExitCode ?? ExitCodes.Success;
+                        }
+                        currentStep = nextStep;
+                        break;
+                    }
                 }
-
-                // 步骤 2: 配置调优中心 (7 大分类 + 全量 Schema 动态覆盖)
-                AnsiConsole.WriteLine();
-                RenderBreadcrumb(2, "配置调优中心");
-                var sink = new TuiLogSink(LogCapacity);
-                sink.SetLevel(session.Verbose ? LogLevel.DEBUG : LogLevel.INFO);
-                var goBack = PromptConfigMenu(session, launch, sink);
-
-                if (goBack) {
-                    AnsiConsole.MarkupLine("[yellow]正在返回步骤 1：重新设置基础路径与运行参数...[/]");
-                    AnsiConsole.WriteLine();
-                    continue;
-                }
-
-                // 步骤 3: 实时监控与构建仪表板
-                AnsiConsole.WriteLine();
-                RenderBreadcrumb(3, "执行构建与实时监控");
-                return RunBuild(
-                    session.SourceDir,
-                    session.OutputPdf,
-                    session.ConfigFile ?? new FileInfo("config.json"),
-                    session.UserProvidedConfig,
-                    session.TemplateDir,
-                    session.Verbose,
-                    session.Configuration?.GetActiveOverrides() ?? new Dictionary<string, string>(),
-                    sink,
-                    session
-                );
             }
         }
 
@@ -359,6 +389,7 @@ namespace Core.Tui {
 
         private bool PromptConfigMenu(ProjectSession session, TuiLaunchOptions launch, ILogger sink) {
             var config = session.Configuration ?? new ProjectConfiguration(null, ConfigStrictness.Lax);
+            string? lastSelectedId = session.LastFocusedCategoryId;
 
             while (true) {
                 var menuItems = new List<TuiMenuItem>();
@@ -376,6 +407,9 @@ namespace Core.Tui {
                     menuItems.Add(new TuiMenuItem("CLEAR", "清空所有覆盖项 (恢复项目/内置配置)", action: TuiMenuAction.Clear));
                 }
 
+                // 保存当前配置到文件
+                menuItems.Add(new TuiMenuItem("SAVE", "保存当前配置到项目文件 (持久化所有设置)", action: TuiMenuAction.Save));
+
                 // 重新加载配置文件
                 menuItems.Add(new TuiMenuItem("RELOAD", "重新加载配置文件 (同步磁盘外部变更)", action: TuiMenuAction.Reload));
 
@@ -389,7 +423,9 @@ namespace Core.Tui {
                         : $"[cyan]默认项目配置[/] ({Markup.Escape(session.ConfigFile.FullName)})";
 
                 var promptTitle = $"[bold cyan]配置调优导航中心[/]\n[grey]当前配置来源：[/]{sourceLabel} [grey]| 生效覆盖：[/][yellow]{activeOverrides.Count}[/] [grey]项[/]\n[grey](Enter/→ 确认进入，←/Esc 返回上级)[/]：";
-                var chosen = TuiMenu.Prompt(promptTitle, menuItems);
+                var chosen = TuiMenu.Prompt(promptTitle, menuItems, initialSelectedId: lastSelectedId);
+                lastSelectedId = chosen.Id;
+                session.LastFocusedCategoryId = chosen.Id;
 
                 if (chosen.IsBuild) {
                     var validation = Core.Validation.ConfigValidator.Validate(config);
@@ -424,6 +460,12 @@ namespace Core.Tui {
                     return true;
                 }
 
+                if (chosen.IsSave) {
+                    PromptSaveConfig(session, launch);
+                    config = session.Configuration ?? new ProjectConfiguration(null, ConfigStrictness.Lax);
+                    continue;
+                }
+
                 if (chosen.IsReload) {
                     LoadOrRecoverConfiguration(session, launch, sink);
                     config = session.Configuration ?? new ProjectConfiguration(null, ConfigStrictness.Lax);
@@ -446,6 +488,8 @@ namespace Core.Tui {
 
                 if (chosen.Tag is TuiCategoryGroup targetCategory) {
                     EditCategoryFields(targetCategory, config);
+                    lastSelectedId = targetCategory.Id;
+                    session.LastFocusedCategoryId = targetCategory.Id;
                 }
             }
 
@@ -472,6 +516,7 @@ namespace Core.Tui {
         }
 
         private static void EditCategoryFields(TuiCategoryGroup category, ProjectConfiguration config) {
+            string? lastSelectedFieldKey = null;
             while (true) {
                 var menuItems = new List<TuiMenuItem>();
                 menuItems.Add(new TuiMenuItem("BACK", "返回上级菜单", action: TuiMenuAction.Back));
@@ -491,12 +536,15 @@ namespace Core.Tui {
 
                 var chosen = TuiMenu.Prompt(
                     $"[bold cyan]{Markup.Escape(category.Title)}[/] — [grey]{Markup.Escape(category.Description)}[/]",
-                    menuItems
+                    menuItems,
+                    initialSelectedId: lastSelectedFieldKey
                 );
 
                 if (chosen.IsBack) {
                     break;
                 }
+
+                lastSelectedFieldKey = chosen.Id;
 
                 if (chosen.Tag is not TuiConfigField selectedField) continue;
 
@@ -895,5 +943,215 @@ namespace Core.Tui {
                 return 80;
             }
         }
+
+        private static int PromptResultActionMenu(
+            ProjectSession session,
+            TuiLaunchOptions launch,
+            TuiLogSink sink
+        ) {
+            var lastResult = session.LastBuildResult;
+            var isSuccess = lastResult?.IsSuccess == true;
+
+            while (true) {
+                AnsiConsole.WriteLine();
+                var menuItems = new List<TuiMenuItem>();
+
+                if (isSuccess) {
+                    menuItems.Add(new TuiMenuItem("REBUILD", "重新构建 (使用当前配置立即再次编译)", action: TuiMenuAction.Build));
+                    if (session.OutputPdf?.Exists == true) {
+                        menuItems.Add(new TuiMenuItem("OPEN_PDF", "打开生成的 PDF 文件 (系统默认阅读器)"));
+                    }
+                    menuItems.Add(new TuiMenuItem("ADJUST", "继续微调配置 (返回配置调优中心)"));
+                    menuItems.Add(new TuiMenuItem("MODIFY_PATHS", "修改基础路径与参数 (返回步骤 1)"));
+                    menuItems.Add(new TuiMenuItem("VIEW_LOG", "查看完整构建日志", action: TuiMenuAction.Inspect));
+                    menuItems.Add(new TuiMenuItem("SAVE", "保存当前配置到项目文件 (持久化所有设置)", action: TuiMenuAction.Save));
+                    menuItems.Add(new TuiMenuItem("EXIT", "完成并退出程序", action: TuiMenuAction.Back));
+                } else {
+                    menuItems.Add(new TuiMenuItem("REBUILD", "重新尝试构建", action: TuiMenuAction.Build));
+                    menuItems.Add(new TuiMenuItem("ADJUST", "调整配置以修复错误 (返回配置调优中心)"));
+                    menuItems.Add(new TuiMenuItem("MODIFY_PATHS", "修改基础路径与参数 (返回步骤 1)"));
+                    if (!string.IsNullOrEmpty(lastResult?.DiagnosticPdfPath) && File.Exists(lastResult.DiagnosticPdfPath)) {
+                        menuItems.Add(new TuiMenuItem("OPEN_DIAG_PDF", "查看诊断中间产物 PDF (排查未完全崩溃页面)"));
+                    }
+                    menuItems.Add(new TuiMenuItem("VIEW_LOG", "查看完整构建日志与错误堆栈", action: TuiMenuAction.Inspect));
+                    menuItems.Add(new TuiMenuItem("SAVE", "保存当前配置到项目文件", action: TuiMenuAction.Save));
+                    menuItems.Add(new TuiMenuItem("EXIT", "退出程序", action: TuiMenuAction.Back));
+                }
+
+                var title = isSuccess
+                    ? "[bold green]✔ 构建成功！请选择后续操作[/] [grey](Enter/→ 确认进入，←/Esc 退出程序)[/]："
+                    : "[bold red]✘ 构建未成功！请选择后续操作[/] [grey](Enter/→ 确认进入，←/Esc 退出程序)[/]：";
+
+                var chosen = TuiMenu.Prompt(title, menuItems);
+
+                if (chosen.IsBack || chosen.Id == "EXIT") {
+                    return 0; // 0 表示退出
+                }
+
+                if (chosen.Id == "REBUILD" || chosen.IsBuild) {
+                    return 3; // 重新触发步骤 3 构建
+                }
+
+                if (chosen.Id == "ADJUST") {
+                    var problemCategory = MapFailureToCategory(lastResult);
+                    if (problemCategory != null) {
+                        session.LastFocusedCategoryId = problemCategory;
+                        var catObj = TuiSchemaCatalog.Categories.FirstOrDefault(c => c.Id == problemCategory);
+                        if (catObj != null) {
+                            AnsiConsole.MarkupLine($"[yellow]💡 已为您自动聚焦至关联排查分类：[/][bold cyan]{Markup.Escape(catObj.Title)}[/]");
+                        }
+                    }
+                    return 2; // 返回步骤 2
+                }
+
+                if (chosen.Id == "MODIFY_PATHS") {
+                    return 1; // 返回步骤 1
+                }
+
+                if (chosen.Id == "OPEN_PDF") {
+                    OpenPdfWithSystemViewer(session.OutputPdf!.FullName);
+                    continue;
+                }
+
+                if (chosen.Id == "OPEN_DIAG_PDF") {
+                    OpenPdfWithSystemViewer(lastResult!.DiagnosticPdfPath!);
+                    continue;
+                }
+
+                if (chosen.Id == "VIEW_LOG" || chosen.Action == TuiMenuAction.Inspect) {
+                    ShowFullLog(sink);
+                    continue;
+                }
+
+                if (chosen.Id == "SAVE" || chosen.IsSave) {
+                    PromptSaveConfig(session, launch);
+                    continue;
+                }
+            }
+        }
+
+        private static void PromptSaveConfig(ProjectSession session, TuiLaunchOptions launch) {
+            var suggestedPath = session.ConfigFile?.FullName;
+            if (string.IsNullOrEmpty(suggestedPath)) {
+                suggestedPath = session.SourceDir != null
+                    ? Path.Combine(session.SourceDir.FullName, "config.json")
+                    : Path.GetFullPath("config.json");
+            }
+
+            var input = TuiLineEditor.ReadLine(
+                "[bold]保存配置文件路径[/] [grey](直接回车确认，支持 ←/→ 移动光标)[/]：",
+                suggestedPath,
+                raw => {
+                    var p = raw?.Trim();
+                    if (string.IsNullOrWhiteSpace(p)) return (false, "路径不能为空");
+                    try {
+                        var dir = Path.GetDirectoryName(Path.GetFullPath(p));
+                        return (true, null);
+                    } catch {
+                        return (false, "路径非法");
+                    }
+                }
+            );
+
+            if (string.IsNullOrWhiteSpace(input)) {
+                AnsiConsole.MarkupLine("[grey]已取消保存配置。[/]");
+                return;
+            }
+
+            var savePath = input.Trim();
+            try {
+                session.Configuration.SaveToFile(savePath);
+                session.ConfigFile = new FileInfo(savePath);
+                session.UserProvidedConfig = true;
+                AnsiConsole.MarkupLine($"[bold green]✔ 配置已成功保存至文件：[/][cyan]{Markup.Escape(session.ConfigFile.FullName)}[/]");
+                AnsiConsole.MarkupLine("[grey]所有修改项已写入配置文件，后续启动与连续构建将直接复用该配置。[/]");
+            } catch (Exception ex) {
+                AnsiConsole.MarkupLine($"[bold red]✘ 保存配置文件失败：{Markup.Escape(ex.Message)}[/]");
+            }
+        }
+
+        private static void OpenPdfWithSystemViewer(string filePath) {
+            if (!File.Exists(filePath)) {
+                AnsiConsole.MarkupLine($"[red]✘ 产物文件不存在：{Markup.Escape(filePath)}[/]");
+                return;
+            }
+
+            try {
+                if (OperatingSystem.IsWindows()) {
+                    Process.Start(new ProcessStartInfo {
+                        FileName = filePath,
+                        UseShellExecute = true
+                    });
+                } else if (OperatingSystem.IsMacOS()) {
+                    Process.Start("open", [filePath]);
+                } else {
+                    Process.Start("xdg-open", [filePath]);
+                }
+                AnsiConsole.MarkupLine($"[green]✔ 已调用系统默认阅读器打开：[/][cyan]{Markup.Escape(filePath)}[/]");
+            } catch (Exception ex) {
+                AnsiConsole.MarkupLine($"[yellow]无法自动启动阅读器：{Markup.Escape(ex.Message)}，请手动打开：{Markup.Escape(filePath)}[/]");
+            }
+        }
+
+        private static void ShowFullLog(TuiLogSink sink) {
+            var entries = sink.Snapshot();
+            AnsiConsole.WriteLine();
+            var rule = new Rule("[bold cyan]完整构建与诊断日志[/]");
+            rule.LeftJustified();
+            AnsiConsole.Write(rule);
+
+            foreach (var entry in entries) {
+                var prefix = entry.Level switch {
+                    LogLevel.ERROR => "[bold red][ERROR][/]",
+                    LogLevel.WARNING => "[bold yellow][WARN ][/]",
+                    LogLevel.DEBUG => "[grey][DEBUG][/]",
+                    _ => "[grey][INFO ][/]"
+                };
+                AnsiConsole.MarkupLine($"{prefix} {Markup.Escape(entry.Message)}");
+            }
+
+            AnsiConsole.Write(new Rule());
+            AnsiConsole.MarkupLine("[grey]按 Enter 返回操作菜单...[/]");
+            Console.ReadLine();
+        }
+
+        internal static string? MapFailureToCategory(BuildResult? result) {
+            if (result == null || result.IsSuccess) return null;
+            var text = (result.FailureReason ?? "") + " " +
+                       (result.Recommendation ?? "") + " " +
+                       string.Join(" ", result.Diagnostics);
+
+            if (text.Contains("font", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("字体", StringComparison.Ordinal) ||
+                text.Contains("fontspec", StringComparison.OrdinalIgnoreCase)) {
+                return "fonts";
+            }
+            if (text.Contains("minted", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("pygmentize", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("shell-escape", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("tab_size", StringComparison.OrdinalIgnoreCase)) {
+                return "category_code";
+            }
+            if (text.Contains("margin", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("geometry", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("边距", StringComparison.Ordinal) ||
+                text.Contains("paper", StringComparison.OrdinalIgnoreCase)) {
+                return "geometry_layout";
+            }
+            if (text.Contains("hyperref", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("bookmark", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("toc", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("目录", StringComparison.Ordinal)) {
+                return "hyperref_toc";
+            }
+            if (text.Contains("head", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("foot", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("页眉", StringComparison.Ordinal) ||
+                text.Contains("页脚", StringComparison.Ordinal)) {
+                return "header_footer";
+            }
+            return null;
+        }
     }
 }
+
