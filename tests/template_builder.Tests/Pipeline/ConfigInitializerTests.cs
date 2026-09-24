@@ -129,4 +129,124 @@ public class ConfigInitializerTests {
         Assert.Equal(originalContent, File.ReadAllText(backupPath));
         Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO && e.Message.Contains("已备份原配置至"));
     }
+
+    [Fact]
+    public void Run_DeliversSchemaFile_AlongsideConfigFile() {
+        using var tmp = TempDir.Create();
+        var outputPath = new FileInfo(Path.Combine(tmp.Path, "sub", "my-config.jsonc"));
+        var logger = new TestLogger();
+        var runner = new ConfigInitializer(logger, new ManifestResourceManager());
+
+        var exitCode = runner.Run(new InitSubcommandOptions(outputPath));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        Assert.True(outputPath.Exists);
+
+        var schemaPath = Path.Combine(outputPath.Directory!.FullName, "DefaultConfig.schema.json");
+        Assert.True(File.Exists(schemaPath));
+        var schemaContent = File.ReadAllText(schemaPath);
+        Assert.True(schemaContent.Length > 0);
+        using var doc = JsonDocument.Parse(schemaContent);
+        Assert.True(doc.RootElement.TryGetProperty("$schema", out _));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO && e.Message.Contains("配套 Schema 已交付"));
+    }
+
+    [Fact]
+    public void Run_OutputGuidance_ContainsAccurateConfigPath_WithQuotes() {
+        using var tmp = TempDir.Create();
+        var outputPath = new FileInfo(Path.Combine(tmp.Path, "my-config.jsonc"));
+        var logger = new TestLogger();
+        var runner = new ConfigInitializer(logger, new ManifestResourceManager());
+
+        var exitCode = runner.Run(new InitSubcommandOptions(outputPath));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        var expectedArg = $"\"{outputPath.FullName.Replace("\"", "\\\"")}\"";
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO &&
+            e.Message.Contains($"validate -s <源目录> -c {expectedArg}") &&
+            e.Message.Contains($"build -s <源目录> -c {expectedArg} -o <输出.pdf>"));
+    }
+
+    [Fact]
+    public void Run_OutputGuidance_PathWithSpaces_IsQuotedCorrectly() {
+        using var tmp = TempDir.Create();
+        var spaceDir = Path.Combine(tmp.Path, "sub folder with spaces");
+        var outputPath = new FileInfo(Path.Combine(spaceDir, "custom config.jsonc"));
+        var logger = new TestLogger();
+        var runner = new ConfigInitializer(logger, new ManifestResourceManager());
+
+        var exitCode = runner.Run(new InitSubcommandOptions(outputPath));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        var expectedArg = $"\"{outputPath.FullName.Replace("\"", "\\\"")}\"";
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO &&
+            e.Message.Contains($"-c {expectedArg}"));
+    }
+
+    [Fact]
+    public void Run_ExistingSchemaFile_WithoutForce_MatchingContent_ReusesSchema() {
+        using var tmp = TempDir.Create();
+        var outputPath = new FileInfo(Path.Combine(tmp.Path, "cfg.jsonc"));
+        var resMgr = new ManifestResourceManager();
+        var schemaContent = resMgr.GetResourceInString("DefaultConfig.schema.json");
+        var schemaPath = Path.Combine(tmp.Path, "DefaultConfig.schema.json");
+        File.WriteAllText(schemaPath, schemaContent);
+
+        var logger = new TestLogger();
+        var runner = new ConfigInitializer(logger, resMgr);
+
+        var exitCode = runner.Run(new InitSubcommandOptions(outputPath, Force: false));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        Assert.False(File.Exists(schemaPath + ".bak"));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO && e.Message.Contains("保持使用"));
+    }
+
+    [Fact]
+    public void Run_ExistingSchemaFile_WithoutForce_CustomContent_PreservesCustomFile() {
+        using var tmp = TempDir.Create();
+        var outputPath = new FileInfo(Path.Combine(tmp.Path, "cfg.jsonc"));
+        const string customSchema = "{\"custom_schema\": true}";
+        var schemaPath = Path.Combine(tmp.Path, "DefaultConfig.schema.json");
+        File.WriteAllText(schemaPath, customSchema);
+
+        var logger = new TestLogger();
+        var runner = new ConfigInitializer(logger, new ManifestResourceManager());
+
+        var exitCode = runner.Run(new InitSubcommandOptions(outputPath, Force: false));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        Assert.Equal(customSchema, File.ReadAllText(schemaPath));
+        Assert.False(File.Exists(schemaPath + ".bak"));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO && e.Message.Contains("已保留现有文件"));
+    }
+
+    [Fact]
+    public void Run_ExistingSchemaFile_WithForce_BacksUpAndOverwritesSchema() {
+        using var tmp = TempDir.Create();
+        var outputPath = new FileInfo(Path.Combine(tmp.Path, "cfg.jsonc"));
+        const string customSchema = "{\"custom_schema\": true}";
+        var schemaPath = Path.Combine(tmp.Path, "DefaultConfig.schema.json");
+        File.WriteAllText(schemaPath, customSchema);
+
+        var logger = new TestLogger();
+        var runner = new ConfigInitializer(logger, new ManifestResourceManager());
+
+        var exitCode = runner.Run(new InitSubcommandOptions(outputPath, Force: true));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        Assert.True(File.Exists(schemaPath + ".bak"));
+        Assert.Equal(customSchema, File.ReadAllText(schemaPath + ".bak"));
+        Assert.NotEqual(customSchema, File.ReadAllText(schemaPath));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO && e.Message.Contains("已备份原文件至"));
+    }
+
+    [Fact]
+    public void FormatPathForCli_EscapesInnerQuotesAndWrapsInQuotes() {
+        var simple = new FileInfo("test.jsonc");
+        Assert.Equal("\"test.jsonc\"", ConfigInitializer.FormatPathForCli(simple));
+
+        var spaces = new FileInfo("path with spaces/config.jsonc");
+        Assert.Equal("\"path with spaces/config.jsonc\"", ConfigInitializer.FormatPathForCli(spaces));
+    }
 }

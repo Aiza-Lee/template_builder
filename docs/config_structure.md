@@ -4,9 +4,19 @@
 
 配置文件采用 **JSONC 格式**（允许 `//` 与 `/* */` 注释以及尾随逗号）。配置时无需添加所有配置项，没有出现的配置项将使用默认值。
 
-## 获取当前默认值
+## 获取当前默认值与 Schema
 
-运行 `./template_builder init -o template_builder.config.jsonc` 即可获得一份带注释的当前默认配置（含所有 key 与 inline 注释）。这是与内置 `DefaultConfig.jsonc` 同步的权威来源。
+运行以下命令即可获得一份带注释的当前默认配置骨架：
+
+```bash
+./template_builder init -o template_builder.config.jsonc [--format jsonc|json] [--force]
+```
+
+`init` 执行完成后：
+- **配置文件**：写出带全部默认值与注释的配置文件（与内置 `DefaultConfig.jsonc` 保持同步的权威来源）；
+- **配套 Schema**：在配置文件所在同级目录同步交付 `DefaultConfig.schema.json`。配置文件首行的 `"$schema": "./DefaultConfig.schema.json"` 会被主流编辑器（VS Code / Rider / IntelliJ）自动识别，直接提供字段自动补全、悬停文档提示与语法验证；
+- **安全覆盖**：默认拒绝覆盖已存在的文件；显式指定 `--force / -f` 时会自动备份原文件为 `.bak`；若同目录下已有 Schema 文件，非 `--force` 模式下绝不破坏用户已有文件；
+- **下一步引导**：控制台输出的 `validate` 与 `build` 命令自动附带刚刚生成的准确 `-c "<配置文件路径>"`，含必要路径转义与引号包裹。
 
 ## 配置结构
 

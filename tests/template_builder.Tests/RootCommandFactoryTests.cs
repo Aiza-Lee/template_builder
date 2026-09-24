@@ -118,7 +118,8 @@ public class RootCommandFactoryTests {
 
     [Fact]
     public void Invoke_Init_WritesConfigFileAndReturnsSuccess() {
-        var factory = new RootCommandFactory(new TestLogger());
+        var logger = new TestLogger();
+        var factory = new RootCommandFactory(logger);
         var root = factory.CreateRootCommand();
         using var tmp = TempDir.Create();
         var outputPath = Path.Combine(tmp.Path, "cfg.jsonc");
@@ -127,6 +128,10 @@ public class RootCommandFactoryTests {
 
         Assert.Equal(0, result);
         Assert.True(File.Exists(outputPath));
+        var schemaPath = Path.Combine(tmp.Path, "DefaultConfig.schema.json");
+        Assert.True(File.Exists(schemaPath));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO && e.Message.Contains($"validate -s <源目录> -c \"{outputPath}\""));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.INFO && e.Message.Contains($"build -s <源目录> -c \"{outputPath}\" -o <输出.pdf>"));
     }
 
     [Fact]

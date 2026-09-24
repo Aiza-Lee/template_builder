@@ -121,14 +121,20 @@ CI 门禁友好，秒级返回。
 汇总：0 项错误，0 项警告
 ```
 
-#### `init` —— 生成带注释的默认配置骨架
+#### `init` —— 生成带注释的默认配置骨架与 Schema
 
 ```bash
-./template_builder init -o "template_builder.config.jsonc" [--format jsonc|json]
+./template_builder init -o "template_builder.config.jsonc" [--format jsonc|json] [--force]
 ```
 
-- `jsonc`（默认）：带 inline `//` 注释，可直接编辑
-- `json`：纯 JSON，无注释（适合程序化处理）
+- `--format jsonc`（默认）：带 inline `//` 注释，可直接编辑
+- `--format json`：纯 JSON，无注释（适合程序化处理）
+- `--force / -f`：覆盖已存在的文件（自动创建 `.bak` 备份），默认拒绝覆盖以保护已有配置与 Schema
+
+`init` 执行成功后会同步交付两项产物并输出后续操作引导：
+1. **配置文件**：写入 `-o` 指定的目标路径；
+2. **配套 Schema**：在配置文件同目录下同步交付 `DefaultConfig.schema.json`（配置文件中的 `"$schema": "./DefaultConfig.schema.json"` 自动解析生效，VS Code、Rider 等编辑器开箱即享自动补全、悬浮说明与实时语法校验）；
+3. **精准命令引导**：终端提示的下一步 `validate` 和 `build` 命令会自动附加带引号转义的 `-c "<刚生成的配置文件路径>"`，复制即用，杜绝构建错跑默认配置。
 
 首次使用建议从 `init` 起步：跑一遍后编辑生成的 `*.jsonc` 再传给 `build -c`。
 
