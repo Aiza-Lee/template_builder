@@ -16,9 +16,9 @@ public class TuiConfigLoadingTests {
 
         var (current, defaults) = TuiRunner.ReadConfigValues(new FileInfo(cfgPath));
 
-        // 验证所有 93 项配置均被成功获取
-        Assert.Equal(93, current.Count);
-        Assert.Equal(93, defaults.Count);
+        // 验证所有 95 项配置均被成功获取（88 项 TEX + 7 项 PROGRAM）
+        Assert.Equal(95, current.Count);
+        Assert.Equal(95, defaults.Count);
 
         // 验证没有任何字段取值变成 "{}"（防止之前错误的 fallback 对象导致值被污染）
         foreach (var (k, v) in current) {

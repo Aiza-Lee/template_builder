@@ -1,5 +1,6 @@
 using System.Text;
 using Core.Models;
+using Core.SourceTree;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
@@ -399,6 +400,165 @@ namespace Core.Tui {
             }
 
             console.Write(new Panel(logTable).Header("[bold]实时编译日志[/]").Border(BoxBorder.Square));
+        }
+
+        /// <summary>
+        /// 渲染构建前内容预览、收录解释及章节组织视图。
+        /// </summary>
+        public static void RenderSourceTreePreview(
+            IAnsiConsole console,
+            SourceTreePlan plan,
+            SourceTreeFilterMode filterMode = SourceTreeFilterMode.All
+        ) {
+            console.WriteLine();
+
+            // 1. 统计卡片与预检指标
+            var statsGrid = new Grid();
+            statsGrid.AddColumn(new GridColumn().PadRight(2));
+            statsGrid.AddColumn(new GridColumn());
+
+            var maxDepthStyle = plan.MaxDepth <= SourceTreePlan.MaxSupportedDepth ? "green" : "red";
+            var maxDepthText = $"[{maxDepthStyle}]{plan.MaxDepth}[/] [grey](最大允许 {SourceTreePlan.MaxSupportedDepth} 层)[/]";
+
+            statsGrid.AddRow("[bold]源目录路径[/]：", $"[underline cyan]{Markup.Escape(plan.SourceDir.FullName)}[/]");
+            statsGrid.AddRow(
+                "[bold]收录统计[/]：",
+                $"物理文件 [bold]{plan.TotalPhysicalFiles}[/] 个 | 实际收录 [bold green]{plan.IncludedFiles.Count}[/] 个 | 排除文件 [yellow]{plan.ExcludedFiles.Count}[/] 个 | 排除目录 [grey]{plan.ExcludedDirectories.Count}[/] 个"
+            );
+            statsGrid.AddRow("[bold]章节深度[/]：", maxDepthText);
+
+            var panel = new Panel(statsGrid)
+                .Header("[bold cyan]📂 源码收录与章节结构预检面板[/]")
+                .Border(BoxBorder.Rounded);
+            console.Write(panel);
+
+            // 2. 全部过滤警报
+            if (plan.IncludedFiles.Count == 0) {
+                var alert = new Panel(
+                    new Markup("[bold red]✖ 源目录未纳入任何有效源码文件！[/]\n" +
+                               "[yellow]原因：根据当前的白名单 (PROGRAM.include_file_types) 及排除模式 (PROGRAM.ignore_patterns)，全部文件均已被过滤。[/]\n" +
+                               "[grey]请检查下方排除详情，或在主菜单中调整过滤配置。[/]")
+                ).Border(BoxBorder.Heavy).BorderColor(Color.Red);
+                console.Write(alert);
+            }
+
+            console.WriteLine();
+
+            // 3. 视图切换展示
+            switch (filterMode) {
+                case SourceTreeFilterMode.IncludedOnly:
+                    RenderIncludedTable(console, plan);
+                    break;
+                case SourceTreeFilterMode.ExcludedOnly:
+                    RenderExcludedTable(console, plan);
+                    break;
+                default:
+                    RenderFullTree(console, plan);
+                    break;
+            }
+        }
+
+        private static void RenderFullTree(IAnsiConsole console, SourceTreePlan plan) {
+            var tree = new Tree($"[bold cyan]📁 {Markup.Escape(plan.SourceDir.Name)}[/] [grey]({Markup.Escape(plan.SourceDir.FullName)})[/]");
+            foreach (var node in plan.RootNodes) {
+                AddTreeNode(tree, node);
+            }
+            console.Write(tree);
+        }
+
+        private static void AddTreeNode(IHasTreeNodes parent, SourceNodePlan node) {
+            if (node.IsDirectory) {
+                TreeNode dirNode;
+                if (node.Status == SourceInclusionStatus.Included) {
+                    dirNode = parent.AddNode($"[bold #ffd600]📁 {Markup.Escape(node.DisplayTitle)}[/] [grey](\\{node.SectionCommand})[/]");
+                } else {
+                    dirNode = parent.AddNode($"[grey]📁 {Markup.Escape(node.DisplayTitle)}[/] [yellow]({Markup.Escape(node.ExclusionExplanation ?? "未收录")})[/]");
+                }
+                foreach (var child in node.Children) {
+                    AddTreeNode(dirNode, child);
+                }
+            } else {
+                if (node.Status == SourceInclusionStatus.Included) {
+                    var titleBadge = !string.Equals(node.Info.Name, node.DisplayTitle, StringComparison.Ordinal)
+                        ? $" [grey]→[/] [bold cyan]{Markup.Escape(node.DisplayTitle)}[/]"
+                        : "";
+                    var langBadge = node.IsRawLatex ? "[bold magenta]raw LaTeX[/]" : $"[cyan]{Markup.Escape(node.EffectiveLanguage ?? "text")}[/]";
+                    parent.AddNode($"[bold green]✔[/] [bold]{Markup.Escape(node.Info.Name)}[/]{titleBadge} [grey]({langBadge}, \\{node.SectionCommand})[/]");
+                } else {
+                    parent.AddNode($"[grey strike]✖ {Markup.Escape(node.Info.Name)}[/] [yellow]({Markup.Escape(node.ExclusionExplanation ?? "未收录")})[/]");
+                }
+            }
+        }
+
+        private static void RenderIncludedTable(IAnsiConsole console, SourceTreePlan plan) {
+            var table = new Table().Border(TableBorder.Rounded).Title($"[bold green]已收录源码文件清单 (共 {plan.IncludedFiles.Count} 项，按最终排版编译顺序)[/]");
+            table.AddColumn("序号");
+            table.AddColumn("相对路径");
+            table.AddColumn("章节显示标题");
+            table.AddColumn("章节命令");
+            table.AddColumn("代码语言");
+            table.AddColumn("排序权重");
+
+            if (plan.IncludedFiles.Count == 0) {
+                table.AddRow("-", "[grey](无有效收录文件)[/]", "-", "-", "-", "-");
+            } else {
+                int index = 1;
+                foreach (var file in plan.IncludedFiles) {
+                    var weightStr = file.OrderWeight == int.MaxValue ? "[grey]默认(自然序)[/]" : $"[yellow]{file.OrderWeight}[/]";
+                    table.AddRow(
+                        $"[grey]{index++}[/]",
+                        $"[bold]{Markup.Escape(file.RelativePath)}[/]",
+                        $"[cyan]{Markup.Escape(file.DisplayTitle)}[/]",
+                        $"[grey]\\{file.SectionCommand}[/]",
+                        file.IsRawLatex ? "[magenta]raw LaTeX[/]" : $"[green]{Markup.Escape(file.EffectiveLanguage)}[/]",
+                        weightStr
+                    );
+                }
+            }
+            console.Write(table);
+        }
+
+        private static void RenderExcludedTable(IAnsiConsole console, SourceTreePlan plan) {
+            var table = new Table().Border(TableBorder.Rounded).Title($"[bold yellow]被排除项清单与原因排查 (文件: {plan.ExcludedFiles.Count} 项，目录: {plan.ExcludedDirectories.Count} 项)[/]");
+            table.AddColumn("类型");
+            table.AddColumn("相对路径");
+            table.AddColumn("排除原因分类");
+            table.AddColumn("详细说明与调优建议");
+
+            if (plan.ExcludedFiles.Count == 0 && plan.ExcludedDirectories.Count == 0) {
+                table.AddRow("-", "[grey](无任何被排除项)[/]", "-", "-");
+            } else {
+                foreach (var f in plan.ExcludedFiles) {
+                    var reasonName = f.Reason switch {
+                        SourceExclusionReason.ExtensionNotIncluded => "扩展名未收录",
+                        SourceExclusionReason.IgnorePattern => "命中排除模式",
+                        SourceExclusionReason.Hidden => "隐藏文件",
+                        SourceExclusionReason.DepthExceeded => "深度超限",
+                        _ => f.Reason.ToString()
+                    };
+                    table.AddRow(
+                        "[grey]文件[/]",
+                        $"[bold]{Markup.Escape(f.RelativePath)}[/]",
+                        $"[yellow]{reasonName}[/]",
+                        Markup.Escape(f.Explanation)
+                    );
+                }
+                foreach (var d in plan.ExcludedDirectories) {
+                    var reasonName = d.Reason switch {
+                        SourceExclusionReason.EmptyDirectory => "空目录/无有效代码",
+                        SourceExclusionReason.IgnorePattern => "命中排除模式",
+                        SourceExclusionReason.Hidden => "隐藏目录",
+                        _ => d.Reason.ToString()
+                    };
+                    table.AddRow(
+                        "[grey]目录[/]",
+                        $"[grey]{Markup.Escape(d.RelativePath)}[/]",
+                        $"[grey]{reasonName}[/]",
+                        Markup.Escape(d.Explanation)
+                    );
+                }
+            }
+            console.Write(table);
         }
     }
 }

@@ -258,6 +258,14 @@ microtype 默认开启 protrusion（字符悬挂伸出），关闭 expansion 与
 
 `PROGRAM.code_language_overrides` 走字符串对数组（`["ext:lang"]`）；普通文本及未知扩展名默认统一以纯文本代码块（`\begin{minted}{text}`）保真渲染以防特殊字符编译报错；仅未配置覆盖的 `.tex` 文件或显式指定为 `".ext:raw"` 的扩展名按原生 LaTeX 语法插入正文。
 
+### 独立章节标题与排版排序覆盖 (UX-13)
+
+无需重命名磁盘上的源文件或目录即可自定义其在 LaTeX 目录及正文中的显示标题与排版先后顺序：
+
+- **`PROGRAM.section_title_overrides`**（字符串数组）：每项为 `"相对路径或名称:显示标题"`。例如 `["01_intro.py:系统设计引言", "math:核心数学算法库"]`。精确相对路径优先于纯名称匹配。
+- **`PROGRAM.section_order_overrides`**（字符串数组）：每项为 `"相对路径或名称:排序整数权重"`。数值越小越靠前排版（例如 `["02_core.py:10", "01_intro.py:20"]`）。未配置权重的项默认走自然数字字母序（Natural Sort，即 `2.py` 排在 `10.py` 前）。
+- **构建前内容预览**：在 TUI 菜单中选择「预览收录文件与章节树」，可查看完整章节树、各文件收录与排除状态及排除原因解释（如扩展名不在白名单、命中 ignore 模式或空目录），修改配置后实时同步预览。
+
 ## 覆盖 LaTeX 模板
 
 无需改 C# 代码：在 `build` 时加 `--template-dir <dir>`，把同名 `Main.tex` 和/或 `CodeBlock.tex` 放进该目录即可。`init` 输出的末尾也会提示此用法。

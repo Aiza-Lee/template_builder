@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Core.Models;
 using Core.Pipeline;
+using Core.SourceTree;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using Utils;
@@ -405,6 +406,9 @@ namespace Core.Tui {
                 // 快速搜索定位配置项
                 menuItems.Add(new TuiMenuItem("SEARCH", "搜索配置项 (按中文名称/英文键名快速定位)", action: TuiMenuAction.Search));
 
+                // 源码收录与章节树构建前预览
+                menuItems.Add(new TuiMenuItem("PREVIEW", "预览收录文件与章节树 (构建前检查/排除原因/章节顺序)", action: TuiMenuAction.Preview));
+
                 if (activeOverrides.Count > 0) {
                     menuItems.Add(new TuiMenuItem("INSPECT", $"查看当前全部覆盖项 ({activeOverrides.Count} 项)", action: TuiMenuAction.Inspect));
                     menuItems.Add(new TuiMenuItem("CLEAR", "清空所有覆盖项 (恢复项目/内置配置)", action: TuiMenuAction.Clear));
@@ -489,6 +493,11 @@ namespace Core.Tui {
                     continue;
                 }
 
+                if (chosen.IsPreview) {
+                    ShowContentPreview(session.SourceDir, config);
+                    continue;
+                }
+
                 if (chosen.Action == TuiMenuAction.Inspect) {
                     ShowOverridesTable(config.GetActiveOverrides(), config);
                     continue;
@@ -521,6 +530,37 @@ namespace Core.Tui {
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine("[grey]按 Enter 返回主菜单...[/]");
             Console.ReadLine();
+        }
+
+        private static void ShowContentPreview(DirectoryInfo? sourceDir, ProjectConfiguration config) {
+            if (sourceDir == null || !sourceDir.Exists) {
+                AnsiConsole.MarkupLine("[bold yellow]未找到源文件目录，请先在基础参数中指定存在的源码目录。[/]");
+                AnsiConsole.MarkupLine("[grey]按 Enter 返回主菜单...[/]");
+                Console.ReadLine();
+                return;
+            }
+
+            var filterMode = SourceTreeFilterMode.All;
+            string? lastSelectedModeId = null;
+
+            while (true) {
+                var plan = SourceTreePlan.Build(sourceDir, config);
+                TuiViewRenderer.RenderSourceTreePreview(AnsiConsole.Console, plan, filterMode);
+
+                var modeItems = new List<TuiMenuItem>();
+                modeItems.Add(new TuiMenuItem("BACK", "返回配置导航中心", action: TuiMenuAction.Back));
+                modeItems.Add(new TuiMenuItem("MODE_ALL", "查看完整章节树 (收录与排除并存)", isOverridden: filterMode == SourceTreeFilterMode.All));
+                modeItems.Add(new TuiMenuItem("MODE_INCLUDED", $"仅查看已收录文件 (共 {plan.IncludedFiles.Count} 项，按最终排版顺序)", isOverridden: filterMode == SourceTreeFilterMode.IncludedOnly));
+                modeItems.Add(new TuiMenuItem("MODE_EXCLUDED", $"仅查看被排除文件 (共 {plan.ExcludedFiles.Count} 项，排查未收录原因)", isOverridden: filterMode == SourceTreeFilterMode.ExcludedOnly));
+
+                var chosen = TuiMenu.Prompt("[bold]请选择预览视图模式（或返回导航中心）[/]：", modeItems, initialSelectedId: lastSelectedModeId);
+                if (chosen.IsBack) break;
+
+                lastSelectedModeId = chosen.Id;
+                if (chosen.Id == "MODE_ALL") filterMode = SourceTreeFilterMode.All;
+                else if (chosen.Id == "MODE_INCLUDED") filterMode = SourceTreeFilterMode.IncludedOnly;
+                else if (chosen.Id == "MODE_EXCLUDED") filterMode = SourceTreeFilterMode.ExcludedOnly;
+            }
         }
 
         private static void SearchAndEditFields(ProjectConfiguration config) {

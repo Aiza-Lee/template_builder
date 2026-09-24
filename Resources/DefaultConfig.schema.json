@@ -544,6 +544,20 @@
                     },
                     "description": "代码高亮语言映射覆盖规则数组。格式为 [\"扩展名:语言名\"]（如 [\".cu:cpp\", \".frag:glsl\", \".tex:latex\"]）。支持 \".ext:raw\" 显式指示按原生 LaTeX 语法插入正文。"
                 },
+                "section_title_overrides": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "独立章节标题覆盖规则数组。无需重命名磁盘文件即可自定义章节或文件在目录及正文中的显示标题。格式为 [\"相对路径或文件名:自定义显示标题\"]（如 [\"01_intro.py:系统架构引言\", \"math:核心算法与几何库\"]）。"
+                },
+                "section_order_overrides": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "独立章节排序权重规则数组。无需修改文件名添加数字前缀即可自定义章节或文件的先后排版顺序。格式为 [\"相对路径或文件名:排序整数权重\"]（如 [\"02_core.py:10\", \"01_intro.py:20\"]），数值越小越靠前。"
+                },
                 "build": {
                     "type": "object",
                     "additionalProperties": false,

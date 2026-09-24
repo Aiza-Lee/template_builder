@@ -1,4 +1,5 @@
 using System.Text;
+using Core.SourceTree;
 using Utils;
 
 namespace Core {
@@ -118,37 +119,39 @@ namespace Core {
                 return string.Empty;
             }
 
+            // UX-13：通过统一 SourceTreePlan 进行源码遍历、自然排序、章节标题覆盖与排序权重处理
+            var plan = SourceTreePlan.Build(sourceDirInfo, _programConfigParser, _sectionCommands.Length, _logger);
+
             var strBuilder = new StringBuilder();
             var lastIndex = _sectionCommands.Length - 1;
-            var pendingDirs = new List<(int Depth, string Name, int EffectiveDepth)>();
+            var pendingDirs = new List<(int Depth, string Title, int EffectiveDepth)>();
 
-            foreach (var entry in SourceTreeWalker.Walk(sourceDirInfo, IGNORE_PATTERNS, _logger)) {
+            foreach (var (node, isDir) in plan.GetInOrderEntries()) {
                 // 弹出深度不小于当前 entry 深度（即已离开该分支）的未决目录
-                while (pendingDirs.Count > 0 && pendingDirs[^1].Depth >= entry.Depth) {
+                while (pendingDirs.Count > 0 && pendingDirs[^1].Depth >= node.Depth) {
                     pendingDirs.RemoveAt(pendingDirs.Count - 1);
                 }
 
                 // 深度超过章节层级时 clamp 到最后一层（不报错不跳过）
-                var effectiveDepth = entry.Depth >= _sectionCommands.Length ? lastIndex : entry.Depth;
+                var effectiveDepth = node.Depth >= _sectionCommands.Length ? lastIndex : node.Depth;
 
-                if (entry.IsDirectory) {
+                if (isDir) {
                     // 目录暂存为未决，待其子树中发现有效源码文件时再输出
-                    pendingDirs.Add((entry.Depth, entry.Info.Name, effectiveDepth));
+                    pendingDirs.Add((node.Depth, node.DisplayTitle, effectiveDepth));
                     continue;
                 }
 
-                var codeBlock = GenerateCodeBlock_File((FileInfo)entry.Info);
+                var codeBlock = GenerateCodeBlock_File((FileInfo)node.Info);
                 if (string.IsNullOrEmpty(codeBlock)) continue;
 
                 // 存在有效代码文件，先输出所有父级未决目录的章节标题
                 foreach (var dir in pendingDirs) {
-                    InsertSection(strBuilder, dir.Name, dir.EffectiveDepth);
+                    InsertSection(strBuilder, dir.Title, dir.EffectiveDepth);
                 }
                 pendingDirs.Clear();
 
-                var relPath = Path.GetRelativePath(sourceDirInfo.FullName, entry.Info.FullName).Replace('\\', '/');
-                strBuilder.AppendLine($"% [TB_SOURCE_FILE: {relPath}]");
-                InsertSection(strBuilder, entry.Info.Name, effectiveDepth);
+                strBuilder.AppendLine($"% [TB_SOURCE_FILE: {node.RelativePath}]");
+                InsertSection(strBuilder, node.DisplayTitle, effectiveDepth);
                 strBuilder.AppendLine(codeBlock);
             }
             return strBuilder.ToString();

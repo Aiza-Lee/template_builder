@@ -8,9 +8,9 @@ public class TuiSchemaCatalogTests {
     [Fact]
     public void AllFields_DiscoversAllExpectedProperties() {
         var fields = TuiSchemaCatalog.AllFields;
-        // Schema 中共 88 个 TEX 属性与 5 个 PROGRAM 属性，共 93 个
-        Assert.Equal(93, fields.Count);
-        Assert.Equal(93, fields.Select(f => f.Key).Distinct(StringComparer.Ordinal).Count());
+        // Schema 中共 88 个 TEX 属性与 7 个 PROGRAM 属性，共 95 个
+        Assert.Equal(95, fields.Count);
+        Assert.Equal(95, fields.Select(f => f.Key).Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]

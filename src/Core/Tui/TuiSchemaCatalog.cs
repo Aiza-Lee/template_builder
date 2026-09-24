@@ -160,6 +160,8 @@ namespace Core.Tui {
             ["INCLUDE_FILE_TYPES"] = "包含源文件类型",
             ["IGNORE_PATTERNS"] = "排除文件通配模式",
             ["CODE_LANGUAGE_OVERRIDES"] = "代码语言覆盖映射",
+            ["SECTION_TITLE_OVERRIDES"] = "章节标题覆盖映射",
+            ["SECTION_ORDER_OVERRIDES"] = "章节排序权重映射",
             ["BUILD_TIMEOUT_SECONDS"] = "单次编译超时秒数",
             ["BUILD_PASS_COUNT"] = "总编译轮数"
         };

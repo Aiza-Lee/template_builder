@@ -28,10 +28,19 @@ namespace Utils {
         public static IEnumerable<SourceEntry> Walk(
             DirectoryInfo root,
             IReadOnlyList<string> ignorePatterns,
-            ILogger? logger = null
+            ILogger? logger = null,
+            IReadOnlyDictionary<string, int>? orderOverrides = null
         ) {
             var matcher = BuildMatcher(ignorePatterns);
-            return WalkInternal(root, root, 0, matcher, logger);
+            return WalkInternal(root, root, 0, matcher, logger, orderOverrides);
+        }
+
+        private static int GetOrderWeight(FileSystemInfo info, DirectoryInfo root, IReadOnlyDictionary<string, int>? orderOverrides) {
+            if (orderOverrides == null || orderOverrides.Count == 0) return int.MaxValue;
+            var relPath = Path.GetRelativePath(root.FullName, info.FullName).Replace('\\', '/');
+            if (orderOverrides.TryGetValue(relPath, out var w1)) return w1;
+            if (orderOverrides.TryGetValue(info.Name, out var w2)) return w2;
+            return int.MaxValue;
         }
 
         // HasMatches = false 表示被 exclude 命中
@@ -62,10 +71,15 @@ namespace Utils {
             DirectoryInfo dir,
             int depth,
             Matcher matcher,
-            ILogger? logger
+            ILogger? logger,
+            IReadOnlyDictionary<string, int>? orderOverrides
         ) {
-            // 子目录优先（按字母序），递归深入
-            foreach (var subDir in dir.GetDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)) {
+            // 子目录优先（先按自定义权重，再按自然字母序），递归深入
+            var subDirs = dir.GetDirectories()
+                .OrderBy(d => GetOrderWeight(d, root, orderOverrides))
+                .ThenBy(d => d.Name, NaturalStringComparer.OrdinalIgnoreCase);
+
+            foreach (var subDir in subDirs) {
                 if (subDir.Name.StartsWith('.')) {
                     logger?.Debug($"Skipping hidden directory: {subDir.FullName}");
                     continue;
@@ -80,13 +94,17 @@ namespace Utils {
                     continue;
                 }
                 yield return new SourceEntry(subDir, depth, IsDirectory: true);
-                foreach (var entry in WalkInternal(root, subDir, depth + 1, matcher, logger)) {
+                foreach (var entry in WalkInternal(root, subDir, depth + 1, matcher, logger, orderOverrides)) {
                     yield return entry;
                 }
             }
 
-            // 当前目录下的文件（按字母序）
-            foreach (var file in dir.GetFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)) {
+            // 当前目录下的文件（先按自定义权重，再按自然字母序）
+            var files = dir.GetFiles()
+                .OrderBy(f => GetOrderWeight(f, root, orderOverrides))
+                .ThenBy(f => f.Name, NaturalStringComparer.OrdinalIgnoreCase);
+
+            foreach (var file in files) {
                 if (file.Name.StartsWith('.')) {
                     logger?.Debug($"Skipping hidden file: {file.FullName}");
                     continue;

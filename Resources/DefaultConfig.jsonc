@@ -173,6 +173,19 @@
 		//   ".tex:latex"      — 将 .tex 自身作为 LaTeX 代码块高亮展示（而非直接插入正文）
 		//   ".snippet:raw"    — 显式按原生 LaTeX 语法插入正文
 		"code_language_overrides": [],
+		// 独立章节标题覆盖映射（无需重命名磁盘文件或目录即可自定义其在 LaTeX 目录及章节中的显示标题）
+		// 格式：字符串数组，每项为 "相对路径或文件名:显示标题"
+		// 匹配优先级：精确相对路径（如 "algo/graph.cpp"）优先于纯名称（如 "graph.cpp" 或目录名 "algo"）
+		// 示例：
+		//   "01_intro.py:系统概述与设计背景"
+		//   "math:高精度数学与几何算法"
+		"section_title_overrides": [],
+		// 独立章节排序权重映射（无需给文件添加数字前缀即可自定义章节或文件的先后排版顺序）
+		// 格式：字符串数组，每项为 "相对路径或文件名:整数排序权重"（权重数值越小越靠前排版，未配置项默认按自然数字字母序排序）
+		// 示例：
+		//   "02_core.py:10"
+		//   "01_intro.py:20"
+		"section_order_overrides": [],
 		// 构建器行为调优
 		"build": {
 			// xelatex 单次 pass 的超时秒数；超时则 Kill(entireProcessTree=true) + 报 XelatexFailure
