@@ -7,14 +7,25 @@ namespace Core.Pipeline {
     /// <summary>
     /// validate 子命令的执行器：跑 7 项检查（不调 xelatex，不写盘）并返回退出码 + 报告。
     /// </summary>
-    internal sealed class ValidationRunner(ILogger logger, ManifestResourceManager resMgr) {
+    internal sealed class ValidationRunner(
+        ILogger logger,
+        ManifestResourceManager resMgr,
+        TextWriter? stdoutWriter = null
+    ) {
         private readonly ILogger _logger = logger;
         private readonly ManifestResourceManager _resMgr = resMgr;
+        private readonly TextWriter _stdoutWriter = stdoutWriter ?? Console.Out;
 
         /// <summary>
         /// 执行校验。捕获领域异常并按既定退出码返回。
         /// </summary>
         public int Run(ValidateSubcommandOptions options) {
+            if (!string.Equals(options.Format, "text", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase)) {
+                _logger.Error($"--format 参数值 \"{options.Format}\" 无效。合法值为 \"text\" 或 \"json\"。");
+                return ExitCodes.InvalidArguments;
+            }
+
             var checks = new List<ValidationCheck>();
 
             // Check 1: 源目录存在
@@ -136,11 +147,20 @@ namespace Core.Pipeline {
                 WarningCount: 0,
                 Checks: checks
             );
-            var output = format == "json" ? report.ToJson() : report.ToText();
-            if (exitCode == 0) {
-                _logger.Info(output);
+            if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase)) {
+                var json = report.ToJson();
+                _stdoutWriter.WriteLine(json);
+                if (_logger.GetType() != typeof(Logger) && _logger is not DiagnosticStderrLogger) {
+                    if (exitCode == 0) _logger.Info(json);
+                    else _logger.Error(json);
+                }
             } else {
-                _logger.Error(output);
+                var text = report.ToText();
+                _stdoutWriter.Write(text);
+                if (_logger.GetType() != typeof(Logger) && _logger is not DiagnosticStderrLogger) {
+                    if (exitCode == 0) _logger.Info(text);
+                    else _logger.Error(text);
+                }
             }
             return exitCode;
         }

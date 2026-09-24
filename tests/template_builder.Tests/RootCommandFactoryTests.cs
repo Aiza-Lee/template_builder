@@ -183,4 +183,107 @@ public class RootCommandFactoryTests {
 
         Assert.DoesNotContain(logger.Entries, e => e.Message.Contains("创建默认配置文件"));
     }
+
+    [Fact]
+    public void Invoke_Validate_InvalidFormat_ReturnsExitCode2() {
+        var logger = new TestLogger();
+        var factory = new RootCommandFactory(logger);
+        var root = factory.CreateRootCommand();
+        using var tmp = TempDir.Create();
+        var srcDir = Path.Combine(tmp.Path, "src");
+        Directory.CreateDirectory(srcDir);
+
+        var result = root.Parse(new[] { "validate", "-s", srcDir, "--format", "xml" }).Invoke();
+
+        Assert.Equal(2, result);
+        Assert.Contains(logger.ErrorMessages, m => m.Contains("--format") && m.Contains("text") && m.Contains("json"));
+    }
+
+    [Fact]
+    public void Invoke_Init_InvalidFormat_ReturnsExitCode2AndDoesNotCreateFile() {
+        var logger = new TestLogger();
+        var factory = new RootCommandFactory(logger);
+        var root = factory.CreateRootCommand();
+        using var tmp = TempDir.Create();
+        var outputPath = Path.Combine(tmp.Path, "cfg.json");
+
+        var result = root.Parse(new[] { "init", "-o", outputPath, "--format", "xml" }).Invoke();
+
+        Assert.Equal(2, result);
+        Assert.False(File.Exists(outputPath));
+        Assert.Contains(logger.ErrorMessages, m => m.Contains("--format") && m.Contains("jsonc") && m.Contains("json"));
+    }
+
+    [Fact]
+    public void Invoke_Validate_JsonFormat_HappyPath_PureJsonOnStdout() {
+        var logger = new TestLogger();
+        using var capturedOut = new StringWriter();
+        using var capturedError = new StringWriter();
+        var factory = new RootCommandFactory(logger, capturedOut, capturedError);
+        var root = factory.CreateRootCommand();
+
+        using var tmp = TempDir.Create();
+        var srcDir = Path.Combine(tmp.Path, "src");
+        Directory.CreateDirectory(srcDir);
+        File.WriteAllText(Path.Combine(srcDir, "test.txt"), "hello");
+        var cfgFile = Path.Combine(tmp.Path, "config.json");
+        File.WriteAllText(cfgFile, "{}");
+
+        var result = root.Parse(new[] { "validate", "-s", srcDir, "-c", cfgFile, "--format", "json" }).Invoke();
+
+        Assert.Equal(0, result);
+        var stdout = capturedOut.ToString().Trim();
+
+        // stdout 必须 100% 纯净可解析
+        Assert.StartsWith("{", stdout);
+        Assert.EndsWith("}", stdout);
+        Assert.DoesNotContain("使用配置文件", stdout);
+        Assert.DoesNotContain("[Error]", stdout);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(stdout);
+        Assert.True(doc.RootElement.GetProperty("overallOk").GetBoolean());
+
+        // 诊断日志应在 stderr
+        var stderr = capturedError.ToString();
+        Assert.Contains("使用配置文件", stderr);
+    }
+
+    [Fact]
+    public void Invoke_Validate_JsonFormat_NonExistentSource_PureJsonOnStdoutAndExitCode2() {
+        var logger = new TestLogger();
+        using var capturedOut = new StringWriter();
+        var factory = new RootCommandFactory(logger, capturedOut);
+        var root = factory.CreateRootCommand();
+
+        var result = root.Parse(new[] { "validate", "-s", "/non/existent/src/dir", "--format", "json" }).Invoke();
+
+        Assert.Equal(2, result);
+        var stdout = capturedOut.ToString().Trim();
+
+        using var doc = System.Text.Json.JsonDocument.Parse(stdout);
+        Assert.False(doc.RootElement.GetProperty("overallOk").GetBoolean());
+        Assert.True(doc.RootElement.GetProperty("errorCount").GetInt32() > 0);
+    }
+
+    [Fact]
+    public void Invoke_Validate_JsonFormat_NonExistentExplicitConfig_PureJsonOnStdoutAndExitCode2() {
+        var logger = new TestLogger();
+        using var capturedOut = new StringWriter();
+        var factory = new RootCommandFactory(logger, capturedOut);
+        var root = factory.CreateRootCommand();
+
+        using var tmp = TempDir.Create();
+        var srcDir = Path.Combine(tmp.Path, "src");
+        Directory.CreateDirectory(srcDir);
+        File.WriteAllText(Path.Combine(srcDir, "test.txt"), "hello");
+
+        var result = root.Parse(new[] { "validate", "-s", srcDir, "-c", "/non/existent/cfg.json", "--format", "json" }).Invoke();
+
+        Assert.Equal(2, result);
+        var stdout = capturedOut.ToString().Trim();
+
+        using var doc = System.Text.Json.JsonDocument.Parse(stdout);
+        Assert.False(doc.RootElement.GetProperty("overallOk").GetBoolean());
+        Assert.True(doc.RootElement.GetProperty("errorCount").GetInt32() > 0);
+    }
 }

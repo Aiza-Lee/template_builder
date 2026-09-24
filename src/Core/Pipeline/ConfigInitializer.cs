@@ -21,13 +21,18 @@ namespace Core.Pipeline {
         /// 执行 init。返回退出码（0 成功；2 参数错误；5 嵌入式资源缺失）。
         /// </summary>
         public int Run(InitSubcommandOptions options) {
+            if (!string.Equals(options.Format, "jsonc", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase)) {
+                _logger.Error($"--format 参数值 \"{options.Format}\" 无效。合法值为 \"jsonc\" 或 \"json\"。");
+                return ExitCodes.InvalidArguments;
+            }
+
             try {
                 // 读嵌入式资源
                 var resourceText = _resMgr.GetResourceInString("DefaultConfig.jsonc");
-                string outputText = options.Format switch {
-                    "json" => StripCommentsToJson(resourceText),
-                    _ => resourceText,  // "jsonc" 或其他默认原样输出
-                };
+                string outputText = string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase)
+                    ? StripCommentsToJson(resourceText)
+                    : resourceText;
 
                 // 检查目标文件是否已存在：默认拒绝覆盖，显式指定 Force 时创建备份后再覆盖
                 if (File.Exists(options.OutputPath.FullName)) {

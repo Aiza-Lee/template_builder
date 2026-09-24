@@ -21,9 +21,14 @@ namespace Core.Commands {
     ///
     /// </summary>
     ///
-    /// <param name="logger">日志器</param>
-    internal class RootCommandFactory(ILogger logger) {
+    internal class RootCommandFactory(
+        ILogger logger,
+        TextWriter? stdoutWriter = null,
+        TextWriter? errorWriter = null
+    ) {
         private readonly ILogger _logger = logger;
+        private readonly TextWriter? _stdoutWriter = stdoutWriter;
+        private readonly TextWriter? _errorWriter = errorWriter;
 
         public RootCommand CreateRootCommand() {
             var root = new RootCommand("将算法 / 代码模板目录编译成 PDF 文档。");
@@ -220,32 +225,54 @@ namespace Core.Commands {
             cmd.Options.Add(checkXelatexOption);
 
             cmd.SetAction((ParseResult pr) => {
-                try {
-                    var src = pr.GetValue(sourceFilesFolderOption)!;
-                    if (!src.Exists) {
-                        _logger.Error($"源目录不存在：{src.FullName}");
-                        return ExitCodes.InvalidArguments;
-                    }
-
-                    bool userProvidedAtCli = pr.Tokens.Any(t => t.Value == "--config" || t.Value == "-c");
-                    var (cfg, _) = new ConfigPathResolver(_logger).Resolve(
-                        pr.GetValue(configOption),
-                        userProvidedAtCli,
-                        EnsureDefaultConfigFileExists
-                    );
-
-                    var options = new ValidateSubcommandOptions(
-                        src,
-                        cfg,
-                        pr.GetValue(templateDirOption),
-                        pr.GetValue(formatOption)!,
-                        pr.GetValue(checkXelatexOption)
-                    );
-                    return new ValidationRunner(_logger, new ManifestResourceManager()).Run(options);
-                } catch (InvalidArgumentException ex) {
-                    _logger.Error(ex.Message);
+                var rawFormat = pr.GetValue(formatOption) ?? "text";
+                if (!string.Equals(rawFormat, "text", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(rawFormat, "json", StringComparison.OrdinalIgnoreCase)) {
+                    _logger.Error($"--format 参数值 \"{rawFormat}\" 无效。合法值为 \"text\" 或 \"json\"。");
                     return ExitCodes.InvalidArguments;
                 }
+                var format = rawFormat.ToLowerInvariant();
+                var isJson = format == "json";
+                var effectiveLogger = isJson ? new DiagnosticStderrLogger(_logger, _errorWriter) : _logger;
+
+                var src = pr.GetValue(sourceFilesFolderOption)!;
+
+                bool userProvidedAtCli = pr.Tokens.Any(t => t.Value == "--config" || t.Value == "-c");
+                FileInfo cfg;
+                if (userProvidedAtCli && pr.GetValue(configOption) is { Exists: false } missingCfg) {
+                    cfg = missingCfg;
+                } else {
+                    try {
+                        var (resolvedCfg, _) = new ConfigPathResolver(effectiveLogger).Resolve(
+                            pr.GetValue(configOption),
+                            userProvidedAtCli,
+                            () => EnsureDefaultConfigFileExists(effectiveLogger)
+                        );
+                        cfg = resolvedCfg;
+                    } catch (InvalidArgumentException ex) {
+                        if (isJson) {
+                            var checks = new List<ValidationCheck>();
+                            if (src.Exists) {
+                                checks.Add(new ValidationCheck("source", "exists", true, src.FullName));
+                            }
+                            checks.Add(new ValidationCheck("config", "exists", false, ex.Message));
+                            var report = new ValidationReport(false, 1, 0, checks);
+                            (_stdoutWriter ?? Console.Out).WriteLine(report.ToJson());
+                            return ExitCodes.InvalidArguments;
+                        }
+                        _logger.Error(ex.Message);
+                        return ExitCodes.InvalidArguments;
+                    }
+                }
+
+                var options = new ValidateSubcommandOptions(
+                    src,
+                    cfg,
+                    pr.GetValue(templateDirOption),
+                    format,
+                    pr.GetValue(checkXelatexOption)
+                );
+                return new ValidationRunner(effectiveLogger, new ManifestResourceManager(), _stdoutWriter).Run(options);
             });
 
             return cmd;
@@ -282,12 +309,20 @@ namespace Core.Commands {
             cmd.Options.Add(forceOption);
 
             cmd.SetAction((ParseResult pr) => {
+                var rawFormat = pr.GetValue(formatOption) ?? "jsonc";
+                if (!string.Equals(rawFormat, "jsonc", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(rawFormat, "json", StringComparison.OrdinalIgnoreCase)) {
+                    _logger.Error($"--format 参数值 \"{rawFormat}\" 无效。合法值为 \"jsonc\" 或 \"json\"。");
+                    return ExitCodes.InvalidArguments;
+                }
+                var format = rawFormat.ToLowerInvariant();
+
                 var outputPath = pr.GetValue(outputOption)!;
                 // 确保父目录存在
                 if (outputPath.Directory is { } parent && !parent.Exists) {
                     parent.Create();
                 }
-                var options = new InitSubcommandOptions(outputPath, pr.GetValue(formatOption)!, pr.GetValue(forceOption));
+                var options = new InitSubcommandOptions(outputPath, format, pr.GetValue(forceOption));
                 return new ConfigInitializer(_logger, new ManifestResourceManager()).Run(options);
             });
 
@@ -305,7 +340,12 @@ namespace Core.Commands {
         /// <summary>
         /// 确保默认用户配置文件存在；仅在真正需要使用默认配置且文件不存在时才从嵌入资源生成。
         /// </summary>
-        internal FileInfo EnsureDefaultConfigFileExists() {
+        internal FileInfo EnsureDefaultConfigFileExists() => EnsureDefaultConfigFileExists(_logger);
+
+        /// <summary>
+        /// 确保默认用户配置文件存在（支持自定义日志器）。
+        /// </summary>
+        internal FileInfo EnsureDefaultConfigFileExists(ILogger customLogger) {
             var configFileInfo = GetDefaultConfigFileInfo();
             if (!configFileInfo.Exists) {
                 if (configFileInfo.Directory is { Exists: false } dir) {
@@ -314,8 +354,8 @@ namespace Core.Commands {
                 using var fs = new ManifestResourceManager().GetResourceAsStream("DefaultConfig.jsonc");
                 using var outFs = configFileInfo.Create();
                 fs.CopyTo(outFs);
-                _logger.Info($"已在 \"{configFileInfo.FullName}\" 创建默认配置文件。");
-                _logger.Info("提示：可运行 init 命令生成带注释的配置骨架以便自定义。");
+                customLogger.Info($"已在 \"{configFileInfo.FullName}\" 创建默认配置文件。");
+                customLogger.Info("提示：可运行 init 命令生成带注释的配置骨架以便自定义。");
                 configFileInfo.Refresh();
             }
             return configFileInfo;
