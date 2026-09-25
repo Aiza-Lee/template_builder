@@ -175,6 +175,7 @@ public class CrossTerminalLayoutTests {
         File.WriteAllText(Path.Combine(deepDir, "01_segment_tree_线段树.cpp"), "// code");
         File.WriteAllText(Path.Combine(deepDir, "02_fenwick_树状数组.cpp"), "// code");
         File.WriteAllText(Path.Combine(deepDir, "readme.md"), "# doc");
+        File.WriteAllText(Path.Combine(deepDir, "ignore.bak"), "temp");
 
         var logger = new TestLogger();
         var progParser = new ConfigParser("PROGRAM", logger);

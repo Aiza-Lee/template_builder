@@ -94,7 +94,7 @@ public class SourceTreePlanTests {
     public void ExcludedFiles_ExplainDistinctionBetweenRecognizedAndUnknownLanguages() {
         using var tmp = TempDir.Create();
         File.WriteAllText(Path.Combine(tmp.Path, "main.cpp"), "int main() {}");
-        File.WriteAllText(Path.Combine(tmp.Path, "tool.rs"), "fn main() {}"); // 系统内置支持但未在 include_file_types
+        File.WriteAllText(Path.Combine(tmp.Path, "tool.swift"), "import Foundation"); // 系统内置支持但未在 include_file_types
         File.WriteAllText(Path.Combine(tmp.Path, "data.unknownext"), "raw data"); // 未知类型
 
         var logger = new TestLogger();
@@ -104,11 +104,11 @@ public class SourceTreePlanTests {
         Assert.Single(plan.IncludedFiles);
         Assert.Equal("main.cpp", plan.IncludedFiles[0].File.Name);
 
-        var rustExcluded = plan.ExcludedFiles.FirstOrDefault(f => f.Info.Name == "tool.rs");
-        Assert.NotNull(rustExcluded);
-        Assert.Equal(SourceExclusionReason.ExtensionNotIncluded, rustExcluded.Reason);
-        Assert.Contains("rust", rustExcluded.Explanation);
-        Assert.Contains("include_file_types", rustExcluded.Explanation);
+        var swiftExcluded = plan.ExcludedFiles.FirstOrDefault(f => f.Info.Name == "tool.swift");
+        Assert.NotNull(swiftExcluded);
+        Assert.Equal(SourceExclusionReason.ExtensionNotIncluded, swiftExcluded.Reason);
+        Assert.Contains("swift", swiftExcluded.Explanation);
+        Assert.Contains("include_file_types", swiftExcluded.Explanation);
 
         var unknownExcluded = plan.ExcludedFiles.FirstOrDefault(f => f.Info.Name == "data.unknownext");
         Assert.NotNull(unknownExcluded);

@@ -161,7 +161,20 @@
 	// ===== PROGRAM section: controls source-tree processing =====
 	"PROGRAM": {
 		// 包含的源文件扩展名（白名单）
-		"include_file_types": [".cpp", ".c", ".java", ".json", ".tex", ".hpp", ".h", ".py", ".txt"],
+		"include_file_types": [
+			".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx",
+			".cs",
+			".java", ".kt",
+			".py",
+			".rs",
+			".go",
+			".js", ".ts", ".jsx", ".tsx",
+			".sh",
+			".sql",
+			".html", ".css",
+			".json", ".yaml", ".yml", ".xml", ".toml",
+			".md", ".txt", ".tex"
+		],
 		// 排除的 glob 模式（Microsoft.Extensions.FileSystemGlobbing 语法）
 		"ignore_patterns": ["*ignore*", "build"],
 		// 扩展名→minted 语言映射的增量覆盖与渲染模式

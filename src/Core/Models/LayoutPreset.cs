@@ -18,6 +18,10 @@ namespace Core.Models {
         string Description,
         IReadOnlyDictionary<string, string> Settings
     ) {
+        public string DisplayName => Core.Localization.I18n.T($"Preset.{Id}.Name", Name);
+        public string DisplayTagline => Core.Localization.I18n.T($"Preset.{Id}.Tagline", Tagline);
+        public string DisplayDescription => Core.Localization.I18n.T($"Preset.{Id}.Desc", Description);
+
         /// <summary>
         /// 将本预设应用至项目配置会话中。
         /// </summary>

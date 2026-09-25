@@ -147,7 +147,7 @@ template_builder 统一采用严格的三层配置优先级模型：
 
 | 路径 | 默认值 | 说明 |
 |---|---|---|
-| `PROGRAM.include_file_types` | `[".cpp", ".c", ...]` | 包含的源文件扩展名（白名单） |
+| `PROGRAM.include_file_types` | `[".c", ".cpp", ".cs", ".rs", ".go", ".java", ".kt", ".py", ".js", ".ts", ...]` | 包含的源文件扩展名（白名单，默认包含主流编程语言、脚本、Web、配置及文档格式） |
 | `PROGRAM.ignore_patterns` | `["*ignore*"]` | 排除的 glob 模式（`Microsoft.Extensions.FileSystemGlobbing` 语法） |
 | `PROGRAM.code_language_overrides` | `[]` | 扩展名→minted 语言映射与渲染模式的增量覆盖。字符串对数组 `["ext:lang"]`（如 `[".md:markdown", ".tex:latex", ".snippet:raw"]`）。内置默认映射包含常见编程语言、Markdown 及普通文本（`.txt`）；普通文本及未知扩展名默认以保真纯文本代码块（`text`）渲染；`.tex` 或指定为 `raw` 的文件按原生 LaTeX 语法解析 |
 | `PROGRAM.build.timeout_seconds` | `120` | 单次 xelatex pass 的超时秒数。超时则 Kill 整个进程树（防 minted/pygmentize 子进程残留）+ 报 `XelatexFailure` 退出。`0` = 不限时（pass 0 给 `WaitForExit`，）。值会被 clamp 到 `[0, 600]` |

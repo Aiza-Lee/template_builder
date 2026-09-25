@@ -295,6 +295,30 @@ public class ConfigParserTests {
     }
 
     [Fact]
+    public void DefaultConfig_IncludeFileTypes_ContainsCommonProgrammingAndDocTypes() {
+        var logger = new TestLogger();
+        var programParser = new ConfigParser("PROGRAM", logger);
+        var extensions = programParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
+
+        // 验证系统级与现代主流语言及文档支持
+        Assert.Contains(".c", extensions);
+        Assert.Contains(".cpp", extensions);
+        Assert.Contains(".cs", extensions);
+        Assert.Contains(".rs", extensions);
+        Assert.Contains(".go", extensions);
+        Assert.Contains(".java", extensions);
+        Assert.Contains(".kt", extensions);
+        Assert.Contains(".py", extensions);
+        Assert.Contains(".js", extensions);
+        Assert.Contains(".ts", extensions);
+        Assert.Contains(".sh", extensions);
+        Assert.Contains(".sql", extensions);
+        Assert.Contains(".md", extensions);
+        Assert.Contains(".json", extensions);
+        Assert.Contains(".yaml", extensions);
+    }
+
+    [Fact]
     public void ConfigParser_CustomDefaultDocument_UsesProvidedDocument() {
         var logger = new TestLogger();
         using var customDoc = System.Text.Json.JsonDocument.Parse(

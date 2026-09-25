@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Core.Localization;
 using Core.Models;
 using Core.Pipeline;
 using Core.Tui;
@@ -126,8 +127,21 @@ namespace Core.Commands {
             };
             cmd.Options.Add(tuiScaffoldOption);
 
+            /* --lang -l */
+            var langOption = new Option<string?>("--lang", "-l") {
+                Description = "界面语言 / Interface language: zh-CN (中文), en-US (English).",
+                HelpName = "LANG",
+                Required = false,
+            };
+            cmd.Options.Add(langOption);
+
             cmd.SetAction((ParseResult pr) => {
                 _logger.SetLevel(pr.GetValue(verboseOption) ? LogLevel.DEBUG : LogLevel.INFO);
+
+                var lang = pr.GetValue(langOption);
+                if (!string.IsNullOrEmpty(lang)) {
+                    I18n.SetLanguage(lang);
+                }
 
                 var scaffoldDir = pr.GetValue(tuiScaffoldOption);
                 if (scaffoldDir != null) {

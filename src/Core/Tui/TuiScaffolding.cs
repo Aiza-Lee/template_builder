@@ -119,9 +119,9 @@ namespace Core.Tui {
                         var isOverridden = mockOverrides.TryGetValue(f.Key, out var val);
                         var cur = isOverridden ? val : (mockCurrent.TryGetValue(f.Key, out var cv) ? cv : "");
                         if (isOverridden) {
-                            c.MarkupLine($"  • [bold #ffd600]{f.Label}[/] [yellow]({cur})[/] [bold #ffd600](已修改)[/]");
+                            c.MarkupLine($"  • [bold {TuiTheme.Warning}]{f.Label}[/] [{TuiTheme.Warning}]({cur})[/] [bold {TuiTheme.Warning}](已修改)[/]");
                         } else {
-                            c.MarkupLine($"  • [white]{f.Label}[/] [grey]({cur})[/]");
+                            c.MarkupLine($"  • [{TuiTheme.TextLight}]{f.Label}[/] [grey]({cur})[/]");
                         }
                     }
                 }),
@@ -160,7 +160,7 @@ namespace Core.Tui {
                     }
                 }),
                 ("09_step2_presets_preview", "步骤 2: 排版预设体系概览与选择", c => {
-                    var table = new Table().Border(TableBorder.Rounded).Title("[bold #00f5d4]排版预设体系概览[/]");
+                    var table = new Table().Border(TableBorder.Rounded).Title($"[bold {TuiTheme.Primary}]排版预设体系概览[/]");
                     table.AddColumn(new TableColumn("[bold]预设 ID[/]"));
                     table.AddColumn(new TableColumn("[bold]预设名称[/]"));
                     table.AddColumn(new TableColumn("[bold]核心特征[/]"));

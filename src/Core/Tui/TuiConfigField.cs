@@ -62,7 +62,10 @@ namespace Core.Tui {
         string Title,
         string Description,
         IReadOnlyList<TuiConfigField> Fields
-    );
+    ) {
+        public string DisplayTitle => Core.Localization.I18n.T($"Category.{Id}.Title", Title);
+        public string DisplayDescription => Core.Localization.I18n.T($"Category.{Id}.Desc", Description);
+    }
 
     /// <summary>
     /// TUI 交互模式暴露的常用核心配置项清单。

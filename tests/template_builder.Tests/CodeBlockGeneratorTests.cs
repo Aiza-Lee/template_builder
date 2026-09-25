@@ -20,7 +20,7 @@ public class CodeBlockGeneratorTests {
 
         File.WriteAllText(Path.Combine(tmp.Path, "zeta.txt"), "root z");
         File.WriteAllText(Path.Combine(tmp.Path, "Alpha.txt"), "root a");
-        File.WriteAllText(Path.Combine(tmp.Path, "notes.md"), "should be skipped");
+        File.WriteAllText(Path.Combine(tmp.Path, "notes.bak"), "should be skipped");
 
         var logger = new TestLogger();
         var programParser = new ConfigParser("PROGRAM", logger);
@@ -37,7 +37,7 @@ public class CodeBlockGeneratorTests {
         Assert.Contains(@"\section{zeta.txt}", output);
         Assert.Contains(@"\subsection{a\_file.txt}", output);
         Assert.Contains(@"\subsection{z\_file.txt}", output);
-        Assert.DoesNotContain("notes.md", output, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("notes.bak", output, StringComparison.OrdinalIgnoreCase);
 
         var alphaDirIndex = output.IndexOf(@"\section{Alpha\_Folder}", StringComparison.Ordinal);
         var zetaDirIndex = output.IndexOf(@"\section{zeta-folder}", StringComparison.Ordinal);

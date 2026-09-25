@@ -127,10 +127,10 @@ public class TuiSchemaCatalogTests {
     [Fact]
     public void FormatFieldValueDisplay_ClarifiesTocInColumns() {
         var falseDisp = TuiViewRenderer.FormatFieldValueDisplay("false", "LAYOUT_TOC_IN_COLUMNS");
-        Assert.Equal("跟随正文 (false)", falseDisp);
+        Assert.Equal("跟随正文", falseDisp);
 
         var trueDisp = TuiViewRenderer.FormatFieldValueDisplay("true", "LAYOUT_TOC_IN_COLUMNS");
-        Assert.Equal("独立单栏 (true)", trueDisp);
+        Assert.Equal("独立单栏", trueDisp);
 
         var normalDisp = TuiViewRenderer.FormatFieldValueDisplay("true", "CODE_LINE_NUMBERS");
         Assert.Equal("true", normalDisp);

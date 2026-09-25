@@ -136,4 +136,128 @@ public class TuiLineEditorTests {
         Assert.Equal(7, state.CursorDisplayWidth);
         Assert.Equal(0, state.RemainingDisplayWidth);
     }
+
+    [Fact]
+    public void MultiLine_GetLines_SplitsLinesCorrectly() {
+        var state1 = new TuiLineEditorState("");
+        Assert.Equal(new[] { "" }, state1.GetLines());
+        Assert.Equal(1, state1.LineCount);
+
+        var state2 = new TuiLineEditorState("first\nsecond\r\nthird");
+        var lines = state2.GetLines();
+        Assert.Equal(3, lines.Count);
+        Assert.Equal("first", lines[0]);
+        Assert.Equal("second", lines[1]);
+        Assert.Equal("third", lines[2]);
+    }
+
+    [Fact]
+    public void MultiLine_CursorCoordinates_CalculateLineAndColCorrectly() {
+        // "line1\nline2: 中文\nend"
+        var state = new TuiLineEditorState("line1\nline2: 中文\nend");
+        // Start: cursor at end (index 21)
+        Assert.Equal(2, state.CursorLineIndex);
+        Assert.Equal(3, state.CursorColumnIndex);
+
+        state.MoveHome(entireText: true);
+        Assert.Equal(0, state.CursorLineIndex);
+        Assert.Equal(0, state.CursorColumnIndex);
+        Assert.Equal(0, state.CursorColumnDisplayWidth);
+
+        // Move to line 1
+        state.MoveDown();
+        Assert.Equal(1, state.CursorLineIndex);
+        Assert.Equal(0, state.CursorColumnIndex);
+        Assert.Equal(0, state.CursorColumnDisplayWidth);
+
+        // Move past "line2: " (7 chars)
+        for (int i = 0; i < 7; i++) state.MoveRight();
+        Assert.Equal(1, state.CursorLineIndex);
+        Assert.Equal(7, state.CursorColumnIndex);
+        Assert.Equal(7, state.CursorColumnDisplayWidth);
+
+        // Move past "中" (1 CJK char = 2 visual columns)
+        state.MoveRight();
+        Assert.Equal(1, state.CursorLineIndex);
+        Assert.Equal(8, state.CursorColumnIndex);
+        Assert.Equal(9, state.CursorColumnDisplayWidth); // 7 + 2 = 9!
+    }
+
+    [Fact]
+    public void MultiLine_MoveUpAndDown_PreservesOrClampsColumn() {
+        var text = "short\nvery long line here\nend";
+        var state = new TuiLineEditorState(text);
+
+        // Move to "very long line here" at col 15
+        state.MoveHome(entireText: true);
+        state.MoveDown();
+        for (int i = 0; i < 15; i++) state.MoveRight();
+        Assert.Equal(1, state.CursorLineIndex);
+        Assert.Equal(15, state.CursorColumnIndex);
+
+        // Move up to "short" (len 5): column clamps to 5
+        state.MoveUp();
+        Assert.Equal(0, state.CursorLineIndex);
+        Assert.Equal(5, state.CursorColumnIndex);
+
+        // Move down to line 1: column stays at 5
+        state.MoveDown();
+        Assert.Equal(1, state.CursorLineIndex);
+        Assert.Equal(5, state.CursorColumnIndex);
+
+        // Move down to "end" (len 3): column clamps to 3
+        state.MoveDown();
+        Assert.Equal(2, state.CursorLineIndex);
+        Assert.Equal(3, state.CursorColumnIndex);
+    }
+
+    [Fact]
+    public void MultiLine_HomeAndEnd_NavigateCurrentLineVersusEntireText() {
+        var text = "first line\nsecond line\nthird line";
+        var state = new TuiLineEditorState(text);
+
+        // Move cursor into middle of second line
+        state.MoveHome(entireText: true);
+        state.MoveDown();
+        state.MoveRight();
+        state.MoveRight();
+        state.MoveRight();
+        Assert.Equal(1, state.CursorLineIndex);
+        Assert.Equal(3, state.CursorColumnIndex);
+
+        // Line Home
+        state.MoveHome(entireText: false);
+        Assert.Equal(1, state.CursorLineIndex);
+        Assert.Equal(0, state.CursorColumnIndex);
+
+        // Line End
+        state.MoveEnd(entireText: false);
+        Assert.Equal(1, state.CursorLineIndex);
+        Assert.Equal("second line".Length, state.CursorColumnIndex);
+
+        // Entire Text Home & End
+        state.MoveHome(entireText: true);
+        Assert.Equal(0, state.Cursor);
+        state.MoveEnd(entireText: true);
+        Assert.Equal(state.Length, state.Cursor);
+    }
+
+    [Fact]
+    public void MultiLine_BackspaceAndDelete_AcrossNewlines() {
+        var state = new TuiLineEditorState("abc\ndef");
+        state.MoveHome(entireText: true);
+        state.MoveDown(); // At start of "def" (Line 1, Col 0, index 4)
+        Assert.Equal(1, state.CursorLineIndex);
+        Assert.Equal(0, state.CursorColumnIndex);
+
+        // Backspace merges line 1 into line 0
+        state.Backspace();
+        Assert.Equal("abcdef", state.Text);
+        Assert.Equal(0, state.CursorLineIndex);
+        Assert.Equal(3, state.CursorColumnIndex);
+
+        // Delete at index 3 removes 'd'
+        state.Delete();
+        Assert.Equal("abcef", state.Text);
+    }
 }
