@@ -27,19 +27,26 @@ COPY Resources/ Resources/
 
 # Publish self-contained single-file executable for target runtime
 ARG TARGETARCH
+ARG APP_VERSION=2.0.0-rc.1
+ARG GIT_COMMIT=""
 RUN set -ex; \
     case "${TARGETARCH:-amd64}" in \
         amd64) RID="linux-x64" ;; \
         arm64) RID="linux-arm64" ;; \
         *) RID="linux-x64" ;; \
     esac; \
-    echo "Publishing for RID: $RID"; \
+    echo "Publishing for RID: $RID (Version: $APP_VERSION)"; \
+    VERSION_FLAGS="-p:Version=${APP_VERSION}"; \
+    if [ -n "$GIT_COMMIT" ]; then \
+        VERSION_FLAGS="$VERSION_FLAGS -p:InformationalVersion=${APP_VERSION}+${GIT_COMMIT}"; \
+    fi; \
     dotnet publish template_builder.csproj \
         -c Release \
         -r "$RID" \
         --self-contained true \
         -p:PublishSingleFile=true \
         -p:EnableCompressionInSingleFile=true \
+        $VERSION_FLAGS \
         -o /app; \
     find /app -type f \( -name "*.pdb" -o -name "*.xml" \) -delete
 

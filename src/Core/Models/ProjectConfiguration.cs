@@ -4,7 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Core.Tui;
+using Core.Schema;
 using Utils;
 using Utils.Exceptions;
 
@@ -16,16 +16,19 @@ namespace Core.Models {
     /// </summary>
     internal sealed class ProjectConfiguration {
         private readonly Dictionary<string, ConfigItem> _items = new(StringComparer.OrdinalIgnoreCase);
-        private readonly ConfigParser _texParser;
-        private readonly ConfigParser _programParser;
+        private ConfigParser _texParser;
+        private ConfigParser _programParser;
         private readonly ILogger? _logger;
+        private readonly ConfigStrictness _strictness;
 
         public ConfigParser TexParser => _texParser;
         public ConfigParser ProgramParser => _programParser;
         public IReadOnlyDictionary<string, ConfigItem> Items => _items;
+        public string? SourcePath { get; private set; }
 
         public ProjectConfiguration(ILogger? logger = null, ConfigStrictness strictness = ConfigStrictness.Lax) {
             _logger = logger;
+            _strictness = strictness;
             _texParser = new ConfigParser("TEX", logger, strictness);
             _programParser = new ConfigParser("PROGRAM", logger, strictness);
             InitializeFromParsers();
@@ -42,20 +45,28 @@ namespace Core.Models {
 
         public void LoadProjectConfig(string jsonContent, string? sourcePath = null) {
             if (string.IsNullOrWhiteSpace(jsonContent)) {
-                throw new MalformedConfigException("配置文件内容为空。", sourcePath);
+                throw new MalformedConfigException("配置文件内容不能为空。", sourcePath);
             }
 
-            // 首先通过两个 ConfigParser 执行语法与严格模式 key 校验
-            _texParser.ParseConfigFile(jsonContent, sourcePath);
-            _programParser.ParseConfigFile(jsonContent, sourcePath);
+            // 1. 在临时解析器中初始化内置默认值（此时尚未加载用户 JSON，保留纯正 BuiltinValue）
+            var newTexParser = new ConfigParser("TEX", _logger, _strictness);
+            var newProgParser = new ConfigParser("PROGRAM", _logger, _strictness);
 
-            // 清理原先的 ProjectValue，避免重新加载时残留
-            foreach (var item in _items.Values) {
-                item.SetProjectValue(null);
+            var newItems = new Dictionary<string, ConfigItem>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, value) in newTexParser.GetAllConfigsAsString()) {
+                newItems[key] = new ConfigItem(key, "TEX", value);
+            }
+            foreach (var (key, value) in newProgParser.GetAllConfigsAsString()) {
+                newItems[key] = new ConfigItem(key, "PROGRAM", value);
             }
 
+            var newTexProjectKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var newTexProjectRawElements = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+            var newProgProjectKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var newProgProjectRawElements = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+
+            // 2. 执行根结构语法解析与严格模式根 key 校验
             try {
-                // 提取 JSON 中明确声明的配置键，赋值为 ProjectValue
                 using var doc = JsonDocument.Parse(jsonContent, new JsonDocumentOptions {
                     CommentHandling = JsonCommentHandling.Skip,
                     AllowTrailingCommas = true
@@ -65,39 +76,86 @@ namespace Core.Models {
                     throw new MalformedConfigException("配置根节点必须为 JSON 对象。", sourcePath);
                 }
 
-                if (doc.RootElement.TryGetProperty("TEX", out var texElem) && texElem.ValueKind == JsonValueKind.Object) {
-                    var texKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    ExtractKeys_R(texElem, [], texKeys);
-                    foreach (var (k, v) in texKeys) {
-                        if (_items.TryGetValue(k, out var item)) {
-                            item.SetProjectValue(v);
-                        } else {
-                            _items[k] = new ConfigItem(k, "TEX", null, projectValue: v);
+                bool hasTex = doc.RootElement.TryGetProperty("TEX", out var texElem);
+                bool hasProg = doc.RootElement.TryGetProperty("PROGRAM", out var progElem);
+
+                if (_strictness == ConfigStrictness.Strict) {
+                    foreach (var prop in doc.RootElement.EnumerateObject()) {
+                        if (!string.Equals(prop.Name, "TEX", StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(prop.Name, "PROGRAM", StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(prop.Name, "$schema", StringComparison.OrdinalIgnoreCase)) {
+                            throw new MalformedConfigException($"配置文件根节点包含未知属性 '{prop.Name}'。只允许 'TEX'、'PROGRAM' 及 '$schema'。", sourcePath);
                         }
                     }
                 }
 
-                if (doc.RootElement.TryGetProperty("PROGRAM", out var progElem) && progElem.ValueKind == JsonValueKind.Object) {
-                    var progKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    ExtractKeys_R(progElem, [], progKeys);
-                    foreach (var (k, v) in progKeys) {
-                        if (_items.TryGetValue(k, out var item)) {
-                            item.SetProjectValue(v);
-                        } else {
-                            _items[k] = new ConfigItem(k, "PROGRAM", null, projectValue: v);
-                        }
+                if (hasTex) {
+                    if (texElem.ValueKind != JsonValueKind.Object) {
+                        throw new MalformedConfigException("配置节点 'TEX' 必须为 JSON 对象。", sourcePath);
                     }
+                    ExtractKeys_R(texElem, [], newTexProjectKeys, newTexProjectRawElements);
+                }
+
+                if (hasProg) {
+                    if (progElem.ValueKind != JsonValueKind.Object) {
+                        throw new MalformedConfigException("配置节点 'PROGRAM' 必须为 JSON 对象。", sourcePath);
+                    }
+                    ExtractKeys_R(progElem, [], newProgProjectKeys, newProgProjectRawElements);
                 }
             } catch (JsonException ex) {
                 throw new MalformedConfigException($"解析 JSON 内容失败：{ex.Message}", sourcePath, ex);
             }
+
+            // 3. 执行语法解析与严格模式内部 key 校验（原子性保证：若语法或 key 错误，不污染当前实例状态）
+            newTexParser.ParseConfigFile(jsonContent, sourcePath);
+            newProgParser.ParseConfigFile(jsonContent, sourcePath);
+
+            foreach (var (k, v) in newTexProjectKeys) {
+                newTexProjectRawElements.TryGetValue(k, out var raw);
+                if (newItems.TryGetValue(k, out var item)) {
+                    item.SetProjectValue(v, raw);
+                } else {
+                    newItems[k] = new ConfigItem(k, "TEX", null, projectValue: v, rawElement: raw);
+                }
+            }
+
+            foreach (var (k, v) in newProgProjectKeys) {
+                newProgProjectRawElements.TryGetValue(k, out var raw);
+                if (newItems.TryGetValue(k, out var item)) {
+                    item.SetProjectValue(v, raw);
+                } else {
+                    newItems[k] = new ConfigItem(k, "PROGRAM", null, projectValue: v, rawElement: raw);
+                }
+            }
+
+            // 4. 暂存当前活跃覆盖项，供重载后重新应用（重载须原子重建各层并重新应用覆盖）
+            var activeOverrides = GetActiveOverrides();
+
+            // 5. 提交原子替换
+            _texParser = newTexParser;
+            _programParser = newProgParser;
+            SourcePath = sourcePath;
+
+            _items.Clear();
+            foreach (var (k, item) in newItems) {
+                _items[k] = item;
+            }
+
+            // 6. 重新应用活跃覆盖项
+            foreach (var (k, v) in activeOverrides) {
+                TrySetOverride(k, v);
+            }
         }
 
-        private static void ExtractKeys_R(JsonElement element, List<string> path, Dictionary<string, string> results) {
+        private static void ExtractKeys_R(
+            JsonElement element,
+            List<string> path,
+            Dictionary<string, string> results,
+            Dictionary<string, JsonElement> rawElements) {
             if (element.ValueKind == JsonValueKind.Object) {
                 foreach (var prop in element.EnumerateObject()) {
                     path.Add(prop.Name.ToUpperInvariant());
-                    ExtractKeys_R(prop.Value, path, results);
+                    ExtractKeys_R(prop.Value, path, results, rawElements);
                     path.RemoveAt(path.Count - 1);
                 }
             } else {
@@ -105,6 +163,7 @@ namespace Core.Models {
                 results[key] = element.ValueKind == JsonValueKind.String
                     ? (element.GetString() ?? string.Empty)
                     : element.GetRawText();
+                rawElements[key] = element.Clone();
             }
         }
 
@@ -194,55 +253,84 @@ namespace Core.Models {
         /// 保存后，所有运行时覆盖将晋升为项目配置值（HasProjectValue = true），覆盖状态被清空。
         /// </summary>
         public void SaveToFile(string targetPath) {
-            JsonObject rootNode;
-            if (File.Exists(targetPath)) {
-                try {
-                    var existingJson = File.ReadAllText(targetPath);
-                    rootNode = JsonNode.Parse(existingJson, null, new JsonDocumentOptions {
-                        CommentHandling = JsonCommentHandling.Skip,
-                        AllowTrailingCommas = true
-                    }) as JsonObject ?? new JsonObject();
-                } catch {
-                    rootNode = new JsonObject();
-                }
-            } else {
-                try {
-                    var defaultJson = new ManifestResourceManager().GetResourceInString("DefaultConfig.jsonc");
-                    rootNode = JsonNode.Parse(defaultJson, null, new JsonDocumentOptions {
-                        CommentHandling = JsonCommentHandling.Skip,
-                        AllowTrailingCommas = true
-                    }) as JsonObject ?? new JsonObject();
-                } catch {
-                    rootNode = new JsonObject();
-                }
+            if (string.IsNullOrWhiteSpace(targetPath)) {
+                throw new ArgumentException("保存路径不能为空。", nameof(targetPath));
             }
 
-            if (rootNode["$schema"] == null) {
-                rootNode["$schema"] = "./DefaultConfig.schema.json";
-            }
-
-            // 更新所有有项目值或覆盖值的配置项
-            foreach (var field in TuiSchemaCatalog.AllFields) {
-                var item = GetItem(field.Key);
-                if (item == null) continue;
-
-                // 仅当用户覆盖了该项，或者该项原本就有项目值时写回
-                if (!item.IsOverridden && !item.HasProjectValue) continue;
-
-                var val = item.EffectiveValue ?? string.Empty;
-                SetNodeValueByPath(rootNode, field, val);
-            }
-
-            var dir = Path.GetDirectoryName(Path.GetFullPath(targetPath));
+            var fullTargetPath = Path.GetFullPath(targetPath);
+            var dir = Path.GetDirectoryName(fullTargetPath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) {
                 Directory.CreateDirectory(dir);
             }
 
-            var options = new JsonSerializerOptions {
-                WriteIndented = true,
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            };
-            File.WriteAllText(targetPath, rootNode.ToJsonString(options));
+            // 交付配套 Schema 文件（同 init 规范，使编辑器开箱即用支持自动补全与校验）
+            if (!string.IsNullOrEmpty(dir)) {
+                var schemaPath = Path.Combine(dir, "DefaultConfig.schema.json");
+                if (!File.Exists(schemaPath)) {
+                    try {
+                        var schemaText = new ManifestResourceManager().GetResourceInString("DefaultConfig.schema.json");
+                        File.WriteAllText(schemaPath, schemaText, new System.Text.UTF8Encoding(false));
+                    } catch {
+                        // 忽略 Schema 写入异常
+                    }
+                }
+            }
+
+            var isSaveAs = string.IsNullOrEmpty(SourcePath) ||
+                !string.Equals(Path.GetFullPath(SourcePath), fullTargetPath, StringComparison.OrdinalIgnoreCase);
+
+            string existingContent = string.Empty;
+            if (File.Exists(fullTargetPath)) {
+                existingContent = File.ReadAllText(fullTargetPath);
+                // 损坏目标检查：若已有目标文件存在语法错误或非 JSON 对象，拒绝静默覆盖
+                try {
+                    using var doc = JsonDocument.Parse(existingContent, new JsonDocumentOptions {
+                        CommentHandling = JsonCommentHandling.Skip,
+                        AllowTrailingCommas = true
+                    });
+                    if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                        throw new MalformedConfigException($"目标配置文件根节点必须为 JSON 对象：\"{fullTargetPath}\"。", fullTargetPath);
+                    }
+                } catch (JsonException ex) {
+                    throw new MalformedConfigException($"目标配置文件格式损坏（JSON 语法错误）：{ex.Message}。已中止写入以防止覆盖破坏现有文件。请手动修复或另存为其他路径。", fullTargetPath, ex);
+                }
+
+                // 创建 .bak 备份
+                var backupPath = fullTargetPath + ".bak";
+                File.Copy(fullTargetPath, backupPath, overwrite: true);
+            }
+
+            // 收集需要写入的配置项
+            var updates = new List<(ConfigFieldDefinition Field, string Value)>();
+            foreach (var field in ConfigSchemaCatalog.AllFields) {
+                var item = GetItem(field.Key);
+                if (item == null) continue;
+
+                if (isSaveAs) {
+                    // 另存为：保存会话完整有效状态，杜绝混入目标旧值
+                    updates.Add((field, item.EffectiveValue ?? string.Empty));
+                } else {
+                    // 原地保存：仅当用户覆盖了该项，或者该项原本就有项目值时写回
+                    if (item.IsOverridden || item.HasProjectValue) {
+                        updates.Add((field, item.EffectiveValue ?? string.Empty));
+                    }
+                }
+            }
+
+            var finalContent = JsoncConfigUpdater.UpdateJsonc(existingContent, updates);
+
+            // 原子化写入（写失败不截断旧文件）
+            var tempFile = Path.Combine(dir ?? ".", $".{Path.GetFileName(fullTargetPath)}.{Guid.NewGuid():N}.tmp");
+            try {
+                File.WriteAllText(tempFile, finalContent, new System.Text.UTF8Encoding(false));
+                File.Move(tempFile, fullTargetPath, overwrite: true);
+            } finally {
+                if (File.Exists(tempFile)) {
+                    try { File.Delete(tempFile); } catch { }
+                }
+            }
+
+            SourcePath = fullTargetPath;
 
             // 保存后将所有已生效的覆盖项转变为 ProjectValue，清空 OverrideValue
             foreach (var item in _items.Values) {
@@ -251,60 +339,6 @@ namespace Core.Models {
                     item.ClearOverride();
                 }
             }
-        }
-
-        private static void SetNodeValueByPath(JsonObject root, TuiConfigField field, string val) {
-            if (string.IsNullOrEmpty(field.JsonPath)) return;
-
-            var parts = field.JsonPath.Split('.');
-            if (parts.Length < 2) return;
-
-            JsonObject current = root;
-            for (int i = 0; i < parts.Length - 1; i++) {
-                var part = parts[i];
-                if (current[part] is JsonObject childObj) {
-                    current = childObj;
-                } else {
-                    var newObj = new JsonObject();
-                    current[part] = newObj;
-                    current = newObj;
-                }
-            }
-
-            var leafKey = parts[^1];
-            if (field.Kind == TuiFieldKind.Toggle || field.ExpectedType == "boolean") {
-                if (bool.TryParse(val, out var b)) {
-                    current[leafKey] = b;
-                    return;
-                }
-            } else if (field.Kind == TuiFieldKind.Number || field.ExpectedType is "integer" or "number") {
-                if (int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)) {
-                    current[leafKey] = n;
-                    return;
-                }
-                if (decimal.TryParse(val, NumberStyles.Number, CultureInfo.InvariantCulture, out var d)) {
-                    current[leafKey] = d;
-                    return;
-                }
-            } else if (field.Kind == TuiFieldKind.Array || field.ExpectedType == "array") {
-                try {
-                    var parsed = JsonNode.Parse(val);
-                    if (parsed is JsonArray arr) {
-                        current[leafKey] = arr;
-                        return;
-                    }
-                } catch { }
-
-                var items = val.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var jsonArr = new JsonArray();
-                foreach (var s in items) {
-                    jsonArr.Add(s);
-                }
-                current[leafKey] = jsonArr;
-                return;
-            }
-
-            current[leafKey] = val;
         }
     }
 }

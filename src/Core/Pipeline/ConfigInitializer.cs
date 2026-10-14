@@ -69,6 +69,18 @@ namespace Core.Pipeline {
             } catch (MissingEmbeddedResourceException ex) {
                 _logger.Error(ex.Message);
                 return ExitCodes.MissingEmbeddedResource;
+            } catch (UnauthorizedAccessException ex) {
+                _logger.Error($"无法写入配置文件 \"{options.OutputPath.FullName}\"：无访问权限（{ex.Message}）。请检查目标路径权限。");
+                return ExitCodes.InvalidArguments;
+            } catch (DirectoryNotFoundException ex) {
+                _logger.Error($"无法写入配置文件 \"{options.OutputPath.FullName}\"：目标目录不存在（{ex.Message}）。");
+                return ExitCodes.InvalidArguments;
+            } catch (IOException ex) {
+                _logger.Error($"写入配置文件 \"{options.OutputPath.FullName}\" 时发生 I/O 错误：{ex.Message}。");
+                return ExitCodes.InvalidArguments;
+            } catch (Exception ex) {
+                _logger.Error($"初始化配置文件失败：{ex.Message}");
+                return ExitCodes.InvalidArguments;
             }
         }
 
@@ -77,24 +89,28 @@ namespace Core.Pipeline {
                 return;
             }
 
-            if (File.Exists(schemaPath)) {
-                if (force) {
-                    var backupPath = schemaPath + ".bak";
-                    File.Copy(schemaPath, backupPath, overwrite: true);
-                    _logger.Info($"检测到已有 Schema 文件，已备份原文件至 \"{backupPath}\"。");
+            try {
+                if (File.Exists(schemaPath)) {
+                    if (force) {
+                        var backupPath = schemaPath + ".bak";
+                        File.Copy(schemaPath, backupPath, overwrite: true);
+                        _logger.Info($"检测到已有 Schema 文件，已备份原文件至 \"{backupPath}\"。");
+                        File.WriteAllText(schemaPath, schemaContent, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                        _logger.Info($"配套 Schema 已交付：\"{schemaPath}\"（供编辑器自动补全与校验）。");
+                    } else {
+                        var existingContent = File.ReadAllText(schemaPath);
+                        if (string.Equals(existingContent, schemaContent, StringComparison.Ordinal)) {
+                            _logger.Info($"检测到已存在匹配的 Schema 文件，保持使用：\"{schemaPath}\"。");
+                        } else {
+                            _logger.Info($"检测到已存在 Schema 文件，已保留现有文件：\"{schemaPath}\"。若需覆盖更新并自动生成备份，请使用 --force (-f) 选项。");
+                        }
+                    }
+                } else {
                     File.WriteAllText(schemaPath, schemaContent, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                     _logger.Info($"配套 Schema 已交付：\"{schemaPath}\"（供编辑器自动补全与校验）。");
-                } else {
-                    var existingContent = File.ReadAllText(schemaPath);
-                    if (string.Equals(existingContent, schemaContent, StringComparison.Ordinal)) {
-                        _logger.Info($"检测到已存在匹配的 Schema 文件，保持使用：\"{schemaPath}\"。");
-                    } else {
-                        _logger.Info($"检测到已存在 Schema 文件，已保留现有文件：\"{schemaPath}\"。若需覆盖更新并自动生成备份，请使用 --force (-f) 选项。");
-                    }
                 }
-            } else {
-                File.WriteAllText(schemaPath, schemaContent, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                _logger.Info($"配套 Schema 已交付：\"{schemaPath}\"（供编辑器自动补全与校验）。");
+            } catch (Exception ex) {
+                _logger.Warning($"交付配套 Schema 文件 \"{schemaPath}\" 失败：{ex.Message}。此问题不影响配置文件生成。");
             }
         }
 

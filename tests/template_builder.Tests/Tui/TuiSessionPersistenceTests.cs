@@ -103,4 +103,62 @@ public class TuiSessionPersistenceTests {
         session.LastFocusedCategoryId = "category_code";
         Assert.Equal("category_code", session.LastFocusedCategoryId);
     }
+
+    [Fact]
+    public void ProjectSession_TracksConfigurationLoadedState() {
+        var session = new ProjectSession();
+        Assert.False(session.IsConfigurationLoaded);
+        Assert.Null(session.LoadedConfigPath);
+
+        session.LoadConfig("""
+        {
+            "TEX": {
+                "layout": { "columns": 1 }
+            }
+        }
+        """, "/tmp/test-config.json");
+
+        Assert.True(session.IsConfigurationLoaded);
+        Assert.Equal("/tmp/test-config.json", session.LoadedConfigPath);
+        Assert.Equal("1", session.Configuration.Items["LAYOUT_COLUMNS"].EffectiveValue);
+    }
+
+    [Fact]
+    public void LoadOrRecoverConfiguration_LoadsExplicitConfigFile_AndSetsLoadedState() {
+        using var tmp = TempDir.Create();
+        var cfgPath = Path.Combine(tmp.Path, "custom.json");
+        File.WriteAllText(cfgPath, """
+        {
+            "TEX": {
+                "layout": { "columns": 1 }
+            }
+        }
+        """);
+
+        var session = new ProjectSession(new TestLogger()) {
+            ConfigFile = new FileInfo(cfgPath),
+            UserProvidedConfig = true
+        };
+        Assert.False(session.IsConfigurationLoaded);
+        // 初始构造的配置为默认值 2
+        Assert.Equal("2", session.Configuration.Items["LAYOUT_COLUMNS"].EffectiveValue);
+
+        var launch = new TuiLaunchOptions(
+            new DirectoryInfo(tmp.Path),
+            new FileInfo(Path.Combine(tmp.Path, "out.pdf")),
+            new FileInfo(cfgPath),
+            UserProvidedConfig: true,
+            TemplateDir: null,
+            Verbose: false,
+            EnsureDefaultConfig: () => new FileInfo(cfgPath)
+        );
+
+        var runner = new TuiRunner(new TestLogger());
+        runner.LoadOrRecoverConfiguration(session, launch, new TestLogger());
+
+        Assert.True(session.IsConfigurationLoaded);
+        Assert.Equal(cfgPath, session.LoadedConfigPath);
+        // 真实加载了配置文件的 columns = 1
+        Assert.Equal("1", session.Configuration.Items["LAYOUT_COLUMNS"].EffectiveValue);
+    }
 }

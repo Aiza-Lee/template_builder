@@ -21,13 +21,13 @@ namespace template_builder.Tests.Diagnostics {
                 @"\unknownmacro"
             });
 
-            var stdout = @"This is XeTeX, Version 3.141592653-2.6-0.999995
-(./mid-output.tex
-! Undefined control sequence.
-l.9 \unknownmacro
-                 
-No pages of output.
-Transcript written on mid-output.log.";
+            var stdout = "This is XeTeX, Version 3.141592653-2.6-0.999995\n" +
+                "(./mid-output.tex\n" +
+                "! Undefined control sequence.\n" +
+                "l.9 \\unknownmacro\n" +
+                "                 \n" +
+                "No pages of output.\n" +
+                "Transcript written on mid-output.log.";
 
             var result = LatexDiagnosticParser.Parse(stdout, "", null, texPath);
 

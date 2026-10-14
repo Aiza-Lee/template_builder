@@ -1,3 +1,5 @@
+using Core.Models;
+
 namespace Core.Tui {
     /// <summary>
     /// 启动 TUI 交互模式所需的上下文。所有路径均来自命令行（可为 null = 由 TUI 提示输入）。
@@ -9,6 +11,8 @@ namespace Core.Tui {
     /// <param name="TemplateDir">外部模板目录（可选）</param>
     /// <param name="Verbose">是否启用 DEBUG 级日志</param>
     /// <param name="EnsureDefaultConfig">默认配置的回退工厂（首次运行时从嵌入资源生成）</param>
+    /// <param name="InitialPreset">命令行传入的初始排版预设（可选）</param>
+    /// <param name="InitialSampleLimit">命令行传入的初始小样文件数量（可选）</param>
     internal sealed record TuiLaunchOptions(
         DirectoryInfo? SourceDir,
         FileInfo? OutputPdf,
@@ -16,6 +20,8 @@ namespace Core.Tui {
         bool UserProvidedConfig,
         DirectoryInfo? TemplateDir,
         bool Verbose,
-        Func<FileInfo> EnsureDefaultConfig
+        Func<FileInfo> EnsureDefaultConfig,
+        LayoutPreset? InitialPreset = null,
+        int? InitialSampleLimit = null
     );
 }

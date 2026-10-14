@@ -121,7 +121,7 @@ namespace Core.Tui {
                 items.Add(new Markup($"[bold {TuiTheme.Primary}]=== Template Builder ===[/]"));
             }
 
-            var subtitle = Core.Localization.I18n.T("Banner.Subtitle", "ACM/ICPC 代码模板生成工具 | 全屏交互模式 v2.0.0");
+            var subtitle = Core.Localization.I18n.T("Banner.Subtitle", $"ACM/ICPC 代码模板生成工具 | 全屏交互模式 v{AppVersion.DisplayVersion}");
             items.Add(new Markup($"[bold {TuiTheme.Primary}]{Markup.Escape(subtitle)}[/]"));
             items.Add(new Rule().RuleStyle(TuiTheme.PrimaryDim));
 
@@ -210,13 +210,13 @@ namespace Core.Tui {
             }
 
             console.WriteLine();
-            console.Write(new Rule($"[bold cyan]{Markup.Escape(field.Label)}[/]") { Justification = Justify.Left });
+            console.Write(new Rule($"[bold cyan]{Markup.Escape(field.DisplayLabel)}[/]") { Justification = Justify.Left });
             console.MarkupLine($"[grey]{Core.Localization.I18n.T("Field.Key", "配置键名：")}[/]{Markup.Escape(field.Key)} [grey]({Markup.Escape(field.Section)})[/]");
             if (!string.IsNullOrWhiteSpace(field.Category)) {
                 console.MarkupLine($"[grey]{Core.Localization.I18n.T("Field.Category", "所属分类：")}[/]{Markup.Escape(field.Category)}");
             }
-            if (!string.IsNullOrWhiteSpace(field.Description)) {
-                console.MarkupLine($"[grey]{Core.Localization.I18n.T("Field.Desc", "功能解释：")}[/]{Markup.Escape(field.Description)}");
+            if (!string.IsNullOrWhiteSpace(field.DisplayDescription)) {
+                console.MarkupLine($"[grey]{Core.Localization.I18n.T("Field.Desc", "功能解释：")}[/]{Markup.Escape(field.DisplayDescription)}");
             }
             if (!string.IsNullOrWhiteSpace(field.Constraints)) {
                 console.MarkupLine($"[grey]{Core.Localization.I18n.T("Field.Constraints", "内容约束：")}[/][yellow]{Markup.Escape(field.Constraints)}[/]");
@@ -258,13 +258,13 @@ namespace Core.Tui {
             string defaultVal
         ) {
             console.WriteLine();
-            console.Write(new Rule($"[bold {TuiTheme.Secondary}]{Markup.Escape(field.Label)}[/]") { Justification = Justify.Left });
+            console.Write(new Rule($"[bold {TuiTheme.Secondary}]{Markup.Escape(field.DisplayLabel)}[/]") { Justification = Justify.Left });
             console.MarkupLine($"[grey]{Core.Localization.I18n.T("Field.Key", "配置键名：")}[/]{Markup.Escape(field.Key)} [grey]({Markup.Escape(field.Section)})[/]");
             if (!string.IsNullOrWhiteSpace(field.Category)) {
                 console.MarkupLine($"[grey]{Core.Localization.I18n.T("Field.Category", "所属分类：")}[/]{Markup.Escape(field.Category)}");
             }
-            if (!string.IsNullOrWhiteSpace(field.Description)) {
-                console.MarkupLine($"[grey]{Core.Localization.I18n.T("Field.Desc", "功能解释：")}[/]{Markup.Escape(field.Description)}");
+            if (!string.IsNullOrWhiteSpace(field.DisplayDescription)) {
+                console.MarkupLine($"[grey]{Core.Localization.I18n.T("Field.Desc", "功能解释：")}[/]{Markup.Escape(field.DisplayDescription)}");
             }
             if (!string.IsNullOrWhiteSpace(field.Constraints)) {
                 console.MarkupLine($"[grey]{Core.Localization.I18n.T("Field.Constraints", "内容约束：")}[/][{TuiTheme.Warning}]{Markup.Escape(field.Constraints)}[/]");
@@ -321,7 +321,7 @@ namespace Core.Tui {
             } else {
                 var emptyText = Core.Localization.I18n.T("Field.Empty", "<空>");
                 foreach (var (k, v) in overrides) {
-                    var label = TuiSchemaCatalog.FieldsByKey.TryGetValue(k, out var f) ? f.Label : k;
+                    var label = TuiSchemaCatalog.FieldsByKey.TryGetValue(k, out var f) ? f.DisplayLabel : k;
                     var dispV = FormatFieldValueDisplay(v, k);
                     if (configuration != null) {
                         var item = configuration.GetItem(k);
@@ -561,6 +561,8 @@ namespace Core.Tui {
                         SourceExclusionReason.IgnorePattern => Core.Localization.I18n.T("SourceTree.ReasonIgnore", "命中排除模式"),
                         SourceExclusionReason.Hidden => Core.Localization.I18n.T("SourceTree.ReasonHidden", "隐藏文件"),
                         SourceExclusionReason.DepthExceeded => Core.Localization.I18n.T("SourceTree.ReasonDepth", "深度超限"),
+                        SourceExclusionReason.SymlinkLoop => Core.Localization.I18n.T("SourceTree.ReasonSymlinkLoop", "符号链接循环"),
+                        SourceExclusionReason.ExternalSymlink => Core.Localization.I18n.T("SourceTree.ReasonExternalSymlink", "外部符号链接"),
                         _ => f.Reason.ToString()
                     };
                     table.AddRow(
@@ -575,6 +577,9 @@ namespace Core.Tui {
                         SourceExclusionReason.EmptyDirectory => Core.Localization.I18n.T("SourceTree.ReasonEmptyDir", "空目录/无有效代码"),
                         SourceExclusionReason.IgnorePattern => Core.Localization.I18n.T("SourceTree.ReasonIgnore", "命中排除模式"),
                         SourceExclusionReason.Hidden => Core.Localization.I18n.T("SourceTree.ReasonHiddenDir", "隐藏目录"),
+                        SourceExclusionReason.DepthExceeded => Core.Localization.I18n.T("SourceTree.ReasonDepth", "深度超限"),
+                        SourceExclusionReason.SymlinkLoop => Core.Localization.I18n.T("SourceTree.ReasonSymlinkLoop", "符号链接循环"),
+                        SourceExclusionReason.ExternalSymlink => Core.Localization.I18n.T("SourceTree.ReasonExternalSymlink", "外部符号链接"),
                         _ => d.Reason.ToString()
                     };
                     table.AddRow(

@@ -268,4 +268,139 @@ public class ConfigValidatorTests {
         Assert.Null(nonExistent.Min);
         Assert.Null(nonExistent.Max);
     }
+
+    [Fact]
+    public void Validate_NumberForString_Author_ReturnsError() {
+        var config = new ProjectConfiguration();
+        var json = """
+        {
+            "TEX": {
+                "author": 123
+            }
+        }
+        """;
+        config.LoadProjectConfig(json);
+
+        var result = ConfigValidator.Validate(config);
+
+        Assert.False(result.IsValid);
+        var err = Assert.Single(result.Errors, e => e.Key == "AUTHOR");
+        Assert.Contains("类型必须为字符串", err.Message);
+    }
+
+    [Fact]
+    public void Validate_NumberForBoolean_EnableCover_ReturnsError() {
+        var config = new ProjectConfiguration();
+        var json = """
+        {
+            "TEX": {
+                "title": {
+                    "enable_cover": 1
+                }
+            }
+        }
+        """;
+        config.LoadProjectConfig(json);
+
+        var result = ConfigValidator.Validate(config);
+
+        Assert.False(result.IsValid);
+        var err = Assert.Single(result.Errors, e => e.Key == "TITLE_ENABLE_COVER");
+        Assert.Contains("不是合法的布尔值", err.Message);
+    }
+
+    [Fact]
+    public void Validate_NumberForArray_IgnorePatterns_ReturnsError() {
+        var config = new ProjectConfiguration();
+        var json = """
+        {
+            "PROGRAM": {
+                "ignore_patterns": 42
+            }
+        }
+        """;
+        config.LoadProjectConfig(json);
+
+        var result = ConfigValidator.Validate(config);
+
+        Assert.False(result.IsValid);
+        var err = Assert.Single(result.Errors, e => e.Key == "IGNORE_PATTERNS");
+        Assert.Contains("类型必须为数组", err.Message);
+    }
+
+    [Fact]
+    public void Validate_NonStringInArray_IgnorePatterns_ReturnsError() {
+        var config = new ProjectConfiguration();
+        var json = """
+        {
+            "PROGRAM": {
+                "ignore_patterns": ["*.bak", 42]
+            }
+        }
+        """;
+        config.LoadProjectConfig(json);
+
+        var result = ConfigValidator.Validate(config);
+
+        Assert.False(result.IsValid);
+        var err = Assert.Single(result.Errors, e => e.Key == "IGNORE_PATTERNS");
+        Assert.Contains("数组元素必须为字符串", err.Message);
+    }
+
+    [Fact]
+    public void Validate_EmptyPatternInIgnorePatterns_ReturnsError() {
+        var config = new ProjectConfiguration();
+        var json = """
+        {
+            "PROGRAM": {
+                "ignore_patterns": ["  "]
+            }
+        }
+        """;
+        config.LoadProjectConfig(json);
+
+        var result = ConfigValidator.Validate(config);
+
+        Assert.False(result.IsValid);
+        var err = Assert.Single(result.Errors, e => e.Key == "IGNORE_PATTERNS");
+        Assert.Contains("包含空通配符条目", err.Message);
+    }
+
+    [Fact]
+    public void Validate_InvalidSectionOrderOverride_ReturnsError() {
+        var config = new ProjectConfiguration();
+        var json = """
+        {
+            "PROGRAM": {
+                "section_order_overrides": ["invalid_format"]
+            }
+        }
+        """;
+        config.LoadProjectConfig(json);
+
+        var result = ConfigValidator.Validate(config);
+
+        Assert.False(result.IsValid);
+        var err = Assert.Single(result.Errors, e => e.Key == "SECTION_ORDER_OVERRIDES");
+        Assert.Contains("格式非法", err.Message);
+    }
+
+    [Fact]
+    public void Validate_InvalidSectionTitleOverride_ReturnsError() {
+        var config = new ProjectConfiguration();
+        var json = """
+        {
+            "PROGRAM": {
+                "section_title_overrides": ["invalid_format"]
+            }
+        }
+        """;
+        config.LoadProjectConfig(json);
+
+        var result = ConfigValidator.Validate(config);
+
+        Assert.False(result.IsValid);
+        var err = Assert.Single(result.Errors, e => e.Key == "SECTION_TITLE_OVERRIDES");
+        Assert.Contains("格式非法", err.Message);
+    }
 }

@@ -100,7 +100,6 @@ namespace Core.Tui {
         public static TuiMenuItem Prompt(
             string titleMarkup,
             IReadOnlyList<TuiMenuItem> items,
-            int pageSize = 14,
             int defaultIndex = 0,
             string? initialSelectedId = null,
             TuiMenuItem? onEnterAction = null,
@@ -136,12 +135,21 @@ namespace Core.Tui {
                     : Core.Localization.I18n.T("Controls.SelectSimple", "[grey]操作：[[↑/↓, jk]] 移动  [[Space / Enter / l]] 确认  [[← / Esc / h]] 返回[/]"));
             var effectiveHelp = customHelp ?? defaultHelp;
 
-            AnsiConsole.Live(RenderMenu(titleMarkup, items, selectedIndex, 0, int.MaxValue, effectiveHelp))
+            int initialHeight = TuiEnvironment.SafeWindowHeight();
+            int initialReserved = 4;
+            int initialPageSize = Math.Max(3, initialHeight - initialReserved);
+            int scrollOffset = 0;
+            if (selectedIndex >= initialPageSize) {
+                scrollOffset = selectedIndex - initialPageSize + 1;
+            }
+
+            AnsiConsole.Live(RenderMenu(titleMarkup, items, selectedIndex, scrollOffset, initialPageSize, effectiveHelp))
                 .AutoClear(true)
                 .Start(ctx => {
                     while (chosen == null) {
                         var requiredWidth = TerminalWidthRegistry.GetRequiredWidth();
                         var currentWidth = TuiEnvironment.SafeWindowWidth();
+                        var currentHeight = TuiEnvironment.SafeWindowHeight();
 
                         if (currentWidth < requiredWidth) {
                             // 终端宽度过小：直接显示窗口过小，不显示内容，并实时检测并提示当前终端宽度和要求的宽度
@@ -162,12 +170,27 @@ namespace Core.Tui {
                             continue;
                         }
 
-                        ctx.UpdateTarget(RenderMenu(titleMarkup, items, selectedIndex, 0, int.MaxValue, effectiveHelp));
+                        // 随终端高度与选区动态调整 pageSize 与视口滚动位置，确保焦点及操作提示始终可见
+                        int reserved = 4;
+                        int pageSize = Math.Max(3, currentHeight - reserved);
+                        if (items.Count <= pageSize) {
+                            scrollOffset = 0;
+                        } else {
+                            if (selectedIndex < scrollOffset) {
+                                scrollOffset = selectedIndex;
+                            } else if (selectedIndex >= scrollOffset + pageSize) {
+                                scrollOffset = selectedIndex - pageSize + 1;
+                            }
+                            scrollOffset = Math.Clamp(scrollOffset, 0, Math.Max(0, items.Count - pageSize));
+                        }
+
+                        ctx.UpdateTarget(RenderMenu(titleMarkup, items, selectedIndex, scrollOffset, pageSize, effectiveHelp));
                         ctx.Refresh();
 
                         while (!Console.KeyAvailable && chosen == null) {
                             var checkWidth = TuiEnvironment.SafeWindowWidth();
-                            if (checkWidth != currentWidth) {
+                            var checkHeight = TuiEnvironment.SafeWindowHeight();
+                            if (checkWidth != currentWidth || checkHeight != currentHeight) {
                                 break;
                             }
                             Thread.Sleep(30);
@@ -284,8 +307,20 @@ namespace Core.Tui {
             rows.Add(new Markup(titleMarkup));
             rows.Add(new Text(string.Empty));
 
-            // 2. 全部平铺渲染选项（不折叠、不显示“向上/向下还有xx项”）
-            for (int i = 0; i < items.Count; i++) {
+            // 2. 计算当前可视窗口区间，平铺渲染可视项（随焦点自动滚动视口）
+            int effectivePageSize = pageSize <= 0 ? items.Count : pageSize;
+            int start = Math.Clamp(scrollOffset, 0, Math.Max(0, items.Count - 1));
+            int end = Math.Min(items.Count, start + effectivePageSize);
+
+            if (selectedIndex < start) {
+                start = selectedIndex;
+                end = Math.Min(items.Count, start + effectivePageSize);
+            } else if (selectedIndex >= end) {
+                end = selectedIndex + 1;
+                start = Math.Max(0, end - effectivePageSize);
+            }
+
+            for (int i = start; i < end; i++) {
                 var item = items[i];
                 var isSelected = i == selectedIndex;
 
@@ -332,10 +367,13 @@ namespace Core.Tui {
                     : $"{prefix}[{TuiTheme.Secondary}]*  {Markup.Escape(item.Title)}[/]";
             }
 
+            // 压缩多行详情为单行，防止破坏短屏视口行高
+            var detailsText = CompressDetails(item.Details);
+
             // 普通配置项或分类：
             // 【核心】有覆盖的配置选项通过柔和暖琥珀色标记
             if (item.IsOverridden) {
-                var details = string.IsNullOrEmpty(item.Details) ? string.Empty : $" [{TuiTheme.Warning}]  {Markup.Escape(item.Details)}[/]";
+                var details = string.IsNullOrEmpty(detailsText) ? string.Empty : $" [{TuiTheme.Warning}]  {Markup.Escape(detailsText)}[/]";
                 var badge = $" [bold {TuiTheme.Warning}]*[/]";
                 return isSelected
                     ? $"{prefix}[bold {TuiTheme.Warning} on {TuiTheme.Surface}]{Markup.Escape(item.Title)}[/]{details}{badge}"
@@ -343,10 +381,19 @@ namespace Core.Tui {
             }
 
             // 未覆盖的默认配置项：干净柔和文字
-            var normDetails = string.IsNullOrEmpty(item.Details) ? string.Empty : $" [grey]  {Markup.Escape(item.Details)}[/]";
+            var normDetails = string.IsNullOrEmpty(detailsText) ? string.Empty : $" [grey]  {Markup.Escape(detailsText)}[/]";
             return isSelected
                 ? $"{prefix}[bold {TuiTheme.Secondary} on {TuiTheme.Surface}]{Markup.Escape(item.Title)}[/]{normDetails}"
                 : $"{prefix}[{TuiTheme.TextLight}]{Markup.Escape(item.Title)}[/]{normDetails}";
+        }
+
+        private static string CompressDetails(string? details) {
+            if (string.IsNullOrWhiteSpace(details)) return string.Empty;
+            var singleLine = details.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ');
+            while (singleLine.Contains("  ")) {
+                singleLine = singleLine.Replace("  ", " ");
+            }
+            return singleLine.Trim();
         }
     }
 }

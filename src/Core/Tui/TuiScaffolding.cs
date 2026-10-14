@@ -113,15 +113,15 @@ namespace Core.Tui {
                 }),
                 ("04_step2_fields_list", "步骤 2: 分类字段清单与修改标记", c => {
                     var featuredCat = TuiSchemaCatalog.Categories[0];
-                    c.MarkupLine($"[bold cyan]{featuredCat.Title}[/] — [grey]{featuredCat.Description}[/]");
+                    c.MarkupLine($"[bold cyan]{Markup.Escape(featuredCat.Title)}[/] — [grey]{Markup.Escape(featuredCat.Description)}[/]");
                     c.WriteLine();
                     foreach (var f in featuredCat.Fields) {
                         var isOverridden = mockOverrides.TryGetValue(f.Key, out var val);
                         var cur = isOverridden ? val : (mockCurrent.TryGetValue(f.Key, out var cv) ? cv : "");
                         if (isOverridden) {
-                            c.MarkupLine($"  • [bold {TuiTheme.Warning}]{f.Label}[/] [{TuiTheme.Warning}]({cur})[/] [bold {TuiTheme.Warning}](已修改)[/]");
+                            c.MarkupLine($"  • [bold {TuiTheme.Warning}]{Markup.Escape(f.DisplayLabel)}[/] [{TuiTheme.Warning}]({Markup.Escape(cur ?? string.Empty)})[/] [bold {TuiTheme.Warning}](已修改)[/]");
                         } else {
-                            c.MarkupLine($"  • [{TuiTheme.TextLight}]{f.Label}[/] [grey]({cur})[/]");
+                            c.MarkupLine($"  • [{TuiTheme.TextLight}]{Markup.Escape(f.DisplayLabel)}[/] [grey]({Markup.Escape(cur ?? string.Empty)})[/]");
                         }
                     }
                 }),

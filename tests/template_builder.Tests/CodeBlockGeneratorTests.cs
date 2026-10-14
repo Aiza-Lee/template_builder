@@ -734,4 +734,43 @@ public class CodeBlockGeneratorTests {
         Assert.Contains(rawContent, output);
         Assert.DoesNotContain(@"\begin{minted}", output);
     }
+
+    [Fact]
+    public void SanitizeMintedContent_SafelyEncodesMintedEndTags() {
+        var input = "line1\n\\end{minted}\n\\end{minted*}\n\\end {minted}\n\\end{\t minted }\nline2";
+        var sanitized = CodeBlockGenerator.SanitizeMintedContent(input);
+
+        Assert.DoesNotContain("\\end{minted}", sanitized, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\end{minted*}", sanitized, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\end {minted}", sanitized, StringComparison.Ordinal);
+        Assert.Contains("\\end\u200b{minted}", sanitized, StringComparison.Ordinal);
+        Assert.Contains("\\end\u200b{minted*}", sanitized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Generate_CodeWithMintedEndTags_EncapsulatesAsVerbatimText() {
+        using var tmp = TempDir.Create();
+        var attackText = "ordinary text\n\\end{minted}\n\\immediate\\write18{touch /tmp/malicious.marker}\n\\begin{minted}{text}\nordinary tail\n";
+        File.WriteAllText(Path.Combine(tmp.Path, "script.txt"), attackText);
+
+        var logger = new TestLogger();
+        var parser = new ConfigParser("PROGRAM", logger);
+        parser.ParseConfigFile("""
+        {
+            "PROGRAM": {
+                "include_file_types": [ ".txt" ]
+            }
+        }
+        """);
+        var generator = new CodeBlockGenerator(
+            logger, parser, 4, new DirectoryInfo(tmp.Path),
+            new ManifestResourceManager().GetResourceInString("Templates.CodeBlock.tex"),
+            sectionDepth: 5, escapeSectionNames: true);
+        var output = generator.Generate();
+
+        // 验证 \end{minted} 被零宽字符安全隔离，没有未转义的闭合环境，且命令正文保留在代码块中
+        Assert.DoesNotContain("\\end{minted}", output[..output.LastIndexOf("\\end{minted}")], StringComparison.Ordinal);
+        Assert.Contains("\\immediate\\write18{touch /tmp/malicious.marker}", output, StringComparison.Ordinal);
+        Assert.Contains("\\end\u200b{minted}", output, StringComparison.Ordinal);
+    }
 }

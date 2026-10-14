@@ -181,6 +181,68 @@ public class I18nTests : IDisposable {
         Assert.Equal("Clear Current Item", Core.Tui.TuiMenuItem.DeleteSentinel.Title);
     }
 
+    [Fact]
+    public void ValidateSubcommand_WithLangEnUs_OutputsEnglishErrorsForInvalidSource() {
+        var logger = new TestLogger();
+        var factory = new RootCommandFactory(logger);
+        var root = factory.CreateRootCommand();
+
+        var nonExistentDir = Path.Combine(Path.GetTempPath(), "tb_non_existent_" + Guid.NewGuid().ToString("N"));
+        var exitCode = root.Parse(["validate", "--lang", "en-US", "-s", nonExistentDir]).Invoke();
+
+        Assert.Equal(Core.ExitCodes.InvalidArguments, exitCode);
+        var allErrors = string.Join(" | ", logger.ErrorMessages);
+        Assert.Contains("[FAIL] source.exists", allErrors);
+        Assert.Contains("Source directory not found", allErrors);
+        Assert.DoesNotContain("[失败]", allErrors);
+        Assert.DoesNotContain("未找到源目录", allErrors);
+    }
+
+    [Fact]
+    public void ValidateSubcommand_DefaultZhCn_OutputsChineseErrorsForInvalidSource() {
+        I18n.SetLanguage(AppLanguage.ZhCn);
+        var logger = new TestLogger();
+        var factory = new RootCommandFactory(logger);
+        var root = factory.CreateRootCommand();
+
+        var nonExistentDir = Path.Combine(Path.GetTempPath(), "tb_non_existent_" + Guid.NewGuid().ToString("N"));
+        var exitCode = root.Parse(["validate", "-s", nonExistentDir]).Invoke();
+
+        Assert.Equal(Core.ExitCodes.InvalidArguments, exitCode);
+        var allErrors = string.Join(" | ", logger.ErrorMessages);
+        Assert.Contains("[失败] source.exists", allErrors);
+        Assert.Contains("未找到源目录", allErrors);
+        Assert.DoesNotContain("[FAIL]", allErrors);
+    }
+
+    [Fact]
+    public void TuiConfigField_DisplayLabelAndDescription_AreLocalized() {
+        var authorField = Core.Tui.TuiSchemaCatalog.AllFields.First(f => f.Key == "AUTHOR");
+        var titleField = Core.Tui.TuiSchemaCatalog.AllFields.First(f => f.Key == "TITLE_CONTENT");
+
+        I18n.SetLanguage(AppLanguage.ZhCn);
+        Assert.Equal("作者", authorField.DisplayLabel);
+        Assert.Equal("文档标题", titleField.DisplayLabel);
+        Assert.Contains("文档作者姓名", authorField.DisplayDescription);
+
+        I18n.SetLanguage(AppLanguage.EnUs);
+        Assert.Equal("Author", authorField.DisplayLabel);
+        Assert.Equal("Document Title", titleField.DisplayLabel);
+        Assert.Contains("Author name of the document", authorField.DisplayDescription);
+    }
+
+    [Fact]
+    public void TuiSchemaCatalog_SearchFields_MatchesEnglishKeywords() {
+        I18n.SetLanguage(AppLanguage.EnUs);
+        var authorResults = Core.Tui.TuiSchemaCatalog.SearchFields("Author");
+        Assert.NotEmpty(authorResults);
+        Assert.Equal("AUTHOR", authorResults[0].Key);
+
+        var marginResults = Core.Tui.TuiSchemaCatalog.SearchFields("Margin");
+        Assert.NotEmpty(marginResults);
+        Assert.Contains(marginResults, f => f.Key.Contains("MARGIN"));
+    }
+
     private sealed class MockJapaneseProvider : ITranslationProvider {
         public AppLanguage Language => AppLanguage.ZhCn; // 复用基础枚举或扩展
         public string LanguageCode => "ja-JP";

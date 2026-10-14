@@ -39,5 +39,17 @@ namespace Core.Tui {
                 return fallback;
             }
         }
+
+        /// <summary>
+        /// 安全获取当前终端窗口高度。
+        /// 在重定向、CI 或非交互无头环境下返回安全后备值（默认 24）。
+        /// </summary>
+        public static int SafeWindowHeight(int fallback = 24) {
+            try {
+                return Console.WindowHeight > 0 ? Console.WindowHeight : fallback;
+            } catch {
+                return fallback;
+            }
+        }
     }
 }

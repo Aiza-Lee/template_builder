@@ -179,4 +179,83 @@ public class SourceTreePlanTests {
             Assert.Contains(tmp.Path, output);
         }
     }
+
+    [Fact]
+    public void Build_SymlinkLoop_DetectedAndExcludedWithoutHanging() {
+        using var tmp = TempDir.Create();
+        File.WriteAllText(Path.Combine(tmp.Path, "main.cpp"), "int main() {}");
+
+        var loopPath = Path.Combine(tmp.Path, "loop_dir");
+        bool created = false;
+        try {
+            Directory.CreateSymbolicLink(loopPath, tmp.Path);
+            created = true;
+        } catch {
+            // OS may not support symlink creation without admin rights
+        }
+
+        if (created) {
+            var logger = new TestLogger();
+            var progParser = new ConfigParser("PROGRAM", logger);
+            var plan = SourceTreePlan.Build(new DirectoryInfo(tmp.Path), progParser, sectionDepth: 5, logger);
+
+            Assert.Single(plan.IncludedFiles);
+            var loopExcluded = plan.ExcludedDirectories.FirstOrDefault(d => d.Info.Name == "loop_dir");
+            Assert.NotNull(loopExcluded);
+            Assert.Equal(SourceExclusionReason.SymlinkLoop, loopExcluded.Reason);
+            Assert.Contains("循环引用", loopExcluded.Explanation);
+        }
+    }
+
+    [Fact]
+    public void Build_ExternalDirectorySymlink_DetectedAndExcluded() {
+        using var tmp = TempDir.Create();
+        using var outsideTmp = TempDir.Create();
+        File.WriteAllText(Path.Combine(tmp.Path, "main.cpp"), "int main() {}");
+        File.WriteAllText(Path.Combine(outsideTmp.Path, "external.cpp"), "int ext() {}");
+
+        var extLinkPath = Path.Combine(tmp.Path, "ext_link");
+        bool created = false;
+        try {
+            Directory.CreateSymbolicLink(extLinkPath, outsideTmp.Path);
+            created = true;
+        } catch {
+            // OS may not support symlinks
+        }
+
+        if (created) {
+            var logger = new TestLogger();
+            var progParser = new ConfigParser("PROGRAM", logger);
+            var plan = SourceTreePlan.Build(new DirectoryInfo(tmp.Path), progParser, sectionDepth: 5, logger);
+
+            Assert.Single(plan.IncludedFiles);
+            Assert.Equal("main.cpp", plan.IncludedFiles[0].File.Name);
+
+            var extExcluded = plan.ExcludedDirectories.FirstOrDefault(d => d.Info.Name == "ext_link");
+            Assert.NotNull(extExcluded);
+            Assert.Equal(SourceExclusionReason.ExternalSymlink, extExcluded.Reason);
+            Assert.Contains("外部", extExcluded.Explanation);
+        }
+    }
+
+    [Fact]
+    public void Build_UnincludedDeepFiles_DoNotInflateMaxDepth() {
+        using var tmp = TempDir.Create();
+        File.WriteAllText(Path.Combine(tmp.Path, "root.cpp"), "int main() {}");
+
+        var current = tmp.Path;
+        for (int i = 0; i < 6; i++) {
+            current = Path.Combine(current, $"level_{i}");
+            Directory.CreateDirectory(current);
+        }
+        File.WriteAllText(Path.Combine(current, "ignored.bin"), "0101");
+
+        var logger = new TestLogger();
+        var progParser = new ConfigParser("PROGRAM", logger);
+        var plan = SourceTreePlan.Build(new DirectoryInfo(tmp.Path), progParser, sectionDepth: 5, logger);
+
+        Assert.Single(plan.IncludedFiles);
+        Assert.Equal(0, plan.MaxDepth);
+        Assert.Equal(0, plan.IncludedFiles[0].Depth);
+    }
 }

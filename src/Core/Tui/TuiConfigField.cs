@@ -48,7 +48,27 @@ namespace Core.Tui {
         int? Maximum = null,
         string? Pattern = null,
         string? JsonPath = null
-    );
+    ) : Core.Schema.ConfigFieldDefinition(Key, Label, Choices, Description, Constraints, Category, Section, ExpectedType, Minimum, Maximum, Pattern, JsonPath) {
+        public string DisplayLabel => Core.Localization.I18n.T($"Field.{Key}.Label", Label);
+        public string DisplayDescription => !string.IsNullOrEmpty(Description) ? Core.Localization.I18n.T($"Field.{Key}.Desc", Description) : (Description ?? string.Empty);
+
+        public static TuiConfigField FromDefinition(Core.Schema.ConfigFieldDefinition def, TuiFieldKind kind) =>
+            new(
+                def.Key,
+                def.Label,
+                kind,
+                def.Choices,
+                def.Description,
+                def.Constraints,
+                def.Category,
+                def.Section,
+                def.ExpectedType,
+                def.Minimum,
+                def.Maximum,
+                def.Pattern,
+                def.JsonPath
+            );
+    }
 
     /// <summary>
     /// TUI 配置分类组。

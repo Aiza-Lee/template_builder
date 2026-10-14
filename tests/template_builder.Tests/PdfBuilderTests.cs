@@ -1072,6 +1072,26 @@ public class PdfBuilderTests {
         Assert.Contains("\"" + midTex.FullName + "\"", args);
     }
 
+    [Theory]
+    [InlineData(null, "-shell-escape")]
+    [InlineData("", "-shell-escape")]
+    [InlineData("restricted", "-shell-restricted")]
+    [InlineData("-shell-restricted", "-shell-restricted")]
+    [InlineData("none", "-no-shell-escape")]
+    [InlineData("false", "-no-shell-escape")]
+    [InlineData("-no-shell-escape", "-no-shell-escape")]
+    public void ResolveShellEscapeFlag_ResolvesCorrectMode(string? input, string expected) {
+        Assert.Equal(expected, PdfBuilder.ResolveShellEscapeFlag(input));
+    }
+
+    [Fact]
+    public void BuildXelatexArguments_WithRestrictedMode_EmitsRestrictedFlag() {
+        var midTex = new FileInfo(Path.Combine(Path.GetTempPath(), "jobname.tex"));
+        var args = PdfBuilder.BuildXelatexArguments(midTex, "-shell-restricted");
+        Assert.Contains("-shell-restricted", args);
+        Assert.DoesNotContain("-shell-escape ", args);
+    }
+
     // ============================================================
     //  Round 3b tests: pass_count
     // ============================================================
@@ -1711,6 +1731,140 @@ public class PdfBuilderTests {
         var result = builder.ExecuteBuild();
         Assert.True(result.IsSuccess);
         Assert.Equal(ExitCodes.Success, result.ExitCode);
+    }
+
+    [Fact]
+    public void Build_DoesNotTouchUserBuildDirOrUserFiles() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+        try {
+            var srcDir = Path.Combine(tmp.Path, "src");
+            var userBuildDir = Directory.CreateDirectory(Path.Combine(srcDir, "build"));
+            var userCodeFile = Path.Combine(userBuildDir.FullName, "mid-output.cpp");
+            var userScriptFile = Path.Combine(userBuildDir.FullName, "mid-output.py");
+            var userMintedDir = Directory.CreateDirectory(Path.Combine(userBuildDir.FullName, "_minted_user_data"));
+            var userNote = Path.Combine(userMintedDir.FullName, "notes.txt");
+
+            File.WriteAllText(userCodeFile, "// user cpp source");
+            File.WriteAllText(userScriptFile, "# user python script");
+            File.WriteAllText(userNote, "user notes");
+
+            // 模拟构建运行
+            builder.Build();
+
+            // 验证用户目录与文件完整保留，未被 PurgeWorkDir 或清理流程触碰
+            Assert.True(File.Exists(userCodeFile), "用户源文件 build/mid-output.cpp 不应被删除");
+            Assert.True(File.Exists(userScriptFile), "用户脚本 build/mid-output.py 不应被删除");
+            Assert.True(File.Exists(userNote), "用户目录中 notes.txt 不应被删除");
+            Assert.True(Directory.Exists(userMintedDir.FullName), "用户自建 _minted_user_data 目录不应被删除");
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void PurgeWorkDir_DoesNotDeleteNonToolExtensionsInWorkDir() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
+        try {
+            var srcDir = Path.Combine(tmp.Path, "src");
+            var toolWorkDir = Directory.CreateDirectory(Path.Combine(srcDir, ".template_builder", "build"));
+            var userFileInWorkDir = Path.Combine(toolWorkDir.FullName, "mid-output.cpp");
+            var userCustomDirInWorkDir = Directory.CreateDirectory(Path.Combine(toolWorkDir.FullName, "_minted_custom"));
+            var auxFile = Path.Combine(toolWorkDir.FullName, "mid-output.aux");
+
+            File.WriteAllText(userFileInWorkDir, "important code");
+            File.WriteAllText(auxFile, "dummy aux");
+            File.WriteAllText(Path.Combine(userCustomDirInWorkDir.FullName, "data.txt"), "data");
+
+            builder.Build();
+
+            // 工具的 mid-output.aux 会被清理，但用户非工具扩展名及自建目录必须受保护
+            Assert.True(File.Exists(userFileInWorkDir), "工作目录中的非工具产物 mid-output.cpp 不应被清理");
+            Assert.True(Directory.Exists(userCustomDirInWorkDir.FullName), "工作目录中的非专属 minted 目录不应被清理");
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
+    public void IsExternalLinkOrSymlink_DetectsExternalDirectoryTarget() {
+        using var tmp = TempDir.Create();
+        var rootDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "root"));
+        var insideDir = Directory.CreateDirectory(Path.Combine(rootDir.FullName, "inside"));
+        var outsideDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "outside"));
+
+        Assert.False(PdfBuilder.IsExternalLinkOrSymlink(insideDir.FullName, rootDir.FullName));
+
+        // 创建指向外部的软链接
+        var linkPath = Path.Combine(rootDir.FullName, "ext_link");
+        try {
+            Directory.CreateSymbolicLink(linkPath, outsideDir.FullName);
+            Assert.True(PdfBuilder.IsExternalLinkOrSymlink(linkPath, rootDir.FullName));
+        } catch {
+            // 环境若不支持软链接创建则跳过软链接断言
+        }
+    }
+
+    [Fact]
+    public void Build_DirectoryPathContainingTex_CorrectlyFindsArtifactsAndSucceeds() {
+        using var tmp = TempDir.Create();
+        var complexSrcDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "folder.tex.data", "sub.tex dir with space", "源码目录.tex"));
+        File.WriteAllText(Path.Combine(complexSrcDir.FullName, "hello.cpp"), "int main() {}");
+
+        var outDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "out.tex.dir", "中文 输出.tex"));
+        var outPdf = new FileInfo(Path.Combine(outDir.FullName, "result.tex.spec.pdf"));
+        var configFile = new FileInfo(Path.Combine(tmp.Path, "config.json"));
+        File.WriteAllText(configFile.FullName, "{}");
+
+        var options = new BuildSubcommandOptions(complexSrcDir, outPdf, configFile, Verbose: false, TemplateDir: null);
+        var projectConfig = new Core.Models.ProjectConfiguration();
+        var runner = new FakeXelatexRunner();
+
+        runner.SideEffects.Enqueue((workingDir, args) => {
+            File.WriteAllText(Path.Combine(workingDir, "mid-output.pdf"), "%PDF-1.4 mock pdf content");
+            File.WriteAllText(Path.Combine(workingDir, "mid-output.log"), "mock xelatex log");
+        });
+
+        var builder = new PdfBuilder(new TestLogger(), options, projectConfig, new ManifestResourceManager(), runner);
+
+        var result = builder.ExecuteBuild();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.True(outPdf.Exists);
+        Assert.StartsWith("%PDF-1.4", File.ReadAllText(outPdf.FullName));
+    }
+
+    [Fact]
+    public void Build_DirectoryPathContainingTex_OnFailure_DiagnosticPdfAndLogCorrectlyLocated() {
+        using var tmp = TempDir.Create();
+        var complexSrcDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "folder.tex.data", "sub.tex dir with space", "源码目录.tex"));
+        File.WriteAllText(Path.Combine(complexSrcDir.FullName, "hello.cpp"), "int main() {}");
+
+        var outDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "out.tex.dir", "中文 输出.tex"));
+        var outPdf = new FileInfo(Path.Combine(outDir.FullName, "result.tex.spec.pdf"));
+        var configFile = new FileInfo(Path.Combine(tmp.Path, "config.json"));
+        File.WriteAllText(configFile.FullName, "{}");
+
+        var options = new BuildSubcommandOptions(complexSrcDir, outPdf, configFile, Verbose: false, TemplateDir: null);
+        var projectConfig = new Core.Models.ProjectConfiguration();
+        var runner = new FakeXelatexRunner();
+
+        runner.Results.Enqueue(new XelatexResult(1, "! Fatal error occurred", false));
+        runner.SideEffects.Enqueue((workingDir, args) => {
+            File.WriteAllText(Path.Combine(workingDir, "mid-output.pdf"), "%PDF-1.4 partial failure pdf");
+            File.WriteAllText(Path.Combine(workingDir, "mid-output.log"), "! Fatal error occurred on line 1");
+        });
+
+        var builder = new PdfBuilder(new TestLogger(), options, projectConfig, new ManifestResourceManager(), runner);
+
+        var result = builder.ExecuteBuild();
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ExitCodes.XelatexFailure, result.ExitCode);
+        Assert.NotNull(result.DiagnosticPdfPath);
+        Assert.Equal(Path.Combine(builder.GetWorkDirectory(), "mid-output.pdf"), result.DiagnosticPdfPath);
+        Assert.NotNull(result.LogFilePath);
+        Assert.Equal(Path.Combine(builder.GetWorkDirectory(), "mid-output.log"), result.LogFilePath);
     }
 }
 

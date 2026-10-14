@@ -168,4 +168,3 @@ namespace Core.Tui {
         }
     }
 }
-

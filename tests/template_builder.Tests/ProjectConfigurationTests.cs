@@ -332,5 +332,33 @@ public class ProjectConfigurationTests {
         Assert.Equal("My New Document", freshConfig.GetEffectiveValue("TITLE_CONTENT"));
         Assert.Equal("Initial Author", freshConfig.GetEffectiveValue("AUTHOR"));
     }
-}
 
+    [Fact]
+    public void LoadProjectConfig_StrictMode_RejectsUnknownRootProperty() {
+        var config = new ProjectConfiguration(strictness: ConfigStrictness.Strict);
+        const string json = """
+        {
+            "INVALID_ROOT": {
+                "author": "Alice"
+            }
+        }
+        """;
+        var ex = Assert.Throws<MalformedConfigException>(() => config.LoadProjectConfig(json));
+        Assert.Contains("包含未知属性 'INVALID_ROOT'", ex.Message);
+    }
+
+    [Fact]
+    public void LoadProjectConfig_SparseConfigs_LoadsSuccessfully() {
+        var texOnlyConfig = new ProjectConfiguration(strictness: ConfigStrictness.Strict);
+        texOnlyConfig.LoadProjectConfig("""{ "TEX": { "author": "Alice" } }""");
+        Assert.Equal("Alice", texOnlyConfig.GetEffectiveValue("AUTHOR"));
+
+        var progOnlyConfig = new ProjectConfiguration(strictness: ConfigStrictness.Strict);
+        progOnlyConfig.LoadProjectConfig("""{ "PROGRAM": { "build": { "pass_count": 1 } } }""");
+        Assert.Equal("1", progOnlyConfig.GetEffectiveValue("BUILD_PASS_COUNT"));
+
+        var emptyConfig = new ProjectConfiguration(strictness: ConfigStrictness.Strict);
+        emptyConfig.LoadProjectConfig("{}");
+        Assert.Equal("Times New Roman", emptyConfig.GetEffectiveValue("GLOBAL_MAIN_FONT"));
+    }
+}

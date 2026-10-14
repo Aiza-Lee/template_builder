@@ -60,7 +60,7 @@ namespace Core {
         /// </summary>
         public BuildResult ExecuteBuild() {
             var stopwatch = Stopwatch.StartNew();
-            _logger.Info("构建流程已启动...");
+            _logger.Info(Core.Localization.I18n.T("Build.Started", "构建流程已启动..."));
             _unresolvedPlaceholderCount = 0;
 
             // 清理上次遗留的中间文件，只清理属于本工具的产物，绝不碰用户文件
@@ -70,7 +70,7 @@ namespace Core {
             var mainTemplate = GenerateTexContent();
             if (_unresolvedPlaceholderCount > 0) {
                 stopwatch.Stop();
-                var msg = $"模板存在 {_unresolvedPlaceholderCount} 个未被替换的占位符";
+                var msg = string.Format(Core.Localization.I18n.T("Build.UnresolvedPlaceholdersCount", "模板存在 {0} 个未被替换的占位符"), _unresolvedPlaceholderCount);
                 var failure = BuildResult.CreateFailure(
                     ExitCodes.UnresolvedPlaceholders,
                     BuildStatus.UnresolvedPlaceholders,
@@ -100,40 +100,88 @@ namespace Core {
         internal static string GetWorkDirectory(DirectoryInfo sourceDir) =>
             Path.Combine(sourceDir.FullName, ".template_builder", "build");
 
+        private static readonly HashSet<string> KnownToolAuxExtensions = new(StringComparer.OrdinalIgnoreCase) {
+            ".tex", ".aux", ".log", ".toc", ".out", ".nav", ".snm", ".aex", ".w18", ".synctex.gz", ".pdf"
+        };
+
+        internal static bool IsExternalLinkOrSymlink(string dirPath, string rootPath) {
+            try {
+                var dirInfo = new DirectoryInfo(dirPath);
+                if (!dirInfo.Exists) return false;
+                if (dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint) || !string.IsNullOrEmpty(dirInfo.LinkTarget)) {
+                    var target = dirInfo.LinkTarget;
+                    if (string.IsNullOrEmpty(target)) return true; // 无法解析目标时保守处理为外部链接
+                    if (!Path.IsPathRooted(target)) {
+                        target = Path.GetFullPath(Path.Combine(dirInfo.Parent?.FullName ?? "", target));
+                    }
+                    var fullTarget = Path.GetFullPath(target).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    var fullRoot = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    return !fullTarget.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase);
+                }
+                return false;
+            } catch {
+                return true;
+            }
+        }
+
         /// <summary>
         /// 构建前清理专属工作目录中的旧中间文件。
-        /// 严格遵循文件保护原则：仅清理可确认归属于本工具的文件（mid-output.*）和目录（_minted*），
-        /// 绝不递归删除用户在源目录 build/ 或工作目录中自建的任何文件。
+        /// 严格遵循文件保护原则：仅清理可确认归属于本工具的文件和目录，
+        /// 绝不触碰用户在源目录 build/ 或其他任何目录中自建的文件，并检查工作目录链接安全性。
         /// </summary>
         private void PurgeWorkDir() {
-            CleanToolArtifacts(GetWorkDirectory());
-            // 兼容性清理：如果源目录 build/ 中遗留了历史 mid-output 文件，仅清理属于本工具的产物，绝不碰用户自建文件
-            var legacyBuildDir = Path.Combine(_options.SourceDir.FullName, "build");
-            if (Directory.Exists(legacyBuildDir)) {
-                CleanToolArtifacts(legacyBuildDir);
+            var workDir = GetWorkDirectory();
+            var sourceRoot = _options.SourceDir.FullName;
+            var dotTbDir = Path.Combine(sourceRoot, ".template_builder");
+
+            // 检查 .template_builder 及 build 目录是否为指向源目录外部的符号链接
+            if (IsExternalLinkOrSymlink(dotTbDir, sourceRoot) || IsExternalLinkOrSymlink(workDir, sourceRoot)) {
+                _logger.Warning(string.Format(Core.Localization.I18n.T("Build.SymlinkWorkdirSkipCleanup", "工作目录存在指向源目录外部的符号链接，为保护用户文件，跳过清理：{0}"), workDir));
+                return;
             }
+
+            CleanToolArtifacts(workDir);
         }
 
         private void CleanToolArtifacts(string dir) {
             if (!Directory.Exists(dir)) return;
             try {
                 foreach (var file in Directory.EnumerateFiles(dir, "mid-output.*")) {
+                    var ext = Path.GetExtension(file);
+                    // 仅清理明确归属于本工具的辅助文件扩展名，防止误删用户自定义同名文件（如 mid-output.cpp）
+                    if (!KnownToolAuxExtensions.Contains(ext)) {
+                        continue;
+                    }
+                    var fi = new FileInfo(file);
+                    if (fi.Attributes.HasFlag(FileAttributes.ReparsePoint)) {
+                        continue;
+                    }
                     try { File.Delete(file); } catch (Exception ex) {
-                        _logger.Warning($"清理旧中间文件 {file} 失败：{ex.Message}");
+                        _logger.Warning(string.Format(Core.Localization.I18n.T("Build.CleanOldAuxFailed", "清理旧中间文件 {0} 失败：{1}"), file, ex.Message));
                     }
                 }
                 foreach (var subDir in Directory.EnumerateDirectories(dir, "_minted*")) {
+                    var dirName = Path.GetFileName(subDir);
+                    // 仅清理工具专属的 minted 缓存目录，防止误删用户自建目录
+                    if (!dirName.Equals("_minted", StringComparison.OrdinalIgnoreCase) &&
+                        !dirName.Equals("_minted-mid-output", StringComparison.OrdinalIgnoreCase)) {
+                        continue;
+                    }
+                    var sdi = new DirectoryInfo(subDir);
+                    if (sdi.Attributes.HasFlag(FileAttributes.ReparsePoint)) {
+                        continue;
+                    }
                     try { Directory.Delete(subDir, recursive: true); } catch (Exception ex) {
-                        _logger.Warning($"清理旧 minted 目录 {subDir} 失败：{ex.Message}");
+                        _logger.Warning(string.Format(Core.Localization.I18n.T("Build.CleanOldMintedFailed", "清理旧 minted 目录 {0} 失败：{1}"), subDir, ex.Message));
                     }
                 }
             } catch (Exception ex) {
-                _logger.Warning($"清理中间目录 {dir} 失败：{ex.Message}");
+                _logger.Warning(string.Format(Core.Localization.I18n.T("Build.CleanMidDirFailed", "清理中间目录 {0} 失败：{1}"), dir, ex.Message));
             }
         }
 
         private BuildResult CompileTexToPdf(FileInfo midTexFileInfo, Stopwatch stopwatch) {
-            _logger.Info("开始 LaTeX 编译...");
+            _logger.Info(Core.Localization.I18n.T("Build.StartingLatex", "开始 LaTeX 编译..."));
 
             var passCount = Math.Clamp(_programConfigParser["BUILD_PASS_COUNT"].GetAsInt(), 1, 5);
             var timeoutSeconds = Math.Clamp(_programConfigParser["BUILD_TIMEOUT_SECONDS"].GetAsInt(), 0, 600);
@@ -141,11 +189,11 @@ namespace Core {
             bool cleanupNeeded = true;
             var diagnostics = new List<string>();
             var warnings = new List<string>();
-            var logFilePath = midTexFileInfo.FullName.Replace(".tex", ".log");
+            var logFilePath = Path.ChangeExtension(midTexFileInfo.FullName, ".log");
 
             int passesCompleted = 0;
             for (int pass = 1; pass <= passCount; pass++) {
-                _logger.Info($"第 {pass} 轮编译（共 {passCount} 轮）...");
+                _logger.Info(string.Format(Core.Localization.I18n.T("Build.PassProgress", "第 {0} 轮编译（共 {1} 轮）..."), pass, passCount));
 
                 // 每次 pass 清空 buffer，使最终 dump 时只看到失败 pass 的 stderr。
                 _xelatexStderr.Clear();
@@ -155,7 +203,7 @@ namespace Core {
 
                 if (result.TimedOut) {
                     stopwatch.Stop();
-                    var errMsg = $"xelatex 第 {pass} 轮在 {timeoutSeconds} 秒后超时，中止构建。";
+                    var errMsg = string.Format(Core.Localization.I18n.T("Build.XelatexTimeout", "xelatex 第 {0} 轮在 {1} 秒后超时，中止构建。"), pass, timeoutSeconds);
                     _logger.Error(errMsg);
                     FlushStderrAsError();
                     diagnostics.Add(errMsg);
@@ -171,49 +219,52 @@ namespace Core {
                 }
                 if (result.ExitCode != 0) {
                     stopwatch.Stop();
-                    var buildDirPdf = new FileInfo(midTexFileInfo.FullName.Replace(".tex", ".pdf"));
+                    var buildDirPdf = new FileInfo(Path.ChangeExtension(midTexFileInfo.FullName, ".pdf"));
                     string? diagnosticPdfPath = null;
                     if (buildDirPdf.Exists && buildDirPdf.Length > 0 && IsValidPdfHeader(buildDirPdf.FullName)) {
                         diagnosticPdfPath = buildDirPdf.FullName;
-                        _logger.Warning($"LaTeX 编译未完全成功（退出码 {result.ExitCode}），检测到半成品 PDF 产物：\"{diagnosticPdfPath}\"。");
-                        _logger.Warning("该文件已被保留作为诊断产物供排查，绝不覆盖/发布为最终目标 PDF 文件。");
+                        _logger.Warning(string.Format(Core.Localization.I18n.T("Build.PartialPdfDetected", "LaTeX 编译未完全成功（退出码 {0}），检测到半成品 PDF 产物：\"{1}\"。"), result.ExitCode, diagnosticPdfPath));
+                        _logger.Warning(Core.Localization.I18n.T("Build.PartialPdfPreserved", "该文件已被保留作为诊断产物供排查，绝不覆盖/发布为最终目标 PDF 文件。"));
                     }
 
                     if (result.ExitCode == -1 && !result.TimedOut || result.Stderr.Contains("[failed to start:")) {
-                        var hint = "排查指引：未检测到 xelatex 命令或无法启动。请确认已安装 TeX 发行版（如 TeX Live、MacTeX 或 MiKTeX），并将 xelatex 所在 bin 目录添加至系统环境变量 PATH。";
+                        var hint = Core.Localization.I18n.T("Build.XelatexNotFoundHint", "排查指引：未检测到 xelatex 命令或无法启动。请确认已安装 TeX 发行版（如 TeX Live、MacTeX 或 MiKTeX），并将 xelatex 所在 bin 目录添加至系统环境变量 PATH。");
                         _logger.Error(hint);
                         diagnostics.Add(hint);
                     }
 
                     // 调用 LatexDiagnosticParser 进行结构化分析
                     var diag = LatexDiagnosticParser.Parse(result.Stdout, result.Stderr, logFilePath, midTexFileInfo.FullName);
-                    _logger.Error($"--- LaTeX 编译错误诊断 (第 {pass} 轮) ---");
+                    _logger.Error(string.Format(Core.Localization.I18n.T("Build.DiagHeader", "--- LaTeX 编译错误诊断 (第 {0} 轮) ---"), pass));
                     if (!string.IsNullOrEmpty(diag.FailureReason)) {
-                        _logger.Error($"原因：{diag.FailureReason}");
-                        diagnostics.Add($"原因：{diag.FailureReason}");
+                        var reasonText = string.Format(Core.Localization.I18n.T("Build.DiagReason", "原因：{0}"), diag.FailureReason);
+                        _logger.Error(reasonText);
+                        diagnostics.Add(reasonText);
                     }
                     if (!string.IsNullOrEmpty(diag.CulpritSourceFile)) {
                         var loc = diag.CulpritLineNumber.HasValue
                             ? $"{diag.CulpritSourceFile}:{diag.CulpritLineNumber.Value}"
                             : diag.CulpritSourceFile;
-                        _logger.Error($"定位源文件：{loc}");
-                        diagnostics.Add($"定位源文件：{loc}");
+                        var locText = string.Format(Core.Localization.I18n.T("Build.DiagLocation", "定位源文件：{0}"), loc);
+                        _logger.Error(locText);
+                        diagnostics.Add(locText);
                     }
                     if (!string.IsNullOrEmpty(diag.Recommendation)) {
-                        _logger.Error($"排查建议：{diag.Recommendation}");
-                        diagnostics.Add($"排查建议：{diag.Recommendation}");
+                        var recText = string.Format(Core.Localization.I18n.T("Build.DiagRecommendation", "排查建议：{0}"), diag.Recommendation);
+                        _logger.Error(recText);
+                        diagnostics.Add(recText);
                     }
                     if (diag.ErrorContextLines.Count > 0) {
-                        _logger.Error("--- 错误上下文 ---");
+                        _logger.Error(Core.Localization.I18n.T("Build.DiagContext", "--- 错误上下文 ---"));
                         foreach (var line in diag.ErrorContextLines.Take(8)) {
                             _logger.Error(line);
                         }
                     }
 
-                    var errMsg = $"xelatex 退出码 {result.ExitCode}，LaTeX 编译失败。";
+                    var errMsg = string.Format(Core.Localization.I18n.T("Build.XelatexFailedWithCode", "xelatex 退出码 {0}，LaTeX 编译失败。"), result.ExitCode);
                     _logger.Error(errMsg);
                     if (File.Exists(logFilePath)) {
-                        _logger.Error($"完整日志位于 \"{logFilePath}\"");
+                        _logger.Error(string.Format(Core.Localization.I18n.T("Build.LogLocated", "完整日志位于 \"{0}\""), logFilePath));
                     }
                     FlushStderrAsError();
                     diagnostics.Add(errMsg);
@@ -233,24 +284,26 @@ namespace Core {
                         recommendation: diag.Recommendation
                     );
                 } else {
-                    _logger.Info($"第 {pass} 轮编译完成。");
+                    _logger.Info(string.Format(Core.Localization.I18n.T("Build.PassCompleted", "第 {0} 轮编译完成。"), pass));
                 }
             }
 
             // 编译完成，检验产物有效性
-            var generatedPdf = new FileInfo(midTexFileInfo.FullName.Replace(".tex", ".pdf"));
+            var generatedPdf = new FileInfo(Path.ChangeExtension(midTexFileInfo.FullName, ".pdf"));
             if (!generatedPdf.Exists || generatedPdf.Length == 0 || !IsValidPdfHeader(generatedPdf.FullName)) {
                 stopwatch.Stop();
-                var errMsg = "LaTeX 编译未能生成有效的 PDF 产物，保留原产物（若存在）。";
+                var errMsg = Core.Localization.I18n.T("Build.FailedToGenerateValidPdf", "LaTeX 编译未能生成有效的 PDF 产物，保留原产物（若存在）。");
                 _logger.Error(errMsg);
                 var diag = LatexDiagnosticParser.Parse(null, null, logFilePath, midTexFileInfo.FullName);
                 if (!string.IsNullOrEmpty(diag.FailureReason)) {
-                    _logger.Error($"原因：{diag.FailureReason}");
-                    diagnostics.Add($"原因：{diag.FailureReason}");
+                    var reasonText = string.Format(Core.Localization.I18n.T("Build.DiagReason", "原因：{0}"), diag.FailureReason);
+                    _logger.Error(reasonText);
+                    diagnostics.Add(reasonText);
                 }
                 if (!string.IsNullOrEmpty(diag.Recommendation)) {
-                    _logger.Error($"排查建议：{diag.Recommendation}");
-                    diagnostics.Add($"排查建议：{diag.Recommendation}");
+                    var recText = string.Format(Core.Localization.I18n.T("Build.DiagRecommendation", "排查建议：{0}"), diag.Recommendation);
+                    _logger.Error(recText);
+                    diagnostics.Add(recText);
                 }
                 FlushStderrAsError();
                 diagnostics.Add(errMsg);
@@ -269,13 +322,13 @@ namespace Core {
                 );
             }
 
-            _logger.Info("LaTeX 编译已成功完成。");
+            _logger.Info(Core.Localization.I18n.T("Build.Succeeded", "LaTeX 编译已成功完成。"));
 
             // 发布产物：使用临时文件过渡以保证原子写入，发布失败绝不损坏原有 PDF
             var publishResult = PublishOutputPdf(generatedPdf, _options.OutputPdf);
             if (publishResult != ExitCodes.Success) {
                 stopwatch.Stop();
-                var errMsg = $"发布 PDF 到 \"{_options.OutputPdf.FullName}\" 失败，保留原有文件（若存在）。";
+                var errMsg = string.Format(Core.Localization.I18n.T("Build.PublishFailed", "发布 PDF 到 \"{0}\" 失败，保留原有文件（若存在）。"), _options.OutputPdf.FullName);
                 diagnostics.Add(errMsg);
                 return BuildResult.CreateFailure(
                     publishResult,
@@ -315,14 +368,14 @@ namespace Core {
 
                 var tempInfo = new FileInfo(tempTargetPath);
                 if (!tempInfo.Exists || tempInfo.Length != generatedPdf.Length) {
-                    throw new IOException("目标临时文件写入校验未通过。");
+                    throw new IOException(Core.Localization.I18n.T("Build.TempVerifyFailed", "目标临时文件写入校验未通过。"));
                 }
 
                 File.Move(tempTargetPath, targetPdf.FullName, overwrite: true);
-                _logger.Info($"PDF 已写入 \"{targetPdf.FullName}\"。");
+                _logger.Info(string.Format(Core.Localization.I18n.T("Build.PdfWritten", "PDF 已写入 \"{0}\"。"), targetPdf.FullName));
                 return ExitCodes.Success;
             } catch (Exception ex) {
-                _logger.Error($"发布 PDF 到 \"{targetPdf.FullName}\" 失败：{ex.Message}，保留原有文件（若存在）。");
+                _logger.Error(string.Format(Core.Localization.I18n.T("Build.PublishErrorWithEx", "发布 PDF 到 \"{0}\" 失败：{1}，保留原有文件（若存在）。"), targetPdf.FullName, ex.Message));
                 return ExitCodes.XelatexFailure;
             }
         }
@@ -352,18 +405,22 @@ namespace Core {
                 .ToList();
 
             if (errorLines.Count > 0) {
-                _logger.Error("--- xelatex 错误摘要 ---");
+                _logger.Error(Core.Localization.I18n.T("Build.StderrSummaryHeader", "--- xelatex 错误摘要 ---"));
                 foreach (var line in errorLines) {
                     _logger.Error(line);
                 }
             }
 
             var logPath = Path.Combine(GetWorkDirectory(), "mid-output.log");
-            _logger.Error($"完整日志位于 \"{logPath}\"");
+            _logger.Error(string.Format(Core.Localization.I18n.T("Build.LogLocated", "完整日志位于 \"{0}\""), logPath));
         }
 
         private XelatexResult RunXelatex(FileInfo midTexFileInfo, int pass, int timeoutSeconds) {
-            var arguments = BuildXelatexArguments(midTexFileInfo);
+            string? shellEscapeSetting = _texConfigParser.TryGetConfigValue("CODE_SHELL_ESCAPE", out var shellVal)
+                ? shellVal.GetAsString()
+                : null;
+            var shellMode = ResolveShellEscapeFlag(shellEscapeSetting);
+            var arguments = BuildXelatexArguments(midTexFileInfo, shellMode);
 
             // 通过 IXelatexRunner 抽象 spawn xelatex；以 midTexFileInfo 所在目录（<sourceDir>/build/）为子进程工作目录，
             // 确保 minted 等宏包执行 shell-escape 临时测试文件（如 touch mid-output.aex）可正常在构建子目录写入。
@@ -415,6 +472,23 @@ namespace Core {
             return dirs.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 
+        internal static string ResolveShellEscapeFlag(string? setting) {
+            if (string.IsNullOrWhiteSpace(setting)) {
+                return "-shell-escape";
+            }
+            var trimmed = setting.Trim();
+            if (trimmed.Equals("restricted", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("-shell-restricted", StringComparison.OrdinalIgnoreCase)) {
+                return "-shell-restricted";
+            }
+            if (trimmed.Equals("none", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("false", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("-no-shell-escape", StringComparison.OrdinalIgnoreCase)) {
+                return "-no-shell-escape";
+            }
+            return trimmed.StartsWith('-') ? trimmed : "-" + trimmed;
+        }
+
         /// <summary>
         /// 构造 xelatex 命令行参数串。提取为 internal static 便于单测断言参数内容（无需 mock Process）。
         /// </summary>
@@ -424,9 +498,13 @@ namespace Core {
         /// 与 minted 缓存（_minted/）落到该子目录，不污染源目录。
         /// PDF 由 PdfBuilder.Build 后续阶段从 `<sourceDir>/build/<jobname>.pdf` 拷贝到 -o 指定路径。
         /// </remarks>
-        internal static string BuildXelatexArguments(FileInfo midTexFileInfo) {
+        internal static string BuildXelatexArguments(FileInfo midTexFileInfo, string? shellEscapeMode = null) {
             var sb = new StringBuilder();
-            sb.Append("-shell-escape ");
+            var shellFlag = string.IsNullOrWhiteSpace(shellEscapeMode) ? "-shell-escape" : shellEscapeMode.Trim();
+            if (!shellFlag.StartsWith('-')) {
+                shellFlag = "-" + shellFlag;
+            }
+            sb.Append($"{shellFlag} ");
             sb.Append("-interaction=nonstopmode ");
             // 错误信息显示源文件行号（仅影响日志格式，不改输出内容/速度）
             sb.Append("-file-line-error ");
@@ -450,12 +528,21 @@ namespace Core {
         private void CleanupAuxiliaryFiles() {
             var baseName = "mid-output"; // mid-output.tex 是固定名，与 jobname 无关
             var outputDir = GetWorkDirectory();
+            var sourceRoot = _options.SourceDir.FullName;
+            var dotTbDir = Path.Combine(sourceRoot, ".template_builder");
+            if (IsExternalLinkOrSymlink(dotTbDir, sourceRoot) || IsExternalLinkOrSymlink(outputDir, sourceRoot)) {
+                _logger.Warning(string.Format(Core.Localization.I18n.T("Build.SymlinkWorkdirSkipCleanup", "工作目录存在指向源目录外部的符号链接，为保护用户文件，跳过清理：{0}"), outputDir));
+                return;
+            }
             Cleanup(outputDir, baseName, _logger);
             // 同时删 _minted/ 缓存目录（minted 输出；保留可加速下次 build，但默认删以保持工作目录干净）
             var mintedDir = Path.Combine(outputDir, "_minted");
             if (Directory.Exists(mintedDir)) {
-                try { Directory.Delete(mintedDir, recursive: true); } catch (Exception ex) {
-                    _logger.Warning($"删除 {mintedDir} 失败：{ex.Message}");
+                var sdi = new DirectoryInfo(mintedDir);
+                if (!sdi.Attributes.HasFlag(FileAttributes.ReparsePoint)) {
+                    try { Directory.Delete(mintedDir, recursive: true); } catch (Exception ex) {
+                        _logger.Warning(string.Format(Core.Localization.I18n.T("Build.DeleteMintedFailed", "删除 {0} 失败：{1}"), mintedDir, ex.Message));
+                    }
                 }
             }
         }
@@ -477,10 +564,15 @@ namespace Core {
             logger.Debug($"Attempting to delete auxiliary file: {filePath}");
             if (File.Exists(filePath)) {
                 try {
+                    var fi = new FileInfo(filePath);
+                    if (fi.Attributes.HasFlag(FileAttributes.ReparsePoint)) {
+                        logger.Warning(string.Format(Core.Localization.I18n.T("Build.SkipSymlinkAuxFile", "跳过符号链接辅助文件：{0}"), filePath));
+                        return;
+                    }
                     File.Delete(filePath);
                     logger.Debug($"Deleted auxiliary file: {filePath}");
                 } catch (Exception ex) {
-                    logger.Warning($"删除 {filePath} 失败：{ex.Message}");
+                    logger.Warning(string.Format(Core.Localization.I18n.T("Build.DeleteAuxFailed", "删除 {0} 失败：{1}"), filePath, ex.Message));
                 }
             }
         }
@@ -492,6 +584,11 @@ namespace Core {
             // 把 mid-output.tex 写到专属工作目录（与 xelatex -output-directory 同目录），
             // 让源目录保持干净。目录不存在时自动创建。
             var buildDir = GetWorkDirectory();
+            var sourceRoot = _options.SourceDir.FullName;
+            var dotTbDir = Path.Combine(sourceRoot, ".template_builder");
+            if (IsExternalLinkOrSymlink(dotTbDir, sourceRoot) || IsExternalLinkOrSymlink(buildDir, sourceRoot)) {
+                throw new InvalidOperationException(string.Format(Core.Localization.I18n.T("Build.WorkdirSymlinkRefuseWrite", "工作目录为指向源目录外部的符号链接：\"{0}\"，为保护系统文件已拒绝写入。"), buildDir));
+            }
             Directory.CreateDirectory(buildDir);
             return new FileInfo(SaveTexFile(texContent, buildDir));
         }
@@ -572,7 +669,7 @@ namespace Core {
             // 在 <<CONTENT>> 替换前扫描 Main.tex，避免误报尚未替换的 <<CONTENT>> 标记。
             foreach (var placeholder in TemplatePlaceholderScanner.FindUnresolved(mainTemplate.ToString())) {
                 if (placeholder == "<<CONTENT>>") continue;
-                _logger.Error($"Main.tex 中存在未替换的占位符 \"{placeholder}\"。");
+                _logger.Error(string.Format(Core.Localization.I18n.T("Build.UnreplacedPlaceholder", "Main.tex 中存在未替换的占位符 \"{0}\"。"), placeholder));
                 _unresolvedPlaceholderCount++;
             }
 
@@ -600,7 +697,7 @@ namespace Core {
             if (_options.TemplateDir != null) {
                 var overridePath = Path.Combine(_options.TemplateDir.FullName, fileName);
                 if (File.Exists(overridePath)) {
-                    _logger.Info($"使用外部模板：{overridePath}");
+                    _logger.Info(string.Format(Core.Localization.I18n.T("Build.UsingExternalTemplate", "使用外部模板：{0}"), overridePath));
                     return File.ReadAllText(overridePath);
                 }
             }

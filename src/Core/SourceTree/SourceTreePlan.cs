@@ -39,7 +39,11 @@ namespace Core.SourceTree {
         /// <summary>目录层级超过 LaTeX 支持的最大深度 4</summary>
         DepthExceeded,
         /// <summary>空目录或内部所有子项均已被排除</summary>
-        EmptyDirectory
+        EmptyDirectory,
+        /// <summary>检测到符号链接循环引用</summary>
+        SymlinkLoop,
+        /// <summary>指向源目录外部的符号链接</summary>
+        ExternalSymlink
     }
 
     /// <summary>
@@ -123,7 +127,7 @@ namespace Core.SourceTree {
     internal sealed class SourceTreePlan {
         public const int MaxSupportedDepth = 4;
 
-        private static readonly string[] s_allSectionCommands = [
+        public static readonly string[] AllSectionCommands = [
             "section", "subsection", "subsubsection", "paragraph", "subparagraph"
         ];
 
@@ -264,7 +268,7 @@ namespace Core.SourceTree {
             var excludedDirs = new List<ExcludedItemPlan>();
             var includedFiles = new List<SourceFilePlan>();
 
-            var effectiveSectionDepth = Math.Clamp(sectionDepth, 1, s_allSectionCommands.Length);
+            var effectiveSectionDepth = Math.Clamp(sectionDepth, 1, AllSectionCommands.Length);
             var maxDepthIndex = effectiveSectionDepth - 1;
 
             var rootNodes = WalkDirectory(
@@ -343,6 +347,26 @@ namespace Core.SourceTree {
             ILogger? logger = null
         ) => Build(sourceDir, config.ProgramParser, sectionDepth, logger);
 
+        internal static string? GetCanonicalDirectoryPath(DirectoryInfo dir) {
+            try {
+                var path = dir.FullName;
+                if (dir.Attributes.HasFlag(FileAttributes.ReparsePoint) || !string.IsNullOrEmpty(dir.LinkTarget)) {
+                    var targetInfo = dir.ResolveLinkTarget(returnFinalTarget: true);
+                    if (targetInfo != null) {
+                        path = targetInfo.FullName;
+                    } else if (!string.IsNullOrEmpty(dir.LinkTarget)) {
+                        var rawTarget = dir.LinkTarget;
+                        path = Path.IsPathRooted(rawTarget)
+                            ? rawTarget
+                            : Path.Combine(dir.Parent?.FullName ?? "", rawTarget);
+                    }
+                }
+                return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            } catch {
+                return null;
+            }
+        }
+
         private static List<SourceNodePlan> WalkDirectory(
             DirectoryInfo root,
             DirectoryInfo currentDir,
@@ -356,162 +380,270 @@ namespace Core.SourceTree {
             int maxDepthIndex,
             ref int totalFiles,
             ref int totalDirs,
-            ILogger? logger
+            ILogger? logger,
+            HashSet<string>? activePathChain = null,
+            string? rootCanonicalPath = null,
+            string? rootCanonicalPrefix = null,
+            string? rootFullPath = null,
+            string? rootFullPrefix = null
         ) {
             var nodes = new List<SourceNodePlan>();
 
-            // 1. 处理子目录
-            DirectoryInfo[] subDirs;
+            activePathChain ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (rootCanonicalPath == null) {
+                rootCanonicalPath = GetCanonicalDirectoryPath(root) ?? Path.GetFullPath(root.FullName).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                rootCanonicalPrefix = rootCanonicalPath + Path.DirectorySeparatorChar;
+                rootFullPath = Path.GetFullPath(root.FullName).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                rootFullPrefix = rootFullPath + Path.DirectorySeparatorChar;
+            }
+
+            var currentCanonical = GetCanonicalDirectoryPath(currentDir) ?? Path.GetFullPath(currentDir.FullName).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            activePathChain.Add(currentCanonical);
+
             try {
-                subDirs = currentDir.GetDirectories();
-            } catch (Exception ex) {
-                logger?.Warning($"无法读取目录 \"{currentDir.FullName}\": {ex.Message}");
-                return nodes;
-            }
-
-            foreach (var subDir in subDirs) {
-                var relPath = Path.GetRelativePath(root.FullName, subDir.FullName).Replace('\\', '/');
-                var displayTitle = ResolveTitle(subDir.Name, relPath, titleOverrides);
-                var orderWeight = ResolveOrderWeight(subDir.Name, relPath, orderOverrides);
-                var dirNode = new SourceNodePlan(subDir, relPath, isDirectory: true, depth, displayTitle, orderWeight);
-
-                if (subDir.Name.StartsWith('.')) {
-                    dirNode.Status = SourceInclusionStatus.Excluded;
-                    dirNode.ExclusionReason = SourceExclusionReason.Hidden;
-                    dirNode.ExclusionExplanation = "以 \".\" 开头的隐藏目录";
-                    nodes.Add(dirNode);
-                    continue;
+                // 1. 处理子目录
+                DirectoryInfo[] subDirs;
+                try {
+                    subDirs = currentDir.GetDirectories();
+                } catch (Exception ex) {
+                    logger?.Warning($"无法读取目录 \"{currentDir.FullName}\": {ex.Message}");
+                    return nodes;
                 }
 
-                totalDirs++;
+                foreach (var subDir in subDirs) {
+                    var relPath = Path.GetRelativePath(root.FullName, subDir.FullName).Replace('\\', '/');
+                    var displayTitle = ResolveTitle(subDir.Name, relPath, titleOverrides);
+                    var orderWeight = ResolveOrderWeight(subDir.Name, relPath, orderOverrides);
+                    var dirNode = new SourceNodePlan(subDir, relPath, isDirectory: true, depth, displayTitle, orderWeight);
 
-                if (depth == 0 && subDir.Name.Equals("build", StringComparison.OrdinalIgnoreCase)) {
-                    dirNode.Status = SourceInclusionStatus.Excluded;
-                    dirNode.ExclusionReason = SourceExclusionReason.IgnorePattern;
-                    dirNode.ExclusionExplanation = "匹配排除模式 (build 默认输出目录)";
-                    nodes.Add(dirNode);
-                    continue;
-                }
-
-                if (IsIgnored(relPath, matcher, out var matchedPat)) {
-                    dirNode.Status = SourceInclusionStatus.Excluded;
-                    dirNode.ExclusionReason = SourceExclusionReason.IgnorePattern;
-                    dirNode.ExclusionExplanation = $"命中排除规则 (模式：{matchedPat ?? "ignore_patterns"})";
-                    nodes.Add(dirNode);
-                    continue;
-                }
-
-                var children = WalkDirectory(
-                    root,
-                    subDir,
-                    depth + 1,
-                    matcher,
-                    ignorePatterns,
-                    includeExts,
-                    titleOverrides,
-                    orderOverrides,
-                    languageMap,
-                    maxDepthIndex,
-                    ref totalFiles,
-                    ref totalDirs,
-                    logger
-                );
-                dirNode.Children.AddRange(children);
-
-                if (!dirNode.HasIncludedDescendants) {
-                    dirNode.Status = SourceInclusionStatus.Excluded;
-                    dirNode.ExclusionReason = SourceExclusionReason.EmptyDirectory;
-                    dirNode.ExclusionExplanation = "空目录或内部所有子项均已被排除";
-                } else {
-                    dirNode.Status = SourceInclusionStatus.Included;
-                    var effectiveDepth = Math.Min(depth, maxDepthIndex);
-                    dirNode.EffectiveDepth = effectiveDepth;
-                    dirNode.SectionCommand = s_allSectionCommands[effectiveDepth];
-                }
-
-                nodes.Add(dirNode);
-            }
-
-            // 2. 处理文件
-            FileInfo[] files;
-            try {
-                files = currentDir.GetFiles();
-            } catch (Exception ex) {
-                logger?.Warning($"无法读取目录中的文件 \"{currentDir.FullName}\": {ex.Message}");
-                return nodes;
-            }
-
-            foreach (var file in files) {
-                var relPath = Path.GetRelativePath(root.FullName, file.FullName).Replace('\\', '/');
-                var displayTitle = ResolveTitle(file.Name, relPath, titleOverrides);
-                var orderWeight = ResolveOrderWeight(file.Name, relPath, orderOverrides);
-                var fileNode = new SourceNodePlan(file, relPath, isDirectory: false, depth, displayTitle, orderWeight);
-
-                if (file.Name.StartsWith('.')) {
-                    fileNode.Status = SourceInclusionStatus.Excluded;
-                    fileNode.ExclusionReason = SourceExclusionReason.Hidden;
-                    fileNode.ExclusionExplanation = "以 \".\" 开头的隐藏文件";
-                    nodes.Add(fileNode);
-                    continue;
-                }
-
-                totalFiles++;
-
-                if (IsIgnored(relPath, matcher, out var matchedPat)) {
-                    fileNode.Status = SourceInclusionStatus.Excluded;
-                    fileNode.ExclusionReason = SourceExclusionReason.IgnorePattern;
-                    fileNode.ExclusionExplanation = $"命中排除规则 (模式：{matchedPat ?? "ignore_patterns"})";
-                    nodes.Add(fileNode);
-                    continue;
-                }
-
-                var rawExt = file.Extension;
-                var extKey = rawExt.StartsWith('.') ? rawExt[1..] : rawExt;
-                bool isRecognizedLang = languageMap.TryGetValue(extKey, out var lang);
-                fileNode.IsRecognizedLanguage = isRecognizedLang;
-
-                if (!includeExts.Contains(rawExt)) {
-                    fileNode.Status = SourceInclusionStatus.Excluded;
-                    fileNode.ExclusionReason = SourceExclusionReason.ExtensionNotIncluded;
-                    if (isRecognizedLang) {
-                        fileNode.ExclusionExplanation = $"扩展名 \"{rawExt}\" 未在包含白名单中（系统已支持该语言 \"{lang}\"，可在 include_file_types 中添加）";
-                    } else {
-                        fileNode.ExclusionExplanation = $"扩展名 \"{rawExt}\" 未在 include_file_types 包含白名单中";
+                    if (subDir.Name.StartsWith('.')) {
+                        dirNode.Status = SourceInclusionStatus.Excluded;
+                        dirNode.ExclusionReason = SourceExclusionReason.Hidden;
+                        dirNode.ExclusionExplanation = "以 \".\" 开头的隐藏目录";
+                        nodes.Add(dirNode);
+                        continue;
                     }
-                    nodes.Add(fileNode);
-                    continue;
+
+                    totalDirs++;
+
+                    if (depth == 0 && subDir.Name.Equals("build", StringComparison.OrdinalIgnoreCase)) {
+                        dirNode.Status = SourceInclusionStatus.Excluded;
+                        dirNode.ExclusionReason = SourceExclusionReason.IgnorePattern;
+                        dirNode.ExclusionExplanation = "匹配排除模式 (build 默认输出目录)";
+                        nodes.Add(dirNode);
+                        continue;
+                    }
+
+                    if (IsIgnored(relPath, matcher, out var matchedPat)) {
+                        dirNode.Status = SourceInclusionStatus.Excluded;
+                        dirNode.ExclusionReason = SourceExclusionReason.IgnorePattern;
+                        dirNode.ExclusionExplanation = $"命中排除规则 (模式：{matchedPat ?? "ignore_patterns"})";
+                        nodes.Add(dirNode);
+                        continue;
+                    }
+
+                    // 符号链接与循环引用检测
+                    if (subDir.Attributes.HasFlag(FileAttributes.ReparsePoint) || !string.IsNullOrEmpty(subDir.LinkTarget)) {
+                        string? canonicalTarget = null;
+                        bool isLoop = false;
+                        try {
+                            canonicalTarget = GetCanonicalDirectoryPath(subDir);
+                        } catch (IOException) {
+                            isLoop = true;
+                        }
+
+                        if (isLoop || (canonicalTarget != null && activePathChain.Contains(canonicalTarget))) {
+                            dirNode.Status = SourceInclusionStatus.Excluded;
+                            dirNode.ExclusionReason = SourceExclusionReason.SymlinkLoop;
+                            dirNode.ExclusionExplanation = "检测到符号链接循环引用，已跳过以防止无限递归";
+                            logger?.Warning($"跳过符号链接循环目录：\"{subDir.FullName}\"");
+                            nodes.Add(dirNode);
+                            continue;
+                        }
+
+                        if (canonicalTarget == null || !Directory.Exists(canonicalTarget)) {
+                            dirNode.Status = SourceInclusionStatus.Excluded;
+                            dirNode.ExclusionReason = SourceExclusionReason.ExternalSymlink;
+                            dirNode.ExclusionExplanation = "无效或断开的符号链接目录，已跳过";
+                            logger?.Warning($"跳过无效或断开的符号链接目录：\"{subDir.FullName}\"");
+                            nodes.Add(dirNode);
+                            continue;
+                        }
+
+                        bool isInsideRoot = canonicalTarget.Equals(rootCanonicalPath, StringComparison.OrdinalIgnoreCase) ||
+                                            canonicalTarget.StartsWith(rootCanonicalPrefix!, StringComparison.OrdinalIgnoreCase) ||
+                                            canonicalTarget.Equals(rootFullPath, StringComparison.OrdinalIgnoreCase) ||
+                                            canonicalTarget.StartsWith(rootFullPrefix!, StringComparison.OrdinalIgnoreCase);
+
+                        if (!isInsideRoot) {
+                            dirNode.Status = SourceInclusionStatus.Excluded;
+                            dirNode.ExclusionReason = SourceExclusionReason.ExternalSymlink;
+                            dirNode.ExclusionExplanation = "指向源目录外部的符号链接，出于安全性已跳过";
+                            logger?.Warning($"跳过指向源目录外部的符号链接：\"{subDir.FullName}\" -> \"{canonicalTarget}\"");
+                            nodes.Add(dirNode);
+                            continue;
+                        }
+                    }
+
+                    var children = WalkDirectory(
+                        root,
+                        subDir,
+                        depth + 1,
+                        matcher,
+                        ignorePatterns,
+                        includeExts,
+                        titleOverrides,
+                        orderOverrides,
+                        languageMap,
+                        maxDepthIndex,
+                        ref totalFiles,
+                        ref totalDirs,
+                        logger,
+                        activePathChain,
+                        rootCanonicalPath,
+                        rootCanonicalPrefix,
+                        rootFullPath,
+                        rootFullPrefix
+                    );
+                    dirNode.Children.AddRange(children);
+
+                    if (!dirNode.HasIncludedDescendants) {
+                        dirNode.Status = SourceInclusionStatus.Excluded;
+                        dirNode.ExclusionReason = SourceExclusionReason.EmptyDirectory;
+                        dirNode.ExclusionExplanation = "空目录或内部所有子项均已被排除";
+                    } else {
+                        dirNode.Status = SourceInclusionStatus.Included;
+                        var effectiveDepth = Math.Min(depth, maxDepthIndex);
+                        dirNode.EffectiveDepth = effectiveDepth;
+                        dirNode.SectionCommand = AllSectionCommands[effectiveDepth];
+                    }
+
+                    nodes.Add(dirNode);
                 }
 
-                // 纳入排版（深度超过命令级数时自动 clamp 到最后一层）
-                fileNode.Status = SourceInclusionStatus.Included;
-                var effectiveDepth = Math.Min(depth, maxDepthIndex);
-                fileNode.EffectiveDepth = effectiveDepth;
-                fileNode.SectionCommand = s_allSectionCommands[effectiveDepth];
+                // 2. 处理文件
+                FileInfo[] files;
+                try {
+                    files = currentDir.GetFiles();
+                } catch (Exception ex) {
+                    logger?.Warning($"无法读取目录中的文件 \"{currentDir.FullName}\": {ex.Message}");
+                    return nodes;
+                }
 
-                bool isExplicitRawLatex = false;
-                if (isRecognizedLang) {
-                    if (string.Equals(lang, "raw", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(lang, "latex-raw", StringComparison.OrdinalIgnoreCase)) {
+                foreach (var file in files) {
+                    var relPath = Path.GetRelativePath(root.FullName, file.FullName).Replace('\\', '/');
+                    var displayTitle = ResolveTitle(file.Name, relPath, titleOverrides);
+                    var orderWeight = ResolveOrderWeight(file.Name, relPath, orderOverrides);
+                    var fileNode = new SourceNodePlan(file, relPath, isDirectory: false, depth, displayTitle, orderWeight);
+
+                    if (file.Name.StartsWith('.')) {
+                        fileNode.Status = SourceInclusionStatus.Excluded;
+                        fileNode.ExclusionReason = SourceExclusionReason.Hidden;
+                        fileNode.ExclusionExplanation = "以 \".\" 开头的隐藏文件";
+                        nodes.Add(fileNode);
+                        continue;
+                    }
+
+                    totalFiles++;
+
+                    if (IsIgnored(relPath, matcher, out var matchedPat)) {
+                        fileNode.Status = SourceInclusionStatus.Excluded;
+                        fileNode.ExclusionReason = SourceExclusionReason.IgnorePattern;
+                        fileNode.ExclusionExplanation = $"命中排除规则 (模式：{matchedPat ?? "ignore_patterns"})";
+                        nodes.Add(fileNode);
+                        continue;
+                    }
+
+                    // 文件符号链接循环或断开检测
+                    if (file.Attributes.HasFlag(FileAttributes.ReparsePoint) || !string.IsNullOrEmpty(file.LinkTarget)) {
+                        bool isFileLoop = false;
+                        string? fileTarget = null;
+                        try {
+                            var resolvedTarget = file.ResolveLinkTarget(returnFinalTarget: true);
+                            if (resolvedTarget != null) {
+                                fileTarget = Path.GetFullPath(resolvedTarget.FullName);
+                            } else if (!string.IsNullOrEmpty(file.LinkTarget)) {
+                                var rawTarget = file.LinkTarget;
+                                fileTarget = Path.IsPathRooted(rawTarget)
+                                    ? Path.GetFullPath(rawTarget)
+                                    : Path.GetFullPath(Path.Combine(file.Directory?.FullName ?? "", rawTarget));
+                            }
+                        } catch (IOException) {
+                            isFileLoop = true;
+                        } catch {
+                            // ignore
+                        }
+
+                        if (isFileLoop) {
+                            fileNode.Status = SourceInclusionStatus.Excluded;
+                            fileNode.ExclusionReason = SourceExclusionReason.SymlinkLoop;
+                            fileNode.ExclusionExplanation = "检测到文件符号链接循环引用，已跳过";
+                            logger?.Warning($"跳过文件符号链接循环：\"{file.FullName}\"");
+                            nodes.Add(fileNode);
+                            continue;
+                        }
+
+                        if (fileTarget == null || !File.Exists(fileTarget)) {
+                            fileNode.Status = SourceInclusionStatus.Excluded;
+                            fileNode.ExclusionReason = SourceExclusionReason.ExternalSymlink;
+                            fileNode.ExclusionExplanation = "无效或断开的文件符号链接，已跳过";
+                            logger?.Warning($"跳过无效或断开的文件符号链接：\"{file.FullName}\"");
+                            nodes.Add(fileNode);
+                            continue;
+                        }
+                    }
+
+                    var rawExt = file.Extension;
+                    var extKey = rawExt.StartsWith('.') ? rawExt[1..] : rawExt;
+                    bool isRecognizedLang = languageMap.TryGetValue(extKey, out var lang);
+                    fileNode.IsRecognizedLanguage = isRecognizedLang;
+
+                    if (!includeExts.Contains(rawExt)) {
+                        fileNode.Status = SourceInclusionStatus.Excluded;
+                        fileNode.ExclusionReason = SourceExclusionReason.ExtensionNotIncluded;
+                        if (isRecognizedLang) {
+                            fileNode.ExclusionExplanation = $"扩展名 \"{rawExt}\" 未在包含白名单中（系统已支持该语言 \"{lang}\"，可在 include_file_types 中添加）";
+                        } else {
+                            fileNode.ExclusionExplanation = $"扩展名 \"{rawExt}\" 未在 include_file_types 包含白名单中";
+                        }
+                        nodes.Add(fileNode);
+                        continue;
+                    }
+
+                    // 纳入排版（深度超过命令级数时自动 clamp 到最后一层）
+                    fileNode.Status = SourceInclusionStatus.Included;
+                    var effectiveDepth = Math.Min(depth, maxDepthIndex);
+                    fileNode.EffectiveDepth = effectiveDepth;
+                    fileNode.SectionCommand = AllSectionCommands[effectiveDepth];
+
+                    bool isExplicitRawLatex = false;
+                    if (isRecognizedLang) {
+                        if (string.Equals(lang, "raw", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(lang, "latex-raw", StringComparison.OrdinalIgnoreCase)) {
+                            isExplicitRawLatex = true;
+                        }
+                    } else if (string.Equals(extKey, "tex", StringComparison.OrdinalIgnoreCase)) {
                         isExplicitRawLatex = true;
                     }
-                } else if (string.Equals(extKey, "tex", StringComparison.OrdinalIgnoreCase)) {
-                    isExplicitRawLatex = true;
+
+                    fileNode.IsRawLatex = isExplicitRawLatex;
+                    fileNode.EffectiveLanguage = isExplicitRawLatex
+                        ? "raw LaTeX"
+                        : (!string.IsNullOrWhiteSpace(lang) ? lang : "text");
+
+                    nodes.Add(fileNode);
                 }
 
-                fileNode.IsRawLatex = isExplicitRawLatex;
-                fileNode.EffectiveLanguage = isExplicitRawLatex
-                    ? "raw LaTeX"
-                    : (!string.IsNullOrWhiteSpace(lang) ? lang : "text");
-
-                nodes.Add(fileNode);
+                // 3. 排序：子目录与文件统一先按自定义权重，再按自然字母序
+                return nodes
+                    .OrderBy(n => n.IsDirectory ? 0 : 1) // 目录优先
+                    .ThenBy(n => n.OrderWeight)
+                    .ThenBy(n => n.Info.Name, NaturalStringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            } finally {
+                activePathChain.Remove(currentCanonical);
             }
-
-            // 3. 排序：子目录与文件统一先按自定义权重，再按自然字母序
-            return nodes
-                .OrderBy(n => n.IsDirectory ? 0 : 1) // 目录优先
-                .ThenBy(n => n.OrderWeight)
-                .ThenBy(n => n.Info.Name, NaturalStringComparer.OrdinalIgnoreCase)
-                .ToList();
         }
 
         private static bool IsIgnored(string relativePath, Matcher matcher, out string? matchedPattern) {

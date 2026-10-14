@@ -291,4 +291,55 @@ public class RootCommandFactoryTests {
         Assert.False(doc.RootElement.GetProperty("overallOk").GetBoolean());
         Assert.True(doc.RootElement.GetProperty("errorCount").GetInt32() > 0);
     }
+
+    [Fact]
+    public void Invoke_Build_TuiWithInvalidPreset_RejectsEarlyWithExitCode2() {
+        var logger = new TestLogger();
+        var factory = new RootCommandFactory(logger);
+        var root = factory.CreateRootCommand();
+
+        int result = root.Parse(new[] { "build", "--tui", "--preset", "non-existent" }).Invoke();
+
+        Assert.Equal(ExitCodes.InvalidArguments, result);
+        Assert.Contains(logger.Entries, e => e.Message.Contains("未知的排版预设 \"non-existent\""));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("-10")]
+    public void Invoke_Build_TuiWithInvalidSampleLimit_RejectsEarlyWithExitCode2(string sampleValue) {
+        var logger = new TestLogger();
+        var factory = new RootCommandFactory(logger);
+        var root = factory.CreateRootCommand();
+
+        int result = root.Parse(new[] { "build", "--tui", "--sample", sampleValue }).Invoke();
+
+        Assert.Equal(ExitCodes.InvalidArguments, result);
+        Assert.Contains(logger.Entries, e => e.Message.Contains("小样文件数量必须为大于 0 的正整数"));
+    }
+
+    [Fact]
+    public void Invoke_Build_NonTuiWithInvalidPreset_RejectsEarlyWithExitCode2() {
+        var logger = new TestLogger();
+        var factory = new RootCommandFactory(logger);
+        var root = factory.CreateRootCommand();
+
+        int result = root.Parse(new[] { "build", "-s", "/some/dir", "-o", "/some/out.pdf", "--preset", "invalid_preset" }).Invoke();
+
+        Assert.Equal(ExitCodes.InvalidArguments, result);
+        Assert.Contains(logger.Entries, e => e.Message.Contains("未知的排版预设 \"invalid_preset\""));
+    }
+
+    [Fact]
+    public void Invoke_Build_NonTuiWithInvalidSampleLimit_RejectsEarlyWithExitCode2() {
+        var logger = new TestLogger();
+        var factory = new RootCommandFactory(logger);
+        var root = factory.CreateRootCommand();
+
+        int result = root.Parse(new[] { "build", "-s", "/some/dir", "-o", "/some/out.pdf", "--sample", "0" }).Invoke();
+
+        Assert.Equal(ExitCodes.InvalidArguments, result);
+        Assert.Contains(logger.Entries, e => e.Message.Contains("小样文件数量必须为大于 0 的正整数"));
+    }
 }

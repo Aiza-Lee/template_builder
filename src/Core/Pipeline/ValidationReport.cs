@@ -31,11 +31,11 @@ namespace Core.Pipeline {
         public string ToText() {
             var sb = new StringBuilder();
             foreach (var check in Checks) {
-                var tag = check.Ok ? "[通过] " : "[失败]";
+                var tag = check.Ok ? Core.Localization.I18n.T("Validation.Pass", "[通过] ") : Core.Localization.I18n.T("Validation.Fail", "[失败]");
                 var msg = string.IsNullOrEmpty(check.Message) ? string.Empty : $"  {check.Message}";
                 sb.AppendLine($"{tag} {check.Category}.{check.Name}{msg}");
             }
-            sb.AppendLine($"汇总：{ErrorCount} 项错误，{WarningCount} 项警告");
+            sb.AppendLine(string.Format(Core.Localization.I18n.T("Validation.Summary", "汇总：{0} 项错误，{1} 项警告"), ErrorCount, WarningCount));
             return sb.ToString();
         }
 

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using Core.Localization;
 using Core.Models;
 using Utils;
 using Utils.Exceptions;
@@ -34,15 +35,36 @@ namespace Core.Pipeline {
                     projectConfig = new ProjectConfiguration(_logger, strictness);
 
                     if (!options.ConfigFile.Exists) {
-                        _logger.Error($"未找到配置文件：{options.ConfigFile.FullName}");
+                        var notFoundMsg = string.Format(I18n.T("Validation.ConfigFileNotFound", "未找到配置文件：{0}"), options.ConfigFile.FullName);
+                        _logger.Error(notFoundMsg);
                         return BuildResult.CreateFailure(
                             ExitCodes.InvalidArguments,
                             BuildStatus.Failed,
-                            $"未找到配置文件：{options.ConfigFile.FullName}"
+                            notFoundMsg
                         );
                     }
 
-                    var configJson = File.ReadAllText(options.ConfigFile.FullName);
+                    string configJson;
+                    try {
+                        configJson = File.ReadAllText(options.ConfigFile.FullName);
+                    } catch (UnauthorizedAccessException ex) {
+                        var permMsg = string.Format(I18n.T("BuildPipeline.ConfigNoPermission", "无法读取配置文件 \"{0}\"：无访问权限（{1}）"), options.ConfigFile.FullName, ex.Message);
+                        _logger.Error($"[{permMsg}]");
+                        return BuildResult.CreateFailure(
+                            ExitCodes.InvalidArguments,
+                            BuildStatus.Failed,
+                            permMsg
+                        );
+                    } catch (IOException ex) {
+                        var ioMsg = string.Format(I18n.T("BuildPipeline.ConfigIoError", "无法读取配置文件 \"{0}\"：I/O 错误（{1}）"), options.ConfigFile.FullName, ex.Message);
+                        _logger.Error($"[{ioMsg}]");
+                        return BuildResult.CreateFailure(
+                            ExitCodes.InvalidArguments,
+                            BuildStatus.Failed,
+                            ioMsg
+                        );
+                    }
+
                     projectConfig.LoadProjectConfig(configJson, options.ConfigFile.FullName);
 
                     if (options.ConfigOverrides is { Count: > 0 }) {
@@ -60,7 +82,7 @@ namespace Core.Pipeline {
                     return BuildResult.CreateFailure(
                         ExitCodes.InvalidArguments,
                         BuildStatus.Failed,
-                        $"配置校验失败：{firstErr.Message}（期望：{firstErr.Expected}；建议：{firstErr.Recommendation}）",
+                        string.Format(I18n.T("BuildPipeline.ConfigValidationFailed", "配置校验失败：{0}（期望：{1}；建议：{2}）"), firstErr.Message, firstErr.Expected, firstErr.Recommendation),
                         diagnostics: configValidation.Errors.Select(e => $"{e.PropertyPath}: {e.Message}").ToList()
                     );
                 }
@@ -72,7 +94,7 @@ namespace Core.Pipeline {
                     return BuildResult.CreateFailure(
                         preflight.ExitCode,
                         BuildStatus.Failed,
-                        $"{preflight.Message}（建议：{preflight.Recommendation}）",
+                        string.Format(I18n.T("BuildPipeline.PreflightFailed", "{0}（建议：{1}）"), preflight.Message, preflight.Recommendation),
                         diagnostics: [preflight.Message]
                     );
                 }
@@ -91,6 +113,18 @@ namespace Core.Pipeline {
             } catch (InvalidCastException ex) {
                 _logger.Error($"[配置类型转换错误] {ex.Message}");
                 return BuildResult.CreateFailure(ExitCodes.InvalidArguments, BuildStatus.Failed, ex.Message);
+            } catch (UnauthorizedAccessException ex) {
+                _logger.Error($"[无文件访问权限] {ex.Message}");
+                return BuildResult.CreateFailure(ExitCodes.InvalidArguments, BuildStatus.Failed, $"文件权限错误：{ex.Message}");
+            } catch (DirectoryNotFoundException ex) {
+                _logger.Error($"[目录未找到] {ex.Message}");
+                return BuildResult.CreateFailure(ExitCodes.InvalidArguments, BuildStatus.Failed, $"目录未找到：{ex.Message}");
+            } catch (IOException ex) {
+                _logger.Error($"[文件系统 I/O 错误] {ex.Message}");
+                return BuildResult.CreateFailure(ExitCodes.InvalidArguments, BuildStatus.Failed, $"文件系统 I/O 错误：{ex.Message}");
+            } catch (Exception ex) {
+                _logger.Error($"[构建未处理异常] {ex.Message}");
+                return BuildResult.CreateFailure(ExitCodes.InvalidArguments, BuildStatus.Failed, $"构建失败：{ex.Message}");
             }
         }
 

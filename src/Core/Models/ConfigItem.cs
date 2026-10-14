@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Core.Models {
     /// <summary>
     /// 单个配置项模型，支持精确的值来源追溯（内置默认 -> 项目配置 -> 运行时覆盖）。
@@ -8,6 +10,7 @@ namespace Core.Models {
         public ConfigSource Source { get; private set; }
         public string? BuiltinValue { get; }
         public string? ProjectValue { get; private set; }
+        public JsonElement? RawElement { get; private set; }
         public string? OverrideValue { get; private set; }
 
         public string? EffectiveValue => Source switch {
@@ -19,17 +22,19 @@ namespace Core.Models {
         public bool IsOverridden => Source == ConfigSource.Override;
         public bool HasProjectValue => ProjectValue != null;
 
-        public ConfigItem(string key, string section, string? builtinValue, string? projectValue = null, string? overrideValue = null) {
+        public ConfigItem(string key, string section, string? builtinValue, string? projectValue = null, string? overrideValue = null, JsonElement? rawElement = null) {
             Key = key;
             Section = section;
             BuiltinValue = builtinValue;
             ProjectValue = projectValue;
             OverrideValue = overrideValue;
+            RawElement = rawElement;
             UpdateSource();
         }
 
-        public void SetProjectValue(string? value) {
+        public void SetProjectValue(string? value, JsonElement? rawElement = null) {
             ProjectValue = value;
+            RawElement = rawElement;
             UpdateSource();
         }
 

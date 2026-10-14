@@ -178,4 +178,3 @@ public class TuiRedrawerTests {
         Assert.Equal(1, previousVisualLineCount);
     }
 }
-

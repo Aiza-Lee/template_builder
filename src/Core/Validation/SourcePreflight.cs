@@ -1,5 +1,6 @@
 using System.IO;
 using Core.Models;
+using Core.SourceTree;
 using Utils;
 
 namespace Core.Validation {
@@ -25,7 +26,7 @@ namespace Core.Validation {
         string? DeepestPath = null
     ) {
         public static SourcePreflightResult Ok(int totalFiles, int matchedFiles, int maxDepth) =>
-            new(true, ExitCodes.Success, $"源文件预检通过（共匹配 {matchedFiles} 个有效源文件，最大章节深度 {maxDepth}）", null, totalFiles, matchedFiles, maxDepth);
+            new(true, ExitCodes.Success, string.Format(Core.Localization.I18n.T("Preflight.Ok", "源文件预检通过（共匹配 {0} 个有效源文件，最大章节深度 {1}）"), matchedFiles, maxDepth), null, totalFiles, matchedFiles, maxDepth);
 
         public static SourcePreflightResult Failure(int exitCode, string message, string recommendation, int totalFiles = 0, int matchedFiles = 0, int maxDepth = 0, string? deepestPath = null) =>
             new(false, exitCode, message, recommendation, totalFiles, matchedFiles, maxDepth, deepestPath);
@@ -35,6 +36,7 @@ namespace Core.Validation {
     /// 统一源文件预检器：
     /// 负责在构建或校验前对源目录的存在性、空目录、全过滤状态及章节最大深度进行综合研判，
     /// 消除空跑假阳性（空目录退出 0）并统一 validate 与 build 的准入规则。
+    /// 复用统一源码树计划（SourceTreePlan），保证预检、TUI 内容预览与构建生成所依据的集合完全一致。
     /// </summary>
     internal static class SourcePreflight {
         /// <summary>
@@ -54,111 +56,77 @@ namespace Core.Validation {
             if (!sourceDir.Exists) {
                 return SourcePreflightResult.Failure(
                     ExitCodes.InvalidArguments,
-                    $"未找到源目录：\"{sourceDir.FullName}\"",
-                    "请检查源目录路径是否正确，或指定存在的源目录。"
+                    string.Format(Core.Localization.I18n.T("Preflight.SourceDirNotFound", "未找到源目录：\"{0}\""), sourceDir.FullName),
+                    Core.Localization.I18n.T("Preflight.CheckSourceDirPath", "请检查源目录路径是否正确，或指定存在的源目录。")
                 );
             }
 
-            var includeFileTypes = config.ProgramParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
-            var includeExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var ext in includeFileTypes) {
-                if (string.IsNullOrWhiteSpace(ext)) continue;
-                includeExts.Add(ext.StartsWith('.') ? ext : "." + ext);
-            }
-
-            var ignorePatterns = config.ProgramParser["IGNORE_PATTERNS"].GetAsStringArray();
-
-            // 1. 统计物理文件总数（排除以 . 开头的隐藏项与根目录下的 build 目录）
-            int totalFiles = 0;
             try {
-                totalFiles = CountPhysicalFiles(sourceDir);
+                _ = sourceDir.GetFileSystemInfos();
             } catch (Exception ex) {
                 return SourcePreflightResult.Failure(
                     ExitCodes.InvalidArguments,
-                    $"访问源目录失败：{ex.Message}",
-                    "请检查源目录访问权限。"
+                    string.Format(Core.Localization.I18n.T("Preflight.AccessSourceDirFailed", "访问源目录失败：{0}"), ex.Message),
+                    Core.Localization.I18n.T("Preflight.CheckSourceDirPermission", "请检查源目录访问权限。")
                 );
             }
 
-            if (totalFiles == 0) {
+            SourceTreePlan plan;
+            try {
+                plan = SourceTreePlan.Build(sourceDir, config, sectionDepth: MaxSupportedDepth + 1, logger);
+            } catch (Exception ex) {
+                return SourcePreflightResult.Failure(
+                    ExitCodes.InvalidArguments,
+                    string.Format(Core.Localization.I18n.T("Preflight.WalkSourceTreeFailed", "遍历源码树失败：{0}"), ex.Message),
+                    Core.Localization.I18n.T("Preflight.CheckStructureAndPermission", "请检查源码目录结构与读取权限。")
+                );
+            }
+
+            // 1. 物理文件总数为空
+            if (plan.TotalPhysicalFiles == 0) {
                 return SourcePreflightResult.Failure(
                     ExitCodes.ValidationFailed,
-                    $"源目录 \"{sourceDir.FullName}\" 为空，未找到任何可排版的文件。",
-                    "请在源目录中添加待编译的源码或文本文件后再执行操作。",
+                    string.Format(Core.Localization.I18n.T("Preflight.SourceDirEmpty", "源目录 \"{0}\" 为空，未找到任何可排版的文件。"), sourceDir.FullName),
+                    Core.Localization.I18n.T("Preflight.AddSourceFilesTip", "请在源目录中添加待编译的源码或文本文件后再执行操作。"),
                     totalFiles: 0,
                     matchedFiles: 0
                 );
             }
 
-            // 2. 遍历源码树，统计匹配到的白名单文件数与最大深度
-            int matchedFiles = 0;
-            int maxDepth = -1;
-            string? deepestPath = null;
-
-            try {
-                foreach (var entry in SourceTreeWalker.Walk(sourceDir, ignorePatterns, logger)) {
-                    if (entry.Depth > maxDepth) {
-                        maxDepth = entry.Depth;
-                        deepestPath = entry.Info.FullName;
-                    }
-
-                    if (!entry.IsDirectory) {
-                        var fileInfo = (FileInfo)entry.Info;
-                        if (includeExts.Contains(fileInfo.Extension)) {
-                            matchedFiles++;
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                return SourcePreflightResult.Failure(
-                    ExitCodes.InvalidArguments,
-                    $"遍历源码树失败：{ex.Message}",
-                    "请检查源码目录结构与读取权限。"
-                );
-            }
-
-            // 3. 章节深度超限（深度 >= 5）
-            if (maxDepth > MaxSupportedDepth) {
+            // 2. 所有文件均被过滤排除（无有效收录文件）
+            if (plan.IncludedFiles.Count == 0) {
+                var includeFileTypes = config.ProgramParser["INCLUDE_FILE_TYPES"].GetAsStringArray();
+                var incSummary = string.Join(", ", includeFileTypes.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.StartsWith('.') ? t : "." + t));
                 return SourcePreflightResult.Failure(
                     ExitCodes.ValidationFailed,
-                    $"源码目录嵌套层级过深（检测到深度 {maxDepth}，最大允许深度为 {MaxSupportedDepth}，对应 LaTeX \\subparagraph）。超深路径：\"{deepestPath}\"",
-                    $"建议调整源码目录结构使嵌套深度不超过 {MaxSupportedDepth + 1} 层（深度 0~{MaxSupportedDepth}），或在 PROGRAM.ignore_patterns 中排除该深层目录。",
-                    totalFiles: totalFiles,
-                    matchedFiles: matchedFiles,
-                    maxDepth: maxDepth,
-                    deepestPath: deepestPath
-                );
-            }
-
-            // 4. 所有文件均被过滤排除
-            if (matchedFiles == 0) {
-                var incSummary = string.Join(", ", includeExts);
-                return SourcePreflightResult.Failure(
-                    ExitCodes.ValidationFailed,
-                    $"源目录 \"{sourceDir.FullName}\" 包含 {totalFiles} 个文件，但根据当前过滤规则未匹配到任何有效源文件。",
-                    $"请检查配置中的 PROGRAM.include_file_types（当前配置：{incSummary}）和 PROGRAM.ignore_patterns，确保目标文件的扩展名在白名单中且未被模式排除。",
-                    totalFiles: totalFiles,
+                    string.Format(Core.Localization.I18n.T("Preflight.AllFilesFiltered", "源目录 \"{0}\" 包含 {1} 个文件，但根据当前过滤规则未匹配到任何有效源文件。"), sourceDir.FullName, plan.TotalPhysicalFiles),
+                    string.Format(Core.Localization.I18n.T("Preflight.CheckIncludeTypesAndIgnore", "请检查配置中的 PROGRAM.include_file_types（当前配置：{0}）和 PROGRAM.ignore_patterns，确保目标文件的扩展名在白名单中且未被模式排除。"), incSummary),
+                    totalFiles: plan.TotalPhysicalFiles,
                     matchedFiles: 0,
-                    maxDepth: maxDepth,
+                    maxDepth: plan.MaxDepth
+                );
+            }
+
+            // 3. 实际收录文件的章节嵌套深度超限（实际收录文件的真实深度 >= 5）
+            if (plan.MaxDepth > MaxSupportedDepth) {
+                var deepestFile = plan.IncludedFiles
+                    .Where(f => f.Depth == plan.MaxDepth)
+                    .OrderBy(f => f.RelativePath, NaturalStringComparer.OrdinalIgnoreCase)
+                    .FirstOrDefault();
+                var deepestPath = deepestFile?.File.FullName;
+
+                return SourcePreflightResult.Failure(
+                    ExitCodes.ValidationFailed,
+                    string.Format(Core.Localization.I18n.T("Preflight.DirectoryTooDeep", "源码目录嵌套层级过深（检测到深度 {0}，最大允许深度为 {1}，对应 LaTeX \\subparagraph）。超深路径：\"{2}\""), plan.MaxDepth, MaxSupportedDepth, deepestPath ?? string.Empty),
+                    string.Format(Core.Localization.I18n.T("Preflight.AdjustStructureTip", "建议调整源码目录结构使嵌套深度不超过 {0} 层（深度 0~{1}），或在 PROGRAM.ignore_patterns 中排除该深层目录。"), MaxSupportedDepth + 1, MaxSupportedDepth),
+                    totalFiles: plan.TotalPhysicalFiles,
+                    matchedFiles: plan.IncludedFiles.Count,
+                    maxDepth: plan.MaxDepth,
                     deepestPath: deepestPath
                 );
             }
 
-            return SourcePreflightResult.Ok(totalFiles, matchedFiles, maxDepth);
-        }
-
-        private static int CountPhysicalFiles(DirectoryInfo dir, int currentDepth = 0) {
-            int count = 0;
-            foreach (var sub in dir.GetDirectories()) {
-                if (sub.Name.StartsWith('.')) continue;
-                if (currentDepth == 0 && sub.Name.Equals("build", StringComparison.OrdinalIgnoreCase)) continue;
-                count += CountPhysicalFiles(sub, currentDepth + 1);
-            }
-            foreach (var f in dir.GetFiles()) {
-                if (f.Name.StartsWith('.')) continue;
-                count++;
-            }
-            return count;
+            return SourcePreflightResult.Ok(plan.TotalPhysicalFiles, plan.IncludedFiles.Count, plan.MaxDepth);
         }
     }
 }

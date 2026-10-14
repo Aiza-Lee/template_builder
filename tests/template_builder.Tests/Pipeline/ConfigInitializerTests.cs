@@ -249,4 +249,24 @@ public class ConfigInitializerTests {
         var spaces = new FileInfo("path with spaces/config.jsonc");
         Assert.Equal("\"path with spaces/config.jsonc\"", ConfigInitializer.FormatPathForCli(spaces));
     }
+
+    [Fact]
+    public void Run_UnwritableDirectory_ReturnsInvalidArguments() {
+        if (OperatingSystem.IsWindows()) return;
+        using var tmp = TempDir.Create();
+        var readOnlyDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "readonly"));
+        var outputPath = new FileInfo(Path.Combine(readOnlyDir.FullName, "cfg.jsonc"));
+        try {
+            File.SetUnixFileMode(readOnlyDir.FullName, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            var logger = new TestLogger();
+            var runner = new ConfigInitializer(logger, new ManifestResourceManager());
+
+            var exitCode = runner.Run(new InitSubcommandOptions(outputPath));
+
+            Assert.Equal(ExitCodes.InvalidArguments, exitCode);
+            Assert.Contains(logger.Entries, e => e.Level == LogLevel.ERROR && e.Message.Contains("无访问权限"));
+        } finally {
+            File.SetUnixFileMode(readOnlyDir.FullName, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
 }

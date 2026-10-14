@@ -197,11 +197,11 @@ public class PdfPresetAndProofPreviewTests {
 
         using var tmp = TempDir.Create();
         var srcDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "算法模版库"));
-        
+
         // 构造带多级中文目录与长行的测试源码
         var mathDir = Directory.CreateDirectory(Path.Combine(srcDir.FullName, "01_数学与数论"));
         var geomDir = Directory.CreateDirectory(Path.Combine(mathDir.FullName, "几何算法"));
-        
+
         var cppFile = Path.Combine(geomDir.FullName, "凸包算法.cpp");
         // 包含超长单行，验证 breaklines 自动换行无语法中断与裁切
         var longLine = string.Join(" + ", Enumerable.Range(1, 40).Select(i => $"variable_{i}_with_extremely_long_name"));

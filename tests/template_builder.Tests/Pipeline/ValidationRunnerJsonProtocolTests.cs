@@ -177,4 +177,37 @@ public class ValidationRunnerJsonProtocolTests {
         Assert.Contains("[Warning] 告警消息", errWriter.ToString());
         Assert.Contains("[Error] 错误消息", errWriter.ToString());
     }
+
+    [Fact]
+    public void Run_JsonFormat_UnreadableConfigFile_ProducesStructuredJsonAndReturnsExitCode2() {
+        if (OperatingSystem.IsWindows()) return;
+        var (tmp, sourceDir, configFile) = CreateHappyPathFixture();
+        try {
+            File.SetUnixFileMode(configFile.FullName, UnixFileMode.None);
+            using var stdoutWriter = new StringWriter();
+            var logger = new TestLogger();
+            var runner = new ValidationRunner(logger, new ManifestResourceManager(), stdoutWriter);
+
+            var exitCode = runner.Run(new ValidateSubcommandOptions(sourceDir, configFile, Format: "json"));
+
+            Assert.Equal(ExitCodes.InvalidArguments, exitCode);
+            var stdout = stdoutWriter.ToString().Trim();
+
+            Assert.StartsWith("{", stdout);
+            Assert.EndsWith("}", stdout);
+            using var doc = JsonDocument.Parse(stdout);
+            var root = doc.RootElement;
+            Assert.False(root.GetProperty("overallOk").GetBoolean());
+            Assert.True(root.GetProperty("errorCount").GetInt32() > 0);
+
+            var checks = root.GetProperty("checks").EnumerateArray().ToList();
+            var readableCheck = checks.FirstOrDefault(c => c.GetProperty("category").GetString() == "config" && c.GetProperty("name").GetString() == "readable");
+            Assert.True(readableCheck.ValueKind != JsonValueKind.Undefined);
+            Assert.False(readableCheck.GetProperty("ok").GetBoolean());
+            Assert.Contains("无访问权限", readableCheck.GetProperty("message").GetString());
+        } finally {
+            File.SetUnixFileMode(configFile.FullName, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            tmp.Dispose();
+        }
+    }
 }

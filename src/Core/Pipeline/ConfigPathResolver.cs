@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using Core.Localization;
 using Utils;
 using Utils.Exceptions;
 
@@ -35,22 +36,22 @@ namespace Core.Pipeline {
             Func<FileInfo>? defaultFallbackFactory
         ) {
             if (requested != null && requested.Exists) {
-                _logger.Info($"使用配置文件：\"{requested.FullName}\"。");
+                _logger.Info(string.Format(I18n.T("Info.UsingConfigFile", "使用配置文件：\"{0}\"。"), requested.FullName));
                 return (requested, userProvidedAtCli);
             }
 
             if (userProvidedAtCli) {
                 var requestedPath = requested?.FullName ?? "<null>";
-                throw new InvalidArgumentException($"指定的配置文件不存在：\"{requestedPath}\"");
+                throw new InvalidArgumentException(string.Format(I18n.T("Error.SpecifiedConfigNotFound", "指定的配置文件不存在：\"{0}\""), requestedPath));
             }
 
             if (defaultFallbackFactory == null) {
                 // 这分支理论上不可达：应提供默认配置或回退工厂
-                throw new InvalidOperationException("默认配置回退不可用。");
+                throw new InvalidOperationException(I18n.T("Error.DefaultConfigFallbackUnavailable", "默认配置回退不可用。"));
             }
             var fallback = defaultFallbackFactory();
             if (!userProvidedAtCli) {
-                _logger.Info($"使用配置文件：\"{fallback.FullName}\"。");
+                _logger.Info(string.Format(I18n.T("Info.UsingConfigFile", "使用配置文件：\"{0}\"。"), fallback.FullName));
             }
             return (fallback, false); // 退回默认配置不再严格
         }

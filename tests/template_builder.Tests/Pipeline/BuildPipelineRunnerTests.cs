@@ -57,6 +57,31 @@ public class BuildPipelineRunnerTests {
     }
 
     [Fact]
+    public void Run_UnreadableConfigFile_ReturnsExitInvalidArguments() {
+        if (OperatingSystem.IsWindows()) return;
+        var logger = new TestLogger();
+        var resMgr = new ManifestResourceManager();
+        var runner = new BuildPipelineRunner(logger, resMgr);
+
+        using var tmp = TempDir.Create();
+        var sourceDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "src"));
+        var outputPdf = new FileInfo(Path.Combine(tmp.Path, "out.pdf"));
+        var configFile = new FileInfo(Path.Combine(tmp.Path, "unreadable.json"));
+        File.WriteAllText(configFile.FullName, "{}");
+        try {
+            File.SetUnixFileMode(configFile.FullName, UnixFileMode.None);
+            var options = new BuildSubcommandOptions(sourceDir, outputPdf, configFile, Verbose: false, TemplateDir: null);
+
+            var exitCode = runner.Run(options, userProvidedConfig: true);
+
+            Assert.Equal(ExitCodes.InvalidArguments, exitCode);
+            Assert.Contains(logger.Entries, e => e.Level == LogLevel.ERROR && e.Message.Contains("无访问权限"));
+        } finally {
+            File.SetUnixFileMode(configFile.FullName, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    [Fact]
     public void Run_UnknownConfigKey_InStrictMode_ReturnsExitInvalidArguments() {
         var logger = new TestLogger();
         var resMgr = new ManifestResourceManager();
@@ -145,4 +170,3 @@ public class BuildPipelineRunnerTests {
         Assert.Equal("1", existingConfig.GetEffectiveValue("LAYOUT_COLUMNS"));
     }
 }
-

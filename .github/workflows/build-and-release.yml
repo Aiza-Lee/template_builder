@@ -17,8 +17,11 @@ env:
   DOTNET_NOLOGO: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  test:
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,25 +31,43 @@ jobs:
         with:
           dotnet-version: "9.0.x"
 
-      - name: Install TeX Live (XeLaTeX)
+      - name: Install TeX Live, Pygments and Fonts (Linux only)
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             texlive-xetex \
-            texlive-fonts-recommended
+            texlive-latex-recommended \
+            texlive-latex-extra \
+            texlive-fonts-recommended \
+            texlive-lang-chinese \
+            python3-pygments \
+            fonts-firacode \
+            fonts-noto-cjk
+          fc-cache -fv
 
       - name: Restore
         run: dotnet restore template_builder.sln
 
       - name: Build
-        run: dotnet build template_builder.sln --configuration Release --no-restore
+        run: dotnet build template_builder.sln --configuration Release --no-restore -p:TreatWarningsAsErrors=true
 
       - name: Test
         run: dotnet test template_builder.sln --configuration Release --no-build --verbosity normal
 
+      - name: Verify Real PDF Generation (CLI Smoke, Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir -p /tmp/smoke-sample/src
+          echo 'int main() { return 0; }' > /tmp/smoke-sample/src/main.cpp
+          dotnet run --project template_builder.csproj -c Release --no-build -- init -o /tmp/smoke-sample/config.jsonc
+          dotnet run --project template_builder.csproj -c Release --no-build -- build -s /tmp/smoke-sample/src -c /tmp/smoke-sample/config.jsonc -o /tmp/smoke-sample/output.pdf --sample 1
+          test -s /tmp/smoke-sample/output.pdf
+          rm -rf /tmp/smoke-sample
+
   publish:
-    if: github.event_name == 'release' && github.event.action == 'published'
-    needs: build
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: test
     strategy:
       matrix:
         include:
@@ -80,8 +101,20 @@ jobs:
         with:
           dotnet-version: "9.0.x"
 
+      - name: Determine version
+        id: version_step
+        shell: bash
+        run: |
+          REF="${{ github.ref_name }}"
+          if [[ "$REF" =~ ^v[0-9] ]]; then
+            VER="${REF#v}"
+          else
+            VER="2.0.0-rc.1"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
       - name: Publish self-contained binaries
-        run: dotnet publish template_builder.csproj --configuration Release --runtime ${{ matrix.runtime }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true --output publish/template_builder-${{ matrix.runtime }}
+        run: dotnet publish template_builder.csproj --configuration Release --runtime ${{ matrix.runtime }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:Version=${{ steps.version_step.outputs.version }} --output publish/template_builder-${{ matrix.runtime }}
 
       - name: Clean artifacts (Unix)
         if: matrix.os != 'windows-latest'
@@ -116,7 +149,56 @@ jobs:
         run: |
           (Get-FileHash "publish\${{ matrix.archive }}" -Algorithm SHA256).Hash | Out-File -Encoding ascii "publish\${{ matrix.checksum }}"
 
+      - name: Verify unpack and execute smoke (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Expand-Archive -Path "publish\${{ matrix.archive }}" -DestinationPath "publish\verify_unpack"
+          $exe = "publish\verify_unpack\template_builder.exe"
+          if (-not (Test-Path $exe)) { throw "Published executable not found: $exe" }
+          & $exe --version
+          & $exe --help
+          New-Item -ItemType Directory -Path "publish\verify_smoke\src" -Force
+          Set-Content -Path "publish\verify_smoke\src\main.cpp" -Value "int main() { return 0; }"
+          & $exe init -o "publish\verify_smoke\config.jsonc"
+          & $exe validate -s "publish\verify_smoke\src" -c "publish\verify_smoke\config.jsonc" --format json
+          Remove-Item -Recurse -Force "publish\verify_unpack", "publish\verify_smoke"
+
+      - name: Verify unpack and execute smoke (Unix Native / Rosetta)
+        if: matrix.os != 'windows-latest' && matrix.runtime != 'linux-arm64'
+        run: |
+          mkdir -p publish/verify_unpack
+          tar -xzf publish/${{ matrix.archive }} -C publish/verify_unpack
+          BIN="publish/verify_unpack/template_builder"
+          if [ ! -f "$BIN" ]; then echo "Binary not found: $BIN"; exit 1; fi
+          chmod +x "$BIN"
+          "$BIN" --version
+          "$BIN" --help
+          mkdir -p /tmp/verify_smoke/src
+          echo 'int main() { return 0; }' > /tmp/verify_smoke/src/main.cpp
+          "$BIN" init -o /tmp/verify_smoke/config.jsonc
+          "$BIN" validate -s /tmp/verify_smoke/src -c /tmp/verify_smoke/config.jsonc --format json
+          rm -rf publish/verify_unpack /tmp/verify_smoke
+
+      - name: Verify unpack and execute smoke (Linux ARM64 via QEMU)
+        if: matrix.runtime == 'linux-arm64'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
+          mkdir -p publish/verify_unpack
+          tar -xzf publish/${{ matrix.archive }} -C publish/verify_unpack
+          BIN="publish/verify_unpack/template_builder"
+          if [ ! -f "$BIN" ]; then echo "Binary not found: $BIN"; exit 1; fi
+          chmod +x "$BIN"
+          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$BIN" --version
+          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$BIN" --help
+          mkdir -p /tmp/verify_smoke/src
+          echo 'int main() { return 0; }' > /tmp/verify_smoke/src/main.cpp
+          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$BIN" init -o /tmp/verify_smoke/config.jsonc
+          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$BIN" validate -s /tmp/verify_smoke/src -c /tmp/verify_smoke/config.jsonc --format json
+          rm -rf publish/verify_unpack /tmp/verify_smoke
+
       - name: Upload release artifacts
+        if: github.event_name == 'release' && github.event.action == 'published'
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -126,7 +208,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   docker:
-    needs: build
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -154,11 +236,16 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          flavor: |
+            latest=false
           tags: |
             type=ref,event=branch
+            type=ref,event=pr
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event_name == 'release' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
+            type=semver,pattern={{major}},enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -168,5 +255,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version || '2.0.0-rc.1' }}
+            GIT_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -5,10 +5,6 @@
     "description": "配置文件 schema，对应 Resources/DefaultConfig.jsonc。运行时由 ConfigParser 读取（keys 转 UPPER_SNAKE_CASE）。",
     "type": "object",
     "additionalProperties": false,
-    "required": [
-        "TEX",
-        "PROGRAM"
-    ],
     "properties": {
         "$schema": {
             "type": "string",

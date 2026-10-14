@@ -43,7 +43,6 @@ namespace Core.Tui {
                         session.SourceDir = PromptSourceDir(session.SourceDir);
                         session.OutputPdf = PromptOutputPdf(session.OutputPdf, session.SourceDir);
 
-                        var oldConfigPath = session.ConfigFile?.FullName;
                         var (configFile, userProvided) = PromptConfigFile(launch, session.ConfigFile, session.UserProvidedConfig);
                         session.ConfigFile = configFile;
                         session.UserProvidedConfig = userProvided;
@@ -53,10 +52,15 @@ namespace Core.Tui {
                         session.Verbose = verbose;
                         sink.SetLevel(session.Verbose ? LogLevel.DEBUG : LogLevel.INFO);
 
-                        // 首次进入或用户在向导中切换了配置文件时，加载项目配置（带损坏/缺失恢复机制）
-                        if (!string.Equals(oldConfigPath, configFile.FullName, StringComparison.OrdinalIgnoreCase)
-                            || session.Configuration == null || session.Configuration.Items.Count == 0) {
+                        // 首次启动未加载配置，或用户在向导中重选/切换了配置文件时，加载项目配置（带损坏/缺失恢复机制）
+                        var shouldLoadConfig = !session.IsConfigurationLoaded
+                            || !string.Equals(session.LoadedConfigPath, configFile.FullName, StringComparison.OrdinalIgnoreCase);
+
+                        if (shouldLoadConfig) {
                             LoadOrRecoverConfiguration(session, launch, _bootstrapLogger);
+                            if (launch.InitialPreset != null && session.Configuration != null) {
+                                LayoutPresets.Apply(session.Configuration, launch.InitialPreset);
+                            }
                         }
 
                         currentStep = 2;
@@ -189,130 +193,12 @@ namespace Core.Tui {
             return new FileInfo(chosen);
         }
 
-        private void LoadOrRecoverConfiguration(
+        internal void LoadOrRecoverConfiguration(
             ProjectSession session,
             TuiLaunchOptions launch,
             ILogger logger
         ) {
-            while (true) {
-                if (session.ConfigFile == null) {
-                    session.Configuration = new ProjectConfiguration(logger, ConfigStrictness.Lax);
-                    session.UserProvidedConfig = false;
-                    return;
-                }
-
-                if (!File.Exists(session.ConfigFile.FullName)) {
-                    AnsiConsole.WriteLine();
-                    var missingBody = string.Format(
-                        I18n.T("Prompt.ConfigMissingBody", "✘ 配置文件不存在：\n  文件路径：{0}\n\n文件在磁盘上缺失。请在外部创建/恢复该文件，或选择其他恢复方案。"),
-                        Markup.Escape(session.ConfigFile.FullName)
-                    );
-                    var panel = new Panel(new Markup(missingBody)) {
-                        Header = new PanelHeader($"[bold red]{I18n.T("Prompt.ConfigMissing", " 配置文件缺失 ")}[/]"),
-                        Border = BoxBorder.Rounded
-                    };
-                    AnsiConsole.Write(panel);
-                    AnsiConsole.WriteLine();
-
-                    var menuItems = new List<TuiMenuItem> {
-                        new("RELOAD", I18n.T("Recovery.ReloadMissing", "外部创建/恢复后重新加载")),
-                        new("RESELECT", I18n.T("Recovery.ReselectMissing", "重新输入/选择配置文件路径")),
-                        new("DEFAULT", I18n.T("Recovery.UseDefault", "使用内置默认配置继续 (不依赖外部配置)")),
-                        new("EXIT", I18n.T("Recovery.Exit", "退出程序"), action: TuiMenuAction.Back)
-                    };
-
-                    var chosen = TuiMenu.Prompt(
-                        $"[yellow]{I18n.T("Prompt.RecoveryAction", "请选择恢复操作：")}[/]",
-                        menuItems
-                    );
-
-                    if (chosen.Id == "RELOAD") {
-                        continue;
-                    }
-
-                    if (chosen.Id == "RESELECT") {
-                        var (newFile, isUser) = PromptConfigFile(launch, session.ConfigFile, session.UserProvidedConfig);
-                        session.ConfigFile = newFile;
-                        session.UserProvidedConfig = isUser;
-                        continue;
-                    }
-
-                    if (chosen.Id == "DEFAULT") {
-                        session.Configuration = new ProjectConfiguration(logger, ConfigStrictness.Lax);
-                        session.ConfigFile = null;
-                        session.UserProvidedConfig = false;
-                        AnsiConsole.MarkupLine($"[yellow]{I18n.T("Recovery.SwitchedToDefault", "✔ 已切换为内置默认配置。")}[/]");
-                        return;
-                    }
-
-                    Environment.Exit(ExitCodes.InvalidArguments);
-                    return;
-                }
-
-                try {
-                    var content = File.ReadAllText(session.ConfigFile.FullName);
-                    var strictness = session.UserProvidedConfig ? ConfigStrictness.Strict : ConfigStrictness.Lax;
-                    var config = new ProjectConfiguration(logger, strictness);
-                    config.LoadProjectConfig(content, session.ConfigFile.FullName);
-
-                    // 如果此前会话已有覆盖项，保留覆盖项
-                    if (session.Configuration != null) {
-                        foreach (var (k, v) in session.Configuration.GetActiveOverrides()) {
-                            config.TrySetOverride(k, v);
-                        }
-                    }
-
-                    session.Configuration = config;
-                    return;
-                } catch (Exception ex) {
-                    AnsiConsole.WriteLine();
-                    var corruptBody = string.Format(
-                        I18n.T("Prompt.ConfigCorruptBody", "✘ 配置文件损坏或无法解析：\n  文件路径：{0}\n  错误信息：{1}\n\n请在外部编辑器中修复该文件，或重新选择有效配置文件。"),
-                        Markup.Escape(session.ConfigFile.FullName),
-                        Markup.Escape(ex.Message)
-                    );
-                    var panel = new Panel(new Markup(corruptBody)) {
-                        Header = new PanelHeader($"[bold red]{I18n.T("Prompt.ConfigCorrupt", " 配置文件损坏 ")}[/]"),
-                        Border = BoxBorder.Rounded
-                    };
-                    AnsiConsole.Write(panel);
-                    AnsiConsole.WriteLine();
-
-                    var menuItems = new List<TuiMenuItem> {
-                        new("RELOAD", I18n.T("Recovery.ReloadCorrupt", "外部修复后重新加载")),
-                        new("RESELECT", I18n.T("Recovery.ReselectCorrupt", "重新输入/选择其他配置文件路径")),
-                        new("IGNORE", I18n.T("Recovery.IgnoreCorrupt", "使用内置默认配置继续 (忽略损坏配置)")),
-                        new("EXIT", I18n.T("Recovery.Exit", "退出程序"), action: TuiMenuAction.Back)
-                    };
-
-                    var chosen = TuiMenu.Prompt(
-                        $"[yellow]{I18n.T("Prompt.RecoveryAction", "请选择恢复操作：")}[/]",
-                        menuItems
-                    );
-
-                    if (chosen.Id == "RELOAD") {
-                        continue;
-                    }
-
-                    if (chosen.Id == "RESELECT") {
-                        var (newFile, isUser) = PromptConfigFile(launch, session.ConfigFile, session.UserProvidedConfig);
-                        session.ConfigFile = newFile;
-                        session.UserProvidedConfig = isUser;
-                        continue;
-                    }
-
-                    if (chosen.Id == "IGNORE") {
-                        session.Configuration = new ProjectConfiguration(logger, ConfigStrictness.Lax);
-                        session.ConfigFile = null;
-                        session.UserProvidedConfig = false;
-                        AnsiConsole.MarkupLine($"[yellow]{I18n.T("Recovery.SwitchedToDefault", "✔ 已切换为内置默认配置。")}[/]");
-                        return;
-                    }
-
-                    Environment.Exit(ExitCodes.InvalidArguments);
-                    return;
-                }
-            }
+            TuiSessionRecoveryService.LoadOrRecoverConfiguration(session, launch, logger, PromptConfigFile);
         }
 
         private (FileInfo ConfigFile, bool UserProvided) PromptConfigFile(
@@ -466,8 +352,8 @@ namespace Core.Tui {
                 string sourceLabel = session.ConfigFile == null
                     ? I18n.T("ConfigMenu.SourceBuiltin", "内置默认")
                     : session.UserProvidedConfig
-                        ? string.Format(I18n.T("ConfigMenu.SourceUser", "用户项目 ({0})"), session.ConfigFile.Name)
-                        : string.Format(I18n.T("ConfigMenu.SourceDefault", "默认项目 ({0})"), session.ConfigFile.Name);
+                        ? string.Format(I18n.T("ConfigMenu.SourceUser", "用户项目 ({0})"), Markup.Escape(session.ConfigFile.Name))
+                        : string.Format(I18n.T("ConfigMenu.SourceDefault", "默认项目 ({0})"), Markup.Escape(session.ConfigFile.Name));
 
                 var promptTitle = $"[bold {TuiTheme.Secondary}]{I18n.T("ConfigMenu.Title", "配置调优")}[/]  [grey]{string.Format(I18n.T("ConfigMenu.Source", "来源: {0}"), sourceLabel)}  {string.Format(I18n.T("ConfigMenu.OverridesCount", "覆盖: {0}"), activeOverrides.Count)}[/]：";
                 var chosen = TuiMenu.Prompt(
@@ -517,7 +403,7 @@ namespace Core.Tui {
                 }
 
                 if (chosen.IsSearch) {
-                    var shouldBuild = SearchAndEditFields(config);
+                    var shouldBuild = TuiConfigEditor.SearchAndEditFields(config);
                     if (shouldBuild && ValidateAndPreflight(config, session, sink)) {
                         break;
                     }
@@ -545,7 +431,7 @@ namespace Core.Tui {
                 }
 
                 if (chosen.Tag is TuiCategoryGroup targetCategory) {
-                    var shouldBuild = EditCategoryFields(targetCategory, config);
+                    var shouldBuild = TuiConfigEditor.EditCategoryFields(targetCategory, config);
                     lastSelectedId = targetCategory.Id;
                     session.LastFocusedCategoryId = targetCategory.Id;
                     if (shouldBuild && ValidateAndPreflight(config, session, sink)) {
@@ -558,8 +444,8 @@ namespace Core.Tui {
             string finalSourceLabel = session.ConfigFile == null
                 ? I18n.T("ConfigMenu.SourceBuiltinDesc", "内置默认配置")
                 : session.UserProvidedConfig
-                    ? string.Format(I18n.T("ConfigMenu.SourceUserDesc", "用户项目配置 ({0})"), session.ConfigFile.FullName)
-                    : string.Format(I18n.T("ConfigMenu.SourceDefaultDesc", "默认项目配置 ({0})"), session.ConfigFile.FullName);
+                    ? string.Format(I18n.T("ConfigMenu.SourceUserDesc", "用户项目配置 ({0})"), Markup.Escape(session.ConfigFile.FullName))
+                    : string.Format(I18n.T("ConfigMenu.SourceDefaultDesc", "默认项目配置 ({0})"), Markup.Escape(session.ConfigFile.FullName));
 
             AnsiConsole.MarkupLine($"[bold]{I18n.T("ConfigMenu.ConfigSource", "配置来源")}[/]：{finalSourceLabel}");
             AnsiConsole.MarkupLine(finalOverrides.Count == 0
@@ -657,8 +543,8 @@ namespace Core.Tui {
             table.AddColumn($"[bold]{I18n.T("Preset.ColDesc", "中文说明")}[/]");
 
             foreach (var (k, v) in chosenPreset.Settings) {
-                var label = TuiSchemaCatalog.FieldsByKey.TryGetValue(k, out var field) ? field.Label : k;
-                table.AddRow($"[yellow]{k}[/]", $"[green]{v}[/]", $"[grey]{label}[/]");
+                var label = TuiSchemaCatalog.FieldsByKey.TryGetValue(k, out var field) ? field.DisplayLabel : k;
+                table.AddRow($"[yellow]{Markup.Escape(k)}[/]", $"[green]{Markup.Escape(v)}[/]", $"[grey]{Markup.Escape(label)}[/]");
             }
 
             AnsiConsole.Write(table);
@@ -688,9 +574,11 @@ namespace Core.Tui {
                 return;
             }
 
+            int defaultSample = launch.InitialSampleLimit ?? 3;
+            var promptText = string.Format(I18n.T("Sample.PromptLimit", "小样抽样文件数量 (默认 {0} 个，输入数字)："), defaultSample);
             var fileCountStr = TuiLineEditor.ReadLine(
-                $"[bold]{I18n.T("Sample.PromptLimit", "小样抽样文件数量 (默认 2 个，输入数字)：")}[/]\n",
-                "2",
+                $"[bold]{promptText}[/]\n",
+                defaultSample.ToString(),
                 raw => {
                     if (string.IsNullOrWhiteSpace(raw)) return (true, null);
                     return int.TryParse(raw.Trim(), out var n) && n > 0 && n <= 20
@@ -698,7 +586,7 @@ namespace Core.Tui {
                         : (false, I18n.T("Sample.LimitInvalid", "请输入 1 到 20 之间的正整数"));
                 }
             );
-            int sampleLimit = int.TryParse(fileCountStr?.Trim(), out var limit) && limit > 0 ? limit : 2;
+            int sampleLimit = int.TryParse(fileCountStr?.Trim(), out var limit) && limit > 0 ? limit : defaultSample;
 
             var previewDir = Path.Combine(
                 session.SourceDir.Parent?.FullName ?? session.SourceDir.FullName,
@@ -708,7 +596,7 @@ namespace Core.Tui {
             var samplePdfPath = Path.Combine(previewDir, $"{session.SourceDir.Name}-sample.pdf");
             var samplePdfFile = new FileInfo(samplePdfPath);
 
-            var tempConfigFile = session.ConfigFile ?? new FileInfo(Path.Combine(session.SourceDir.FullName, "build", "mid-config.json"));
+            var tempConfigFile = session.ConfigFile ?? new FileInfo(Path.Combine(session.SourceDir.FullName, ".template_builder", "build", "mid-config.json"));
 
             var sampleOptions = new BuildSubcommandOptions(
                 session.SourceDir,
@@ -755,416 +643,6 @@ namespace Core.Tui {
             }
         }
 
-        private static bool SearchAndEditFields(ProjectConfiguration config) {
-            while (true) {
-                AnsiConsole.MarkupLine($"[bold cyan]{I18n.T("Search.Title", "🔍 搜索配置项")}[/]");
-                AnsiConsole.MarkupLine($"[grey]{I18n.T("Search.Desc", "支持输入中文名称、英文键名（如 font、margin、分栏、目录、作者）或功能说明关键字。")}[/]");
-
-                var query = TuiLineEditor.ReadLine($"[bold]{I18n.T("Search.Prompt", "请输入搜索关键词 (直接回车或按 Esc 返回)：")}[/]\n")?.Trim();
-                if (string.IsNullOrEmpty(query)) {
-                    break;
-                }
-
-                var matches = TuiSchemaCatalog.SearchFields(query);
-                if (matches.Count == 0) {
-                    AnsiConsole.MarkupLine($"[yellow]{string.Format(I18n.T("Search.NotFound", "未找到匹配 \"{0}\" 的配置项。"), Markup.Escape(query))}[/]\n");
-                    continue;
-                }
-
-                string? lastSelectedFieldKey = null;
-                while (true) {
-                    var menuItems = new List<TuiMenuItem>();
-
-                    foreach (var field in matches) {
-                        var item = config.GetItem(field.Key);
-                        var isOverridden = item?.IsOverridden == true;
-                        var cur = item?.EffectiveValue;
-                        var displayCur = TuiViewRenderer.FormatFieldValueDisplay(cur, field.Key);
-                        if (isOverridden) {
-                            displayCur += " [" + I18n.T("Badge.Modified", "已改") + "]";
-                        } else if (item?.HasProjectValue == true) {
-                            displayCur += " [" + I18n.T("Badge.Project", "项目") + "]";
-                        }
-                        var catPrefix = !string.IsNullOrEmpty(field.Category) ? $"[{field.Category}] " : "";
-                        menuItems.Add(new TuiMenuItem(field.Key, $"{catPrefix}{field.Label}", displayCur, isOverridden: isOverridden, tag: field));
-                    }
-
-                    var searchTitle = string.Format(I18n.T("Search.Prefix", "搜索: \"{0}\""), Markup.Escape(query));
-                    var chosen = TuiMenu.Prompt(
-                        $"{searchTitle} ({matches.Count})：",
-                        menuItems,
-                        initialSelectedId: lastSelectedFieldKey,
-                        onEnterAction: TuiMenuItem.ConfirmSentinel,
-                        onDeleteAction: TuiMenuItem.DeleteSentinel
-                    );
-
-                    if (chosen.IsBuild) {
-                        return true;
-                    }
-
-                    if (chosen.IsBack) {
-                        break;
-                    }
-
-                    lastSelectedFieldKey = chosen.Id;
-
-                    if (chosen.IsClear) {
-                        if (chosen.Tag is TuiConfigField delField) {
-                            ClearFieldAction(delField, config);
-                        }
-                        continue;
-                    }
-
-                    if (chosen.Tag is not TuiConfigField selectedField) continue;
-
-                    EditSingleField(selectedField, config);
-                }
-            }
-            return false;
-        }
-
-        private static bool EditCategoryFields(TuiCategoryGroup category, ProjectConfiguration config) {
-            string? lastSelectedFieldKey = null;
-            while (true) {
-                var menuItems = new List<TuiMenuItem>();
-
-                foreach (var field in category.Fields) {
-                    var item = config.GetItem(field.Key);
-                    var isOverridden = item?.IsOverridden == true;
-                    var cur = item?.EffectiveValue;
-                    var displayCur = TuiViewRenderer.FormatFieldValueDisplay(cur, field.Key);
-                    if (isOverridden) {
-                        displayCur += " [" + I18n.T("Badge.Modified", "已改") + "]";
-                    } else if (item?.HasProjectValue == true) {
-                        displayCur += " [" + I18n.T("Badge.Project", "项目") + "]";
-                    }
-                    menuItems.Add(new TuiMenuItem(field.Key, field.Label, displayCur, isOverridden: isOverridden, tag: field));
-                }
-
-                var chosen = TuiMenu.Prompt(
-                    $"[bold {TuiTheme.Secondary}]{Markup.Escape(category.DisplayTitle)}[/]  [grey]{Markup.Escape(category.DisplayDescription)}[/]",
-                    menuItems,
-                    initialSelectedId: lastSelectedFieldKey,
-                    onEnterAction: TuiMenuItem.ConfirmSentinel,
-                    onDeleteAction: TuiMenuItem.DeleteSentinel
-                );
-
-                if (chosen.IsBuild) {
-                    return true;
-                }
-
-                if (chosen.IsBack) {
-                    break;
-                }
-
-                lastSelectedFieldKey = chosen.Id;
-
-                if (chosen.IsClear) {
-                    if (chosen.Tag is TuiConfigField delField) {
-                        ClearFieldAction(delField, config);
-                    }
-                    continue;
-                }
-
-                if (chosen.Tag is not TuiConfigField selectedField) continue;
-
-                EditSingleField(selectedField, config);
-            }
-            return false;
-        }
-
-        private static void ClearFieldAction(TuiConfigField field, ProjectConfiguration config) {
-            var item = config.GetItem(field.Key);
-            if (item == null) return;
-            if (field.Kind is TuiFieldKind.Text or TuiFieldKind.Array) {
-                ApplyFieldValue(field, item, string.Empty, config);
-            } else {
-                if (item.IsOverridden) {
-                    config.ClearOverride(field.Key);
-                    AnsiConsole.MarkupLine($"[green]{string.Format(I18n.T("FieldEdit.Cleared", "✔ 已清除覆盖并恢复默认 {0}"), Markup.Escape(field.Label))}[/]");
-                } else {
-                    AnsiConsole.MarkupLine($"[grey]{string.Format(I18n.T("FieldEdit.NotModified", "配置项 {0} 未修改，无需清空。"), Markup.Escape(field.Label))}[/]");
-                }
-            }
-        }
-
-        private static void EditSingleField(TuiConfigField field, ProjectConfiguration config) {
-            var item = config.GetItem(field.Key);
-            if (item == null) return;
-
-            TuiViewRenderer.RenderFieldCard(AnsiConsole.Console, field, item);
-
-            switch (field.Kind) {
-                case TuiFieldKind.Choice:
-                    PromptChoiceField(field, item, config);
-                    break;
-                case TuiFieldKind.Toggle:
-                    PromptToggleField(field, item, config);
-                    break;
-                default:
-                    PromptTextField(field, item, config);
-                    break;
-            }
-        }
-
-        private static void PromptChoiceField(TuiConfigField field, ConfigItem item, ProjectConfiguration config) {
-            var menuItems = new List<TuiMenuItem>();
-
-            foreach (var choice in field.Choices ?? []) {
-                var isCurrent = string.Equals(choice, item.EffectiveValue, StringComparison.Ordinal);
-                var label = choice;
-                if (string.Equals(choice, item.BuiltinValue, StringComparison.Ordinal)) {
-                    label += " [" + I18n.T("Badge.Default", "默认") + "]";
-                }
-                if (item.HasProjectValue && string.Equals(choice, item.ProjectValue, StringComparison.Ordinal)) {
-                    label += " [" + I18n.T("Badge.Project", "项目") + "]";
-                }
-                menuItems.Add(new TuiMenuItem(choice, label, isOverridden: isCurrent));
-            }
-
-            if (item.HasProjectValue && item.IsOverridden) {
-                menuItems.Add(new TuiMenuItem("__RESET_PROJECT__", string.Format(I18n.T("FieldEdit.RestoreProject", "恢复项目值: {0}"), item.ProjectValue)));
-            }
-
-            if (item.BuiltinValue != null && (item.IsOverridden || !string.Equals(item.EffectiveValue, item.BuiltinValue, StringComparison.Ordinal))) {
-                menuItems.Add(new TuiMenuItem("__RESET_BUILTIN__", string.Format(I18n.T("FieldEdit.RestoreBuiltin", "恢复默认值: {0}"), item.BuiltinValue)));
-            }
-
-            var chosen = TuiMenu.Prompt(
-                $"[bold]{Markup.Escape(field.Label)}[/]：",
-                menuItems,
-                initialSelectedId: item.EffectiveValue,
-                onDeleteAction: TuiMenuItem.DeleteSentinel
-            );
-            if (chosen.IsBack) {
-                return;
-            }
-
-            if (chosen.IsClear) {
-                if (item.IsOverridden) {
-                    config.ClearOverride(field.Key);
-                    AnsiConsole.MarkupLine($"[green]{string.Format(I18n.T("FieldEdit.Cleared", "✔ 已清除覆盖并恢复默认 {0}"), Markup.Escape(field.Label))}[/]");
-                }
-                return;
-            }
-
-            if (chosen.Id == "__RESET_PROJECT__") {
-                config.ResetToProject(field.Key);
-                AnsiConsole.MarkupLine($"[green]{string.Format(I18n.T("FieldEdit.RestoredProject", "✔ 已恢复项目配置值 {0} = {1}"), Markup.Escape(field.Label), Markup.Escape(item.ProjectValue ?? ""))}[/]");
-                return;
-            }
-
-            if (chosen.Id == "__RESET_BUILTIN__") {
-                config.ResetToBuiltin(field.Key);
-                AnsiConsole.MarkupLine($"[green]{string.Format(I18n.T("FieldEdit.RestoredBuiltin", "✔ 已恢复内置默认值 {0} = {1}"), Markup.Escape(field.Label), Markup.Escape(item.BuiltinValue ?? ""))}[/]");
-                return;
-            }
-
-            ApplyFieldValue(field, item, chosen.Id, config);
-        }
-
-        private static void PromptToggleField(TuiConfigField field, ConfigItem item, ProjectConfiguration config) {
-            var menuItems = new List<TuiMenuItem>();
-
-            var isTrueCurrent = string.Equals(item.EffectiveValue, "true", StringComparison.OrdinalIgnoreCase);
-            string trueLabel;
-            string falseLabel;
-
-            if (field.Key == "LAYOUT_TOC_IN_COLUMNS") {
-                falseLabel = I18n.T("Choice.FollowBody", "跟随正文");
-                trueLabel = I18n.T("Choice.SingleColumn", "独立单栏");
-            } else {
-                trueLabel = I18n.T("Choice.Enabled", "开启");
-                falseLabel = I18n.T("Choice.Disabled", "关闭");
-            }
-
-            if (string.Equals(item.BuiltinValue, "true", StringComparison.OrdinalIgnoreCase)) trueLabel += " [" + I18n.T("Badge.Default", "默认") + "]";
-            if (string.Equals(item.BuiltinValue, "false", StringComparison.OrdinalIgnoreCase)) falseLabel += " [" + I18n.T("Badge.Default", "默认") + "]";
-            if (item.HasProjectValue) {
-                if (string.Equals(item.ProjectValue, "true", StringComparison.OrdinalIgnoreCase)) trueLabel += " [" + I18n.T("Badge.Project", "项目") + "]";
-                if (string.Equals(item.ProjectValue, "false", StringComparison.OrdinalIgnoreCase)) falseLabel += " [" + I18n.T("Badge.Project", "项目") + "]";
-            }
-
-            if (field.Key == "LAYOUT_TOC_IN_COLUMNS") {
-                menuItems.Add(new TuiMenuItem("false", falseLabel, isOverridden: !isTrueCurrent));
-                menuItems.Add(new TuiMenuItem("true", trueLabel, isOverridden: isTrueCurrent));
-            } else {
-                menuItems.Add(new TuiMenuItem("true", trueLabel, isOverridden: isTrueCurrent));
-                menuItems.Add(new TuiMenuItem("false", falseLabel, isOverridden: !isTrueCurrent));
-            }
-
-            if (item.HasProjectValue && item.IsOverridden) {
-                var projDisplay = TuiViewRenderer.FormatFieldValueDisplay(item.ProjectValue, field.Key);
-                menuItems.Add(new TuiMenuItem("__RESET_PROJECT__", string.Format(I18n.T("FieldEdit.RestoreProject", "恢复项目值: {0}"), projDisplay)));
-            }
-
-            if (item.BuiltinValue != null && (item.IsOverridden || !string.Equals(item.EffectiveValue, item.BuiltinValue, StringComparison.OrdinalIgnoreCase))) {
-                var builtinDisplay = TuiViewRenderer.FormatFieldValueDisplay(item.BuiltinValue, field.Key);
-                menuItems.Add(new TuiMenuItem("__RESET_BUILTIN__", string.Format(I18n.T("FieldEdit.RestoreBuiltin", "恢复默认值: {0}"), builtinDisplay)));
-            }
-
-            var chosen = TuiMenu.Prompt(
-                $"[bold]{Markup.Escape(field.Label)}[/]：",
-                menuItems,
-                initialSelectedId: item.EffectiveValue?.ToLowerInvariant(),
-                onDeleteAction: TuiMenuItem.DeleteSentinel
-            );
-            if (chosen.IsBack) {
-                return;
-            }
-
-            if (chosen.IsClear) {
-                if (item.IsOverridden) {
-                    config.ClearOverride(field.Key);
-                    AnsiConsole.MarkupLine($"[green]{string.Format(I18n.T("FieldEdit.Cleared", "✔ 已清除覆盖并恢复默认 {0}"), Markup.Escape(field.Label))}[/]");
-                }
-                return;
-            }
-
-            if (chosen.Id == "__RESET_PROJECT__") {
-                config.ResetToProject(field.Key);
-                AnsiConsole.MarkupLine($"[green]{string.Format(I18n.T("FieldEdit.RestoredProject", "✔ 已恢复项目配置值 {0} = {1}"), Markup.Escape(field.Label), Markup.Escape(item.ProjectValue ?? ""))}[/]");
-                return;
-            }
-
-            if (chosen.Id == "__RESET_BUILTIN__") {
-                config.ResetToBuiltin(field.Key);
-                AnsiConsole.MarkupLine($"[green]{string.Format(I18n.T("FieldEdit.RestoredBuiltin", "✔ 已恢复内置默认值 {0} = {1}"), Markup.Escape(field.Label), Markup.Escape(item.BuiltinValue ?? ""))}[/]");
-                return;
-            }
-
-            ApplyFieldValue(field, item, chosen.Id, config);
-        }
-
-        private static void PromptTextField(TuiConfigField field, ConfigItem item, ProjectConfiguration config) {
-            var isNumber = field.Kind == TuiFieldKind.Number;
-            var emptyText = I18n.T("Field.Empty", "<空>");
-            var dispEffective = string.IsNullOrEmpty(item.EffectiveValue) ? emptyText : item.EffectiveValue;
-            var dispProject = item.ProjectValue != null ? (string.IsNullOrEmpty(item.ProjectValue) ? emptyText : item.ProjectValue) : "-";
-            var dispBuiltin = string.IsNullOrEmpty(item.BuiltinValue) ? emptyText : item.BuiltinValue;
-
-            var actionItems = new List<TuiMenuItem>();
-            actionItems.Add(new TuiMenuItem("EDIT", string.Format(I18n.T("FieldEdit.EditValue", "编辑取值: {0}"), dispEffective)));
-
-            if (item.HasProjectValue && item.IsOverridden) {
-                actionItems.Add(new TuiMenuItem("RESET_PROJECT", string.Format(I18n.T("FieldEdit.RestoreProject", "恢复项目值: {0}"), dispProject)));
-            }
-
-            if (item.BuiltinValue != null && (item.IsOverridden || !string.Equals(item.EffectiveValue, item.BuiltinValue, StringComparison.Ordinal))) {
-                actionItems.Add(new TuiMenuItem("RESET_BUILTIN", string.Format(I18n.T("FieldEdit.RestoreBuiltin", "恢复默认值: {0}"), dispBuiltin)));
-            }
-
-            var chosen = TuiMenu.Prompt(
-                $"[bold]{Markup.Escape(field.Label)}[/]：",
-                actionItems,
-                onDeleteAction: TuiMenuItem.DeleteSentinel
-            );
-            if (chosen.IsBack) {
-                return;
-            }
-
-            if (chosen.IsClear) {
-                if (isNumber) {
-                    if (item.IsOverridden) {
-                        config.ClearOverride(field.Key);
-                        AnsiConsole.MarkupLine($"[green]{string.Format(I18n.T("FieldEdit.Cleared", "✔ 已清除覆盖并恢复默认 {0}"), Markup.Escape(field.Label))}[/]");
-                    }
-                } else {
-                    ApplyFieldValue(field, item, string.Empty, config);
-                }
-                return;
-            }
-
-            if (chosen.Id == "RESET_PROJECT") {
-                config.ResetToProject(field.Key);
-                AnsiConsole.MarkupLine($"[green]{string.Format(I18n.T("FieldEdit.RestoredProject", "✔ 已恢复项目配置值 {0} = {1}"), Markup.Escape(field.Label), Markup.Escape(dispProject))}[/]");
-                return;
-            }
-
-            if (chosen.Id == "RESET_BUILTIN") {
-                config.ResetToBuiltin(field.Key);
-                AnsiConsole.MarkupLine($"[green]{string.Format(I18n.T("FieldEdit.RestoredBuiltin", "✔ 已恢复内置默认值 {0} = {1}"), Markup.Escape(field.Label), Markup.Escape(dispBuiltin))}[/]");
-                return;
-            }
-
-            if (chosen.Id == "EDIT") {
-                string? input;
-                if (isNumber) {
-                    var rangeHint = field.Minimum.HasValue && field.Maximum.HasValue
-                        ? $" ({field.Minimum.Value} ~ {field.Maximum.Value})"
-                        : (field.Minimum.HasValue ? $" (>= {field.Minimum.Value})" : "");
-                    var promptInt = string.Format(I18n.T("FieldEdit.PromptInt", "请输入 {0} (整数{1}，直接回车确认，Esc 取消)："), Markup.Escape(field.Label), rangeHint);
-                    input = TuiLineEditor.ReadLine(
-                        $"[bold]{promptInt}[/]\n",
-                        item.EffectiveValue,
-                        raw => {
-                            var (isValid, err) = Core.Validation.ConfigValidator.ValidateSingleValue(field, raw);
-                            return isValid ? (true, null) : (false, err?.Message);
-                        }
-                    );
-                } else if (field.Kind == TuiFieldKind.Array) {
-                    var promptList = string.Format(I18n.T("FieldEdit.PromptList", "请输入 {0} (逗号分隔，直接回车确认，Esc 取消)："), Markup.Escape(field.Label));
-                    input = TuiLineEditor.ReadLine(
-                        $"[bold]{promptList}[/]\n",
-                        item.EffectiveValue
-                    );
-                } else {
-                    var isMultiline = item.EffectiveValue?.Contains('\n') == true;
-                    var hint = isMultiline
-                        ? $"[grey]{I18n.T("FieldEdit.PromptMulti", "(多行编辑，Ctrl+Enter 确认，Enter 换行，Esc 取消)")}[/]"
-                        : $"[grey]{I18n.T("FieldEdit.PromptSingle", "(直接回车确认，Shift+Enter 换行，Esc 取消)")}[/]";
-                    input = TuiLineEditor.ReadLine(
-                        $"[bold]{Markup.Escape(field.Label)}[/] {hint}：\n",
-                        item.EffectiveValue,
-                        raw => {
-                            var (isValid, err) = Core.Validation.ConfigValidator.ValidateSingleValue(field, raw);
-                            return isValid ? (true, null) : (false, err?.Message);
-                        },
-                        multiline: isMultiline
-                    );
-                }
-
-                if (input == null) {
-                    AnsiConsole.MarkupLine("[grey]" + I18n.T("FieldEdit.Cancelled", "已取消编辑，未作任何修改。") + "[/]");
-                    return;
-                }
-
-                var finalVal = isNumber ? input.Trim() : input;
-                ApplyFieldValue(field, item, finalVal, config);
-            }
-        }
-
-        private static void ApplyFieldValue(TuiConfigField field, ConfigItem item, string value, ProjectConfiguration config) {
-            var (isValid, err) = Core.Validation.ConfigValidator.ValidateSingleValue(field, value);
-            if (!isValid && err != null) {
-                var failFmt = I18n.T("FieldEdit.FailedValidation", "✘ 校验失败：{0}（期望：{1}；建议：{2}）");
-                AnsiConsole.MarkupLine($"[red]{string.Format(failFmt, Markup.Escape(err.Message), Markup.Escape(err.Expected), Markup.Escape(err.Recommendation))}[/]");
-                return;
-            }
-
-            var emptyText = I18n.T("Field.Empty", "<空>");
-            if (item.HasProjectValue && string.Equals(value, item.ProjectValue, StringComparison.Ordinal)) {
-                config.ResetToProject(field.Key);
-                var disp = string.IsNullOrEmpty(value) ? emptyText : value;
-                var matchProj = string.Format(I18n.T("FieldEdit.MatchesProject", "✔ 与项目配置一致，恢复为项目值 {0} = {1}"), Markup.Escape(field.Label), Markup.Escape(disp));
-                AnsiConsole.MarkupLine($"[grey]{matchProj}[/]");
-            } else if (!item.HasProjectValue && string.Equals(value, item.BuiltinValue, StringComparison.Ordinal)) {
-                config.ClearOverride(field.Key);
-                var disp = string.IsNullOrEmpty(value) ? emptyText : value;
-                var matchDef = string.Format(I18n.T("FieldEdit.MatchesBuiltin", "✔ 与内置默认一致，无需覆盖 {0} = {1}"), Markup.Escape(field.Label), Markup.Escape(disp));
-                AnsiConsole.MarkupLine($"[grey]{matchDef}[/]");
-            } else {
-                var success = config.TrySetOverride(field.Key, value);
-                var disp = string.IsNullOrEmpty(value) ? emptyText : value;
-                if (success) {
-                    var setMsg = string.Format(I18n.T("FieldEdit.OverrideSet", "✔ 已设置运行时覆盖 {0} = {1}"), Markup.Escape(field.Label), Markup.Escape(disp));
-                    AnsiConsole.MarkupLine($"[bold {TuiTheme.Warning}]{setMsg}[/]");
-                } else {
-                    var failMsg = string.Format(I18n.T("FieldEdit.CannotSet", "✘ 无法设置配置项 {0}，值非法或无法解析"), Markup.Escape(field.Label));
-                    AnsiConsole.MarkupLine($"[red]{failMsg}[/]");
-                }
-            }
-        }
 
         internal static (Dictionary<string, string> Current, Dictionary<string, string> Defaults) ReadConfigValues(FileInfo configFile) {
             var currentValues = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -1537,4 +1015,3 @@ namespace Core.Tui {
         }
     }
 }
-

@@ -481,23 +481,28 @@ public class UserPathRegressionTests {
 
         // 10.3 验证 docker-run.sh 语法正确性 (bash -n)
         var dockerScriptPath = Path.Combine(AppContext.BaseDirectory, "../../../../../scripts/docker-run.sh");
-        if (File.Exists(dockerScriptPath)) {
-            var psi = new ProcessStartInfo("bash", $"-n \"{dockerScriptPath}\"") {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            using var proc = Process.Start(psi);
-            Assert.NotNull(proc);
-            proc.WaitForExit();
-            Assert.Equal(0, proc.ExitCode);
+        if (File.Exists(dockerScriptPath) && !OperatingSystem.IsWindows()) {
+            try {
+                var psi = new ProcessStartInfo("bash", $"-n \"{dockerScriptPath}\"") {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false
+                };
+                using var proc = Process.Start(psi);
+                if (proc != null) {
+                    proc.WaitForExit();
+                    Assert.Equal(0, proc.ExitCode);
+                }
+            } catch (System.ComponentModel.Win32Exception) {
+                // Ignore if bash is not available on this platform
+            }
         }
     }
 
     // -------------------------------------------------------------------------
-    // 场景 11: 真实 XeLaTeX 端到端元数据与原子替换保护 (Requires Real XeLaTeX)
+    // 场景 11: 真实 XeLaTeX 端到端元数据与原子替换保护 (Requires Real XeLaTeX + ctex + pygments)
     // -------------------------------------------------------------------------
-    [RequiresXelatexFact]
+    [RequiresRealPdfCompilationFact]
     public void Scenario11_RealXelatex_EndToEnd_MetadataAndAtomicPreservation() {
         using var tmp = TempDir.Create();
         var srcDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "algo_lib_2026"));

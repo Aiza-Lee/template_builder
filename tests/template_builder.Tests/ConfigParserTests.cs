@@ -37,14 +37,14 @@ public class ConfigParserTests {
     }
 
     [Fact]
-    public void ParseConfigFile_InvalidRoot_LogsErrorAndKeepsDefaults() {
+    public void ParseConfigFile_SparseConfig_LogsDebugAndKeepsDefaults() {
         var logger = new TestLogger();
         var parser = new ConfigParser("TEX", logger);
 
         parser.ParseConfigFile("""{ "PROGRAM": { "include_file_types": [".foo"] } }""");
 
         Assert.Contains(logger.Entries, entry =>
-            entry.Level == LogLevel.ERROR && entry.Message.Contains("does not contain 'TEX'", StringComparison.OrdinalIgnoreCase));
+            entry.Level == LogLevel.DEBUG && entry.Message.Contains("未包含 'TEX' 根节点", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("", parser["AUTHOR"].GetAsString());
     }
 

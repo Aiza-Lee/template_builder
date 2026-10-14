@@ -1,4 +1,5 @@
 using System.IO;
+using Core.Localization;
 using Core.Models;
 using Utils;
 using Utils.Exceptions;
@@ -22,7 +23,7 @@ namespace Core.Pipeline {
         public int Run(ValidateSubcommandOptions options) {
             if (!string.Equals(options.Format, "text", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase)) {
-                _logger.Error($"--format 参数值 \"{options.Format}\" 无效。合法值为 \"text\" 或 \"json\"。");
+                _logger.Error(string.Format(I18n.T("Cli.Validate.InvalidFormat", "--format 参数值 \"{0}\" 无效。合法值为 \"text\" 或 \"json\"。"), options.Format));
                 return ExitCodes.InvalidArguments;
             }
 
@@ -31,7 +32,7 @@ namespace Core.Pipeline {
             // Check 1: 源目录存在
             if (!options.SourceDir.Exists) {
                 checks.Add(new ValidationCheck("source", "exists", false,
-                    $"未找到源目录：{options.SourceDir.FullName}"));
+                    string.Format(I18n.T("Validation.SourceDirNotFound", "未找到源目录：{0}"), options.SourceDir.FullName)));
                 return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
             }
             checks.Add(new ValidationCheck("source", "exists", true, options.SourceDir.FullName));
@@ -39,7 +40,7 @@ namespace Core.Pipeline {
             // Check 2: 配置文件存在
             if (!options.ConfigFile.Exists) {
                 checks.Add(new ValidationCheck("config", "exists", false,
-                    $"未找到配置文件：{options.ConfigFile.FullName}"));
+                    string.Format(I18n.T("Validation.ConfigFileNotFound", "未找到配置文件：{0}"), options.ConfigFile.FullName)));
                 return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
             }
 
@@ -50,11 +51,27 @@ namespace Core.Pipeline {
                 var configJson = File.ReadAllText(options.ConfigFile.FullName);
                 projectConfig.LoadProjectConfig(configJson, options.ConfigFile.FullName);
                 checks.Add(new ValidationCheck("config", "parses", true, options.ConfigFile.FullName));
+            } catch (UnauthorizedAccessException ex) {
+                checks.Add(new ValidationCheck("config", "readable", false,
+                    string.Format(I18n.T("Validation.ConfigNoPermission", "无法读取配置文件 \"{0}\"：无访问权限（{1}）。建议：请检查配置文件读取权限。"), options.ConfigFile.FullName, ex.Message)));
+                return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
+            } catch (DirectoryNotFoundException ex) {
+                checks.Add(new ValidationCheck("config", "readable", false,
+                    string.Format(I18n.T("Validation.ConfigDirNotFound", "未找到配置文件所属目录：{0}"), ex.Message)));
+                return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
+            } catch (IOException ex) {
+                checks.Add(new ValidationCheck("config", "readable", false,
+                    string.Format(I18n.T("Validation.ConfigIoError", "读取配置文件 \"{0}\" 时发生 I/O 错误：{1}"), options.ConfigFile.FullName, ex.Message)));
+                return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
             } catch (MalformedConfigException ex) {
                 checks.Add(new ValidationCheck("config", "parses", false, ex.Message));
                 return EmitReport(checks, ExitCodes.MalformedConfig, options.Format);
             } catch (UnknownConfigKeyException ex) {
                 checks.Add(new ValidationCheck("config", "unknown_key", false, ex.Message));
+                return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
+            } catch (Exception ex) {
+                checks.Add(new ValidationCheck("config", "readable", false,
+                    string.Format(I18n.T("Validation.ConfigReadOrParseError", "无法读取或解析配置文件 \"{0}\"：{1}"), options.ConfigFile.FullName, ex.Message)));
                 return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
             }
 
@@ -67,14 +84,14 @@ namespace Core.Pipeline {
                 }
                 return EmitReport(checks, ExitCodes.InvalidArguments, options.Format);
             }
-            checks.Add(new ValidationCheck("config", "schema_validation", true, "类型、取值范围与枚举约束全部符合要求"));
+            checks.Add(new ValidationCheck("config", "schema_validation", true, I18n.T("Validation.ConfigValid", "类型、取值范围与枚举约束全部符合要求")));
 
             // Check 4: 嵌入式资源齐全
             try {
                 var mainTex = _resMgr.GetResourceInString("Templates.Main.tex");
                 var codeBlockTex = _resMgr.GetResourceInString("Templates.CodeBlock.tex");
-                checks.Add(new ValidationCheck("resources", "Main.tex", true, $"{mainTex.Length} 字符"));
-                checks.Add(new ValidationCheck("resources", "CodeBlock.tex", true, $"{codeBlockTex.Length} 字符"));
+                checks.Add(new ValidationCheck("resources", "Main.tex", true, string.Format(I18n.T("Validation.CharactersCount", "{0} 字符"), mainTex.Length)));
+                checks.Add(new ValidationCheck("resources", "CodeBlock.tex", true, string.Format(I18n.T("Validation.CharactersCount", "{0} 字符"), codeBlockTex.Length)));
             } catch (MissingEmbeddedResourceException ex) {
                 checks.Add(new ValidationCheck("resources", "embedded", false, ex.Message));
                 return EmitReport(checks, ExitCodes.MissingEmbeddedResource, options.Format);
@@ -88,7 +105,7 @@ namespace Core.Pipeline {
                 return EmitReport(checks, preflight.ExitCode, options.Format);
             }
             checks.Add(new ValidationCheck("source", "walk", true,
-                $"匹配 {preflight.MatchedFiles} 个有效源文件（共发现 {preflight.TotalFiles} 个物理文件），最大深度 = {preflight.MaxDepth}"));
+                string.Format(I18n.T("Validation.WalkResult", "匹配 {0} 个有效源文件（共发现 {1} 个物理文件），最大深度 = {2}"), preflight.MatchedFiles, preflight.TotalFiles, preflight.MaxDepth)));
             checks.Add(new ValidationCheck("source", "depth", true,
                 $"{preflight.MaxDepth} ≤ 4"));
 
@@ -105,11 +122,11 @@ namespace Core.Pipeline {
                 missingPlaceholders = referenced.Where(p => !texKeys.Contains(p)).ToList();
                 if (missingPlaceholders.Count == 0) {
                     checks.Add(new ValidationCheck("placeholders", "##KEY##", true,
-                        $"{referenced.Count} 个占位符全部成功解析"));
+                        string.Format(I18n.T("Validation.PlaceholdersResolved", "{0} 个占位符全部成功解析"), referenced.Count)));
                 } else {
                     foreach (var m in missingPlaceholders) {
                         checks.Add(new ValidationCheck("placeholders", $"##{m}##", false,
-                            $"在 Main.tex 中被引用但未在 TEX 配置中定义"));
+                            I18n.T("Validation.PlaceholderUndefined", "在 Main.tex 中被引用但未在 TEX 配置中定义")));
                     }
                 }
             } catch (Exception ex) {

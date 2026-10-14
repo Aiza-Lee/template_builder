@@ -1,3 +1,4 @@
+using Core.Localization;
 using Utils;
 using Utils.Exceptions;
 
@@ -14,10 +15,10 @@ namespace Core.Pipeline {
         /// </summary>
         public DirectoryInfo ResolveSourceDir(DirectoryInfo? requested) {
             if (requested == null) {
-                throw new InvalidArgumentException("源文件目录无效。");
+                throw new InvalidArgumentException(I18n.T("Error.SourceDirInvalid", "源文件目录无效。"));
             }
             if (!requested.Exists) {
-                throw new InvalidArgumentException($"未找到源文件目录 \"{requested.FullName}\"。");
+                throw new InvalidArgumentException(string.Format(I18n.T("Error.SourceDirNotFound", "未找到源文件目录 \"{0}\"。"), requested.FullName));
             }
             return requested;
         }
@@ -27,16 +28,16 @@ namespace Core.Pipeline {
         /// </summary>
         public FileInfo ResolveOutputPdf(FileInfo? requested) {
             if (requested == null || requested.Directory == null) {
-                throw new InvalidArgumentException("输出文件路径无效。");
+                throw new InvalidArgumentException(I18n.T("Error.OutputDirInvalid", "输出文件路径无效。"));
             }
             if (!requested.Directory.Exists) {
-                _logger.Warning($"未找到输出目录 \"{requested.Directory.FullName}\"，已由程序自动创建。");
+                _logger.Warning(string.Format(I18n.T("Warn.OutputDirAutoCreated", "未找到输出目录 \"{0}\"，已由程序自动创建。"), requested.Directory.FullName));
                 requested.Directory.Create();
             }
             var pdfFileName = Path.GetFileNameWithoutExtension(requested.Name) + ".pdf";
             var resolved = new FileInfo(Path.Combine(requested.Directory.FullName, pdfFileName));
             if (!string.Equals(requested.Name, resolved.Name, StringComparison.OrdinalIgnoreCase)) {
-                _logger.Info($"输出路径后缀已自动更正为 .pdf：\"{resolved.FullName}\"。");
+                _logger.Info(string.Format(I18n.T("Info.OutputPdfExtensionFixed", "输出路径后缀已自动更正为 .pdf：\"{0}\"。"), resolved.FullName));
             }
             return resolved;
         }

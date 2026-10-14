@@ -126,12 +126,13 @@ public class ValidationRunnerTests {
     [Fact]
     public void Run_SixLevelDeepDirectory_ReturnsValidationFailed() {
         var (tmp, sourceDir, configFile) = CreateHappyPathFixture();
-        // 建 6 层深目录：src/a/b/c/d/e/f/
+        // 建 6 层深目录：src/a/b/c/d/e/f/，并包含有效收录文件
         var deep = sourceDir.FullName;
         for (int i = 0; i < 6; i++) {
             deep = Path.Combine(deep, $"level{i}");
             Directory.CreateDirectory(deep);
         }
+        File.WriteAllText(Path.Combine(deep, "deep.txt"), "deep");
         var runner = new ValidationRunner(new TestLogger(), new ManifestResourceManager());
 
         var exitCode = runner.Run(new ValidateSubcommandOptions(sourceDir, configFile));

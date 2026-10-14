@@ -18,7 +18,7 @@ namespace Utils {
                     ele => ele.ValueKind == JsonValueKind.String ? ele.GetString() ?? string.Empty : ele.GetRawText()
                 ).ToArray();
             }
-            return [GetAsString()];
+            throw new InvalidCastException($"无法将配置值 '{GetAsString()}' 转换为 string[]。");
         }
         public int GetAsInt() {
             if (Value.ValueKind == JsonValueKind.Number && Value.TryGetInt32(out int intValue)) { return intValue; }
@@ -259,7 +259,10 @@ namespace Utils {
                 if (json.TryGetProperty(_rootObjectName, out var jsonElement)) {
                     ParseJsonElement_R(jsonElement, [], isDefaultConfig);
                 } else {
-                    _logger?.Error($"Config content does not contain '{_rootObjectName}' root element.");
+                    if (isDefaultConfig) {
+                        throw new InvalidOperationException($"默认配置文件必须包含 '{_rootObjectName}' 根节点。");
+                    }
+                    _logger?.Debug($"配置文件未包含 '{_rootObjectName}' 根节点，将沿用默认配置。");
                 }
             } catch (JsonException ex) {
                 throw new MalformedConfigException(

@@ -19,16 +19,26 @@ namespace Core.Models {
         public BuildResult? LastBuildResult { get; set; }
         public string? LastFocusedCategoryId { get; set; }
 
+        /// <summary>是否已实际从磁盘或默认源完成首次项目配置加载</summary>
+        public bool IsConfigurationLoaded { get; set; }
+
+        /// <summary>当前已加载的配置文件绝对路径，用于感知向导重选配置或返回路径操作</summary>
+        public string? LoadedConfigPath { get; set; }
+
         public ProjectSession(ProjectConfiguration configuration) {
             Configuration = configuration;
+            IsConfigurationLoaded = true;
         }
 
         public ProjectSession(ILogger? logger = null, ConfigStrictness strictness = ConfigStrictness.Lax) {
             Configuration = new ProjectConfiguration(logger, strictness);
+            IsConfigurationLoaded = false;
         }
 
         public void LoadConfig(string jsonContent, string? sourcePath = null) {
             Configuration.LoadProjectConfig(jsonContent, sourcePath);
+            IsConfigurationLoaded = true;
+            LoadedConfigPath = sourcePath;
         }
 
         public BuildSubcommandOptions ToBuildOptions() {

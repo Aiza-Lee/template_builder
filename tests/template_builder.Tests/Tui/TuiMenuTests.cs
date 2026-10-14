@@ -272,6 +272,38 @@ public class TuiMenuTests {
         Assert.Contains("h", text);
         Assert.Contains("l", text);
     }
+
+    [Fact]
+    public void RenderMenu_WithPageSize_RendersOnlyVisibleWindow() {
+        var items = Enumerable.Range(0, 40).Select(i => new TuiMenuItem($"KEY_{i:D2}", $"配置项_{i:D2}")).ToList();
+
+        // 视口在顶部：第 0 项可见，第 39 项不可见
+        var renderTop = TuiMenu.RenderMenu("顶部视口", items, selectedIndex: 0, scrollOffset: 0, pageSize: 15);
+        var textTop = TuiScaffolding.RenderToPlainText(c => c.Write(renderTop));
+        Assert.Contains("配置项_00", textTop);
+        Assert.DoesNotContain("配置项_39", textTop);
+
+        // 视口在底部：第 39 项可见，第 0 项被滚出视口
+        var renderBottom = TuiMenu.RenderMenu("底部视口", items, selectedIndex: 39, scrollOffset: 30, pageSize: 15);
+        var textBottom = TuiScaffolding.RenderToPlainText(c => c.Write(renderBottom));
+        Assert.Contains("配置项_39", textBottom);
+        Assert.DoesNotContain("配置项_00", textBottom);
+    }
+
+    [Fact]
+    public void RenderMenu_MultilineDetails_CompressedToSingleLine() {
+        var items = new List<TuiMenuItem> {
+            new("ITEM1", "多行数组配置", "[\n  \"pattern1\",\n  \"pattern2\"\n]")
+        };
+
+        var renderable = TuiMenu.RenderMenu("压缩测试", items, selectedIndex: 0);
+        var text = TuiScaffolding.RenderToPlainText(c => c.Write(renderable));
+
+        // 详情应压缩为单行且无换行符破坏行高
+        Assert.Contains("pattern1", text);
+        Assert.Contains("pattern2", text);
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        // 应该只有标题行、项目行、提示行，不会展开为多行
+        Assert.Contains(lines, l => l.Contains("多行数组配置") && l.Contains("pattern1") && l.Contains("pattern2"));
+    }
 }
-
-

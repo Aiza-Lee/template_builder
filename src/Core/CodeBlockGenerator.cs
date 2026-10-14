@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Core.SourceTree;
 using Utils;
 
@@ -17,42 +18,10 @@ namespace Core {
         private readonly HashSet<string> _includeFileTypes;
         private readonly string[] IGNORE_PATTERNS = [];
 
-        /// <summary>
-        /// 全部可用的章节命令（深度 0..4 对应 section..subparagraph）。代码内置硬编码 5 个；
-        /// 实际使用时通过 <c>sectionDepth</c> 截取前 N 项（用户在 TEX.layout.section_depth 配置）。
-        /// </summary>
-        private static readonly string[] _allSectionCommands = [
-            "section", "subsection", "subsubsection", "paragraph", "subparagraph"
-        ];
-
-        /// <summary>
-        /// 24 条扩展名→minted 语言名默认映射。代码内置；用户在 PROGRAM.code_language_overrides
-        /// 中写增量覆盖（如 {".md": "markdown"}），运行时合并到 <see cref="_languageMap"/>。
-        /// 此映射同时作为「是否使用 minted 代码块」的判断依据（在映射中 = minted，否则 = 纯文本）。
-        /// </summary>
-        private static readonly Dictionary<string, string> _defaultExtMap = new(StringComparer.OrdinalIgnoreCase) {
-            { "c", "c" }, { "cpp", "cpp" }, { "cc", "cpp" }, { "cxx", "cpp" },
-            { "hpp", "cpp" }, { "hxx", "cpp" }, { "h", "c" }, { "java", "java" },
-            { "cs", "csharp" }, { "rs", "rust" }, { "ts", "typescript" },
-            { "js", "javascript" }, { "jsx", "jsx" }, { "tsx", "tsx" },
-            { "py", "python" }, { "rb", "ruby" }, { "go", "go" }, { "php", "php" },
-            { "html", "html" }, { "css", "css" }, { "scss", "scss" },
-            { "xml", "xml" }, { "json", "json" }, { "yaml", "yaml" }, { "yml", "yaml" },
-            { "toml", "toml" }, { "ini", "ini" },
-            { "sh", "bash" }, { "bash", "bash" }, { "zsh", "bash" },
-            { "bat", "batch" }, { "ps1", "powershell" },
-            { "swift", "swift" }, { "kt", "kotlin" }, { "kts", "kotlin" },
-            { "lua", "lua" }, { "dart", "dart" }, { "scala", "scala" }, { "r", "r" },
-            { "m", "objective-c" }, { "sql", "sql" },
-            { "txt", "text" }, { "text", "text" }, { "log", "text" },
-            { "md", "markdown" }, { "markdown", "markdown" }
-        };
-
-
         // 实例字段（替代原 readonly 字段）
-        /// <summary>合并默认 + 用户覆盖后的扩展名→语言映射。</summary>
+        /// <summary>合并默认 + 用户覆盖后的扩展名→语言映射（单一事实源自 SourceTreePlan）。</summary>
         private readonly Dictionary<string, string> _languageMap;
-        /// <summary>截取自 <see cref="_allSectionCommands"/> 的前 N 项（深度 [1,5]）。</summary>
+        /// <summary>截取自 <see cref="SourceTreePlan.AllSectionCommands"/> 的前 N 项（深度 [1,5]）。</summary>
         private readonly string[] _sectionCommands;
         /// <summary>章节名是否走 LatexEscaper；用户可在 TEX.layout.escape_section_names 关闭。</summary>
         private readonly bool _escapeSectionNames;
@@ -86,32 +55,12 @@ namespace Core {
             }
             IGNORE_PATTERNS = _programConfigParser["IGNORE_PATTERNS"].GetAsStringArray();
 
-            // 章节深度 clamp 到 [1, _allSectionCommands.Length]
-            var depth = Math.Clamp(sectionDepth, 1, _allSectionCommands.Length);
-            _sectionCommands = _allSectionCommands.Take(depth).ToArray();
+            // 章节深度 clamp 到 [1, SourceTreePlan.AllSectionCommands.Length]
+            var depth = Math.Clamp(sectionDepth, 1, SourceTreePlan.AllSectionCommands.Length);
+            _sectionCommands = SourceTreePlan.AllSectionCommands.Take(depth).ToArray();
 
-            // 语言映射：默认表 + 用户增量覆盖（PROGRAM.code_language_overrides）
-            _languageMap = new Dictionary<string, string>(_defaultExtMap, StringComparer.OrdinalIgnoreCase);
-            var overrides = _programConfigParser["CODE_LANGUAGE_OVERRIDES"].GetAsStringArray();
-            foreach (var pair in overrides) {
-                ParseAndApplyOverride(pair);
-            }
-        }
-
-        /// <summary>
-        /// 解析一对 "ext:lang" 字符串并合入 <see cref="_languageMap"/>。非法条目跳过（缺冒号 /
-        /// 非 . 前缀 / 字段空）；非法条目通过 ILogger warn（初始化时调用，无重复 warn 风险）。
-        /// </summary>
-        private void ParseAndApplyOverride(string pair) {
-            var idx = pair.IndexOf(':');
-            if (idx <= 0 || idx >= pair.Length - 1) return; // 缺冒号或空字段，静默跳过
-            var ext = pair[..idx].Trim();
-            var lang = pair[(idx + 1)..].Trim();
-            if (!ext.StartsWith('.')) {
-                _logger.Warning($"code_language_overrides 条目 \"{pair}\" 的扩展名缺少 \".\" 前缀，已跳过。");
-                return;
-            }
-            _languageMap[ext[1..]] = lang;
+            // 语言映射：统一复用 SourceTreePlan.BuildLanguageMap 单一真实源
+            _languageMap = SourceTreePlan.BuildLanguageMap(_programConfigParser["CODE_LANGUAGE_OVERRIDES"].GetAsStringArray(), _logger);
         }
 
         /// <summary>
@@ -197,6 +146,7 @@ namespace Core {
             // [UX-06] 显式区分 Raw LaTeX 内容与代码/保真文本呈现：
             // 1. 若语言映射显式配置为 "raw" 或 "latex-raw"（例如用户配置 ".custom:raw"），按原生 LaTeX 语法嵌入；
             // 2. 若扩展名为 .tex 且用户未在 language_map 中覆盖为代码高亮语言（如覆盖为 "tex" 或 "latex" 时作为代码展示），按原生 LaTeX 语法嵌入。
+            // 注意：Raw 模式直接将内容作为原生 LaTeX 宏嵌入，需由操作者确保其来源受信任。
             bool isExplicitRawLatex = false;
             if (_languageMap.TryGetValue(extKey, out var language)) {
                 if (string.Equals(language, "raw", StringComparison.OrdinalIgnoreCase) ||
@@ -219,14 +169,32 @@ namespace Core {
 
             var codeBlock = new StringBuilder(CODE_BLOCK_TEMPLATE);
             codeBlock.Replace("<<LANGUAGE>>", effectiveLanguage);
+            if (codeBlock.ToString().Contains("<<FILE>>")) {
+                codeBlock.Replace("<<FILE>>", codeFile.FullName.Replace('\\', '/'));
+            }
             // 在插入代码正文前扫描模板占位符，避免源代码中含有的 ##...## 或 <<...>> 触发误报
             foreach (var placeholder in TemplatePlaceholderScanner.FindUnresolved(codeBlock.ToString())) {
-                if (placeholder == "<<CODE>>") continue;
+                if (placeholder == "<<CODE>>" || placeholder == "<<FILE>>") continue;
                 _logger.Error($"CodeBlock.tex 模板中存在未替换的占位符 \"{placeholder}\"（文件：{codeFile.Name}）。");
                 _unresolvedPlaceholderCount++;
             }
-            codeBlock.Replace("<<CODE>>", content);
+            // [RC-01] 安全编码：防止代码/文本中的 \end{minted} 越界关闭 minted 环境并执行外部 LaTeX 命令
+            var safeContent = SanitizeMintedContent(content);
+            codeBlock.Replace("<<CODE>>", safeContent);
             return codeBlock.ToString();
+        }
+
+        private static readonly Regex MintedEndTagRegex = new(
+            @"\\end(?<open>\s*\{\s*minted\*?\s*\})",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// 安全编码：防止普通代码/文本中的 \end{minted} 越界关闭 minted 环境并执行外部 LaTeX 命令。
+        /// 插入不可见的零宽空格（U+200B），使 LaTeX 语法解析器无法识别出闭合标记，同时在 PDF 渲染与复制中保持原文本视觉呈现。
+        /// </summary>
+        internal static string SanitizeMintedContent(string content) {
+            if (string.IsNullOrEmpty(content)) return content;
+            return MintedEndTagRegex.Replace(content, match => $"\\end\u200b{match.Groups["open"].Value}");
         }
 
         // 展开制表符

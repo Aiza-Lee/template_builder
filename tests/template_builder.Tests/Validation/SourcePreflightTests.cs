@@ -99,4 +99,88 @@ public class SourcePreflightTests {
         Assert.Equal(2, result.MatchedFiles);
         Assert.Equal(1, result.MaxDepth);
     }
+
+    [Fact]
+    public void Inspect_RootIncludedFileWithDeepUnincludedFile_PassesWithDepthZero() {
+        using var tmp = TempDir.Create();
+        var srcDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "src"));
+        File.WriteAllText(Path.Combine(srcDir.FullName, "a.cpp"), "int main() {}");
+
+        var current = srcDir.FullName;
+        for (int i = 0; i < 6; i++) {
+            current = Path.Combine(current, $"sub_{i}");
+            Directory.CreateDirectory(current);
+        }
+        File.WriteAllText(Path.Combine(current, "skip.bin"), "0101");
+
+        var config = new ProjectConfiguration();
+        var result = SourcePreflight.Inspect(srcDir, config);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.Equal(1, result.MatchedFiles);
+        Assert.Equal(0, result.MaxDepth);
+        Assert.Equal(2, result.TotalFiles);
+    }
+
+    [Fact]
+    public void Inspect_SymlinkLoop_IsHandledSafelyWithoutStackOverflow() {
+        using var tmp = TempDir.Create();
+        var srcDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "src"));
+        File.WriteAllText(Path.Combine(srcDir.FullName, "a.cpp"), "int main() {}");
+
+        var loopLink = Path.Combine(srcDir.FullName, "loop_dir");
+        bool symlinkCreated = false;
+        try {
+            Directory.CreateSymbolicLink(loopLink, srcDir.FullName);
+            symlinkCreated = true;
+        } catch {
+            // 环境可能受权限限制不支持软链接创建
+        }
+
+        if (symlinkCreated) {
+            var config = new ProjectConfiguration();
+            var result = SourcePreflight.Inspect(srcDir, config);
+
+            Assert.True(result.IsValid);
+            Assert.Equal(ExitCodes.Success, result.ExitCode);
+            Assert.Equal(1, result.MatchedFiles);
+            Assert.Equal(0, result.MaxDepth);
+        }
+    }
+
+    [Fact]
+    public void Inspect_UnreadableIgnoredDirectory_DoesNotThrowOrBlock() {
+        if (OperatingSystem.IsWindows()) return;
+
+        using var tmp = TempDir.Create();
+        var srcDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "src"));
+        File.WriteAllText(Path.Combine(srcDir.FullName, "a.cpp"), "int main() {}");
+
+        var forbiddenDir = Directory.CreateDirectory(Path.Combine(srcDir.FullName, "forbidden_dir"));
+        File.WriteAllText(Path.Combine(forbiddenDir.FullName, "secret.cpp"), "// secret");
+
+        var proc = System.Diagnostics.Process.Start("chmod", $"000 \"{forbiddenDir.FullName}\"");
+        proc.WaitForExit();
+
+        try {
+            var config = new ProjectConfiguration();
+            config.ProgramParser.ParseConfigFile("""
+            {
+                "PROGRAM": {
+                    "ignore_patterns": ["forbidden_dir"]
+                }
+            }
+            """);
+
+            var result = SourcePreflight.Inspect(srcDir, config);
+
+            Assert.True(result.IsValid);
+            Assert.Equal(ExitCodes.Success, result.ExitCode);
+            Assert.Equal(1, result.MatchedFiles);
+            Assert.Equal(0, result.MaxDepth);
+        } finally {
+            System.Diagnostics.Process.Start("chmod", $"755 \"{forbiddenDir.FullName}\"")?.WaitForExit();
+        }
+    }
 }

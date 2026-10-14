@@ -1,0 +1,33 @@
+# Top-most EditorConfig file
+root = true
+
+# All files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C# source files
+[*.cs]
+indent_style = space
+indent_size = 4
+
+# MSBuild and project files
+[*.{csproj,props,targets}]
+indent_style = space
+indent_size = 2
+
+# JSON and YAML files
+[*.{json,jsonc,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# Shell scripts
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# Markdown documentation
+[*.md]
+trim_trailing_whitespace = false

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Core.Schema;
 using Utils;
 
 namespace Core.Tui {
@@ -31,19 +32,20 @@ namespace Core.Tui {
                 int score = 0;
                 if (string.Equals(field.Key, q, StringComparison.OrdinalIgnoreCase)) {
                     score = 100;
-                } else if (string.Equals(field.Label, q, StringComparison.OrdinalIgnoreCase)) {
+                } else if (string.Equals(field.DisplayLabel, q, StringComparison.OrdinalIgnoreCase) || string.Equals(field.Label, q, StringComparison.OrdinalIgnoreCase)) {
                     score = 90;
                 } else if (field.Key.StartsWith(q, StringComparison.OrdinalIgnoreCase)) {
                     score = 80;
-                } else if (field.Label.StartsWith(q, StringComparison.OrdinalIgnoreCase)) {
+                } else if (field.DisplayLabel.StartsWith(q, StringComparison.OrdinalIgnoreCase) || field.Label.StartsWith(q, StringComparison.OrdinalIgnoreCase)) {
                     score = 75;
-                } else if (field.Label.Contains(q, StringComparison.OrdinalIgnoreCase)) {
+                } else if (field.DisplayLabel.Contains(q, StringComparison.OrdinalIgnoreCase) || field.Label.Contains(q, StringComparison.OrdinalIgnoreCase)) {
                     score = 60;
                 } else if (field.Key.Contains(q, StringComparison.OrdinalIgnoreCase)) {
                     score = 50;
                 } else if (!string.IsNullOrEmpty(field.Category) && field.Category.Contains(q, StringComparison.OrdinalIgnoreCase)) {
                     score = 30;
-                } else if (!string.IsNullOrEmpty(field.Description) && field.Description.Contains(q, StringComparison.OrdinalIgnoreCase)) {
+                } else if ((!string.IsNullOrEmpty(field.DisplayDescription) && field.DisplayDescription.Contains(q, StringComparison.OrdinalIgnoreCase)) ||
+                           (!string.IsNullOrEmpty(field.Description) && field.Description.Contains(q, StringComparison.OrdinalIgnoreCase))) {
                     score = 20;
                 } else if (!string.IsNullOrEmpty(field.JsonPath) && field.JsonPath.Contains(q, StringComparison.OrdinalIgnoreCase)) {
                     score = 10;
@@ -192,17 +194,19 @@ namespace Core.Tui {
         ];
 
         private static CatalogData LoadCatalog() {
-            var rawJson = new ManifestResourceManager().GetResourceInString("DefaultConfig.schema.json");
-            using var doc = JsonDocument.Parse(rawJson);
-            var rootProps = doc.RootElement.GetProperty("properties");
-
             var allFields = new List<TuiConfigField>();
-
-            if (rootProps.TryGetProperty("TEX", out var texProp)) {
-                TraverseSchema(texProp, [], "TEX", allFields);
-            }
-            if (rootProps.TryGetProperty("PROGRAM", out var progProp)) {
-                TraverseSchema(progProp, [], "PROGRAM", allFields);
+            foreach (var def in ConfigSchemaCatalog.AllFields) {
+                var kind = TuiFieldKind.Text;
+                if (def.Choices is { Count: > 0 }) {
+                    kind = TuiFieldKind.Choice;
+                } else if (def.ExpectedType == "boolean") {
+                    kind = TuiFieldKind.Toggle;
+                } else if (def.ExpectedType is "integer" or "number") {
+                    kind = TuiFieldKind.Number;
+                } else if (def.ExpectedType == "array") {
+                    kind = TuiFieldKind.Array;
+                }
+                allFields.Add(TuiConfigField.FromDefinition(def, kind));
             }
 
             var byKey = allFields.ToDictionary(f => f.Key, f => f, StringComparer.Ordinal);
@@ -262,135 +266,6 @@ namespace Core.Tui {
             var featured = s_featuredKeys.Where(k => byKey.ContainsKey(k)).Select(k => byKey[k]).ToList();
 
             return new CatalogData(allFields, byKey, categories, featured);
-        }
-
-        private static void TraverseSchema(
-            JsonElement node,
-            List<string> path,
-            string rootName,
-            List<TuiConfigField> collector
-        ) {
-            if (!node.TryGetProperty("properties", out var properties)) return;
-
-            foreach (var prop in properties.EnumerateObject()) {
-                if (prop.Name == "$schema") continue;
-
-                path.Add(prop.Name);
-                var spec = prop.Value;
-                var type = spec.TryGetProperty("type", out var t) ? t.GetString() : null;
-
-                if (type == "object" && spec.TryGetProperty("properties", out _)) {
-                    TraverseSchema(spec, path, rootName, collector);
-                } else {
-                    var key = string.Join('_', path.Select(p => p.ToUpperInvariant()));
-                    var label = s_friendlyLabels.TryGetValue(key, out var l) ? l : prop.Name;
-                    var desc = spec.TryGetProperty("description", out var d) ? d.GetString() : null;
-
-                    IReadOnlyList<string>? choices = null;
-                    if (spec.TryGetProperty("enum", out var enumArr) && enumArr.ValueKind == JsonValueKind.Array) {
-                        choices = enumArr.EnumerateArray()
-                            .Select(e => e.ToString())
-                            .ToList();
-                    }
-
-                    // 特殊针对 DOCCLASS_BASE_FONT_SIZE 与 GEOMETRY_PAPER_SIZE 补充已知典型 choices
-                    if (choices == null) {
-                        if (key == "DOCCLASS_BASE_FONT_SIZE") {
-                            choices = ["10pt", "11pt", "12pt"];
-                        } else if (key == "GEOMETRY_PAPER_SIZE") {
-                            choices = ["a4paper", "letterpaper", "a5paper"];
-                        } else if (key == "LAYOUT_SECTION_DEPTH" || key == "LAYOUT_TOC_DEPTH" || key == "HYPERREF_BOOKMARKS_DEPTH") {
-                            choices = ["1", "2", "3", "4", "5"];
-                        }
-                    }
-
-                    var kind = TuiFieldKind.Text;
-                    if (choices is { Count: > 0 }) {
-                        kind = TuiFieldKind.Choice;
-                    } else if (type == "boolean") {
-                        kind = TuiFieldKind.Toggle;
-                    } else if (type is "integer" or "number") {
-                        kind = TuiFieldKind.Number;
-                    } else if (type == "array") {
-                        kind = TuiFieldKind.Array;
-                    }
-
-                    var constraints = BuildConstraints(spec, choices, key);
-                    var category = DetermineCategory(key, rootName);
-
-                    int? minimum = spec.TryGetProperty("minimum", out var min) ? min.GetInt32() : null;
-                    int? maximum = spec.TryGetProperty("maximum", out var max) ? max.GetInt32() : null;
-                    string? pattern = spec.TryGetProperty("pattern", out var pat) ? pat.GetString() : null;
-                    string jsonPath = $"{rootName}.{string.Join('.', path)}";
-
-                    collector.Add(new TuiConfigField(
-                        Key: key,
-                        Label: label,
-                        Kind: kind,
-                        Choices: choices,
-                        Description: desc,
-                        Constraints: constraints,
-                        Category: category,
-                        Section: rootName,
-                        ExpectedType: type,
-                        Minimum: minimum,
-                        Maximum: maximum,
-                        Pattern: pattern,
-                        JsonPath: jsonPath
-                    ));
-                }
-                path.RemoveAt(path.Count - 1);
-            }
-        }
-
-        private static string? BuildConstraints(JsonElement spec, IReadOnlyList<string>? choices, string key) {
-            var parts = new List<string>();
-
-            if (key == "LAYOUT_TOC_IN_COLUMNS") {
-                parts.Add("可选值：false (跟随正文，与正文列数保持一致), true (独立单栏，目录独占单栏全宽排版)");
-            } else if (choices is { Count: > 0 }) {
-                parts.Add($"可选值：{string.Join(", ", choices)}");
-            }
-            if (spec.TryGetProperty("minimum", out var min)) {
-                if (spec.TryGetProperty("maximum", out var max)) {
-                    parts.Add($"取值范围：{min.GetInt32()} ~ {max.GetInt32()}");
-                } else {
-                    parts.Add($"最小值：>= {min.GetInt32()}");
-                }
-            }
-            if (spec.TryGetProperty("pattern", out var pattern)) {
-                parts.Add($"格式正则：{pattern.GetString()}");
-            }
-            if (key.EndsWith("_MARGIN") || key.EndsWith("_HEIGHT") || key.EndsWith("_SEP") || key.EndsWith("_SIZE") || key.EndsWith("_WIDTH")) {
-                parts.Add("需带单位（如 10pt, 1cm, 15mm, 0.5in）");
-            }
-
-            return parts.Count > 0 ? string.Join("；", parts) : null;
-        }
-
-        private static string DetermineCategory(string key, string rootName) {
-            if (rootName == "PROGRAM") return "构建与文件过滤";
-
-            if (key.StartsWith("AUTHOR") || key.StartsWith("SUBJECT") || key.StartsWith("TITLE_")) {
-                return "文档与标题页";
-            }
-            if (key.StartsWith("CODE_")) {
-                return "代码排版 (minted)";
-            }
-            if (key.StartsWith("GEOMETRY_") || key.StartsWith("LAYOUT_") || key.StartsWith("DOCCLASS_")) {
-                return "页面版心与布局";
-            }
-            if (key.StartsWith("GLOBAL_MAIN_FONT") || key.StartsWith("GLOBAL_CJK_") || key.StartsWith("GLOBAL_CUSTOM_") || key.StartsWith("TYPESETTING_")) {
-                return "字体与微排版";
-            }
-            if (key.StartsWith("GLOBAL_PAGE_STYLE") || key.StartsWith("FANCY_") || key.StartsWith("SECTION_")) {
-                return "页眉页脚与样式";
-            }
-            if (key.StartsWith("HYPERREF_") || key.StartsWith("METADATA_") || key.StartsWith("TOC_")) {
-                return "超链接与目录";
-            }
-
-            return "其他设置";
         }
     }
 }
