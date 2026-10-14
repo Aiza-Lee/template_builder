@@ -189,12 +189,8 @@ public class PdfPresetAndProofPreviewTests {
         Assert.Contains(logger.Entries, e => e.Message.Contains("小样文件数量必须为大于 0 的正整数"));
     }
 
-    [Fact]
+    [RequiresRealPdfCompilationFact]
     public void EndToEnd_ProofSample_XeLatexBuild_VerifiesChineseLongLinesAndMultiLevelSections() {
-        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PATH")) || !File.Exists("/usr/bin/xelatex")) {
-            return; // 仅在安装有 xelatex 的环境中执行完整端到端编译
-        }
-
         using var tmp = TempDir.Create();
         var srcDir = Directory.CreateDirectory(Path.Combine(tmp.Path, "算法模版库"));
 

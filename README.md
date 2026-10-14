@@ -4,7 +4,7 @@
 
 将算法源码模板整理、排版并编译为 PDF 文档的命令行工具，支持代码高亮、多级目录、独立排版预设与终端交互模式。
 
-**[配置文件详解](docs/config_structure.md)**
+**[配置文件详解](docs/config_structure.md)** · **[CI 与发布流程](docs/ci.md)**
 
 ---
 
@@ -52,7 +52,7 @@ docker run --rm -it -u "$(id -u):$(id -g)" -v "$(pwd)":/workspace ghcr.io/aiza-l
 ### 方式二：本地原生构建
 
 #### 环境要求
-- [.NET 9.0 SDK](https://dotnet.microsoft.com/download)
+- [.NET 9.0 SDK（9.0.3xx，与 global.json 一致）](https://dotnet.microsoft.com/download)
 - [TeX Live](https://www.tug.org/texlive/)（包含 `xelatex` 与 `ctexart` 宏包）
 - [Pygments](https://pygments.org/)（`pygmentize` 命令行工具）
 - 字体：[Fira Code](https://github.com/tonsky/FiraCode)
@@ -63,7 +63,7 @@ git clone https://github.com/Aiza-Lee/template_builder.git
 cd template_builder
 bash ./scripts/build.sh
 ```
-构建产物位于 `publish/` 目录下（`template_builder` 或 `template_builder.exe`）。
+构建产物位于 `publish/template_builder-<平台>/` 目录下（`template_builder` 或 `template_builder.exe`），归档包与 `.sha256` 校验文件位于 `publish/`。GitHub Release 的 tar.gz / Zip 包均包含 `template_builder-<平台>/` 顶层目录；解压后进入该目录运行程序。
 
 ---
 
@@ -167,7 +167,7 @@ bash ./scripts/build.sh
 
 ## 平台支持
 
-所有发布平台均经过跨平台自动化测试（594 项测试通过）与单文件解包冒烟验证：
+CI 在 Linux、Windows、macOS 上运行自动化测试，并在五个对应架构的原生 runner 上校验发布包的 SHA-256、解包目录、CLI 版本与配置校验协议。Linux 测试及两种架构的 Docker 镜像另行验证真实 PDF 生成：
 - **Linux (x64 / arm64)**：提供自包含单文件二进制与 Docker 镜像；
 - **Windows (x64)**：提供独立 Zip 绿色包，兼容 Windows Terminal 与 PowerShell；
 - **macOS (x64 / arm64)**：提供独立 tar.gz 归档包。

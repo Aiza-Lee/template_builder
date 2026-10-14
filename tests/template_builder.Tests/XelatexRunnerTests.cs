@@ -11,7 +11,7 @@ namespace template_builder.Tests;
 /// fixture）互补：验证 .NET Process API 交互本身（Start / WaitForExit /
 /// stderr stream / non-zero exit propagation）的行为正确。
 /// 这些测试依赖系统安装的 <c>xelatex</c>：本机装有 TeX Live 时执行，
-/// CI（ubuntu-latest 默认镜像未预装 TeX 发行版）自动标记为 Skipped。
+/// Linux CI 安装 TeX 并执行；其他环境未安装时自动标记为 Skipped。
 /// 路径 timeout 仍由 FakeXelatexRunner 覆盖（避免人工制造 hang 进程）。
 /// </summary>
 public class XelatexRunnerTests {

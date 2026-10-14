@@ -18,7 +18,7 @@ FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:${DOTNET_SDK_VERSION
 WORKDIR /src
 
 # Copy project files and restore dependencies
-COPY template_builder.csproj .
+COPY template_builder.csproj Directory.Build.props global.json ./
 RUN dotnet restore template_builder.csproj
 
 # Copy source code and resources
@@ -33,7 +33,7 @@ RUN set -ex; \
     case "${TARGETARCH:-amd64}" in \
         amd64) RID="linux-x64" ;; \
         arm64) RID="linux-arm64" ;; \
-        *) RID="linux-x64" ;; \
+        *) echo "Unsupported target architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     echo "Publishing for RID: $RID (Version: $APP_VERSION)"; \
     VERSION_FLAGS="-p:Version=${APP_VERSION}"; \
@@ -55,6 +55,13 @@ RUN set -ex; \
 # ------------------------------------------------------------------------------
 FROM ubuntu:${UBUNTU_VERSION} AS runner
 
+ARG APP_VERSION=2.0.0-rc.1
+ARG GIT_COMMIT=""
+LABEL org.opencontainers.image.title="template_builder" \
+    org.opencontainers.image.source="https://github.com/Aiza-Lee/template_builder" \
+    org.opencontainers.image.version="${APP_VERSION}" \
+    org.opencontainers.image.revision="${GIT_COMMIT}"
+
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -70,6 +77,10 @@ RUN set -ex; \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         fontconfig \
+        libicu74 \
+        libssl3t64 \
+        libstdc++6 \
+        zlib1g \
         fonts-firacode \
         fonts-liberation \
         fonts-noto-cjk \
@@ -93,7 +104,7 @@ RUN chmod +x /usr/local/bin/template_builder
 
 # Prepare workspace directory with write permissions for non-root users
 WORKDIR /workspace
-RUN chmod 777 /workspace /tmp
+RUN chmod 777 /workspace && chmod 1777 /tmp
 
 ENTRYPOINT ["template_builder"]
 CMD ["--help"]

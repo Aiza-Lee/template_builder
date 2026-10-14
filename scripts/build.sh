@@ -65,7 +65,7 @@ if [ -z "${APP_VERSION:-}" ]; then
     if [[ "$EXACT_TAG" =~ ^v[0-9] ]]; then
         APP_VERSION="${EXACT_TAG#v}"
     else
-        APP_VERSION="2.0.0-rc.1"
+        APP_VERSION=$(dotnet msbuild "$PROJECT_DIR/template_builder.csproj" -nologo -getProperty:Version)
     fi
 fi
 echo "构建版本：$APP_VERSION"
@@ -74,7 +74,7 @@ echo "构建版本：$APP_VERSION"
 PUBLISH_DIR="$PROJECT_DIR/publish"
 OUTPUT_DIR="$PUBLISH_DIR/template_builder-$RUNTIME"
 ARCHIVE="template_builder-$RUNTIME.tar.gz"
-CHECKSUM="template_builder-$RUNTIME.sha256"
+CHECKSUM="$ARCHIVE.sha256"
 
 # 严格隔离与清理旧产物，防止复用或残留历史包伪装为新包
 rm -rf "$OUTPUT_DIR"
@@ -92,10 +92,6 @@ cleanup_on_error() {
     exit $exit_code
 }
 trap cleanup_on_error EXIT
-
-# Build the project in Release mode
-echo "编译项目..."
-dotnet build "$PROJECT_DIR/template_builder.csproj" --configuration Release -p:Version="$APP_VERSION"
 
 # Publish for detected platform
 echo "发布 $RUNTIME..."
@@ -127,7 +123,11 @@ echo "打包压缩..."
 (
     cd "$PUBLISH_DIR"
     tar -czvf "$ARCHIVE" "template_builder-$RUNTIME"
-    sha256sum "$ARCHIVE" > "$CHECKSUM"
+    if command -v sha256sum &> /dev/null; then
+        sha256sum "$ARCHIVE" > "$CHECKSUM"
+    else
+        shasum -a 256 "$ARCHIVE" > "$CHECKSUM"
+    fi
 )
 
 # 验证归档与校验和文件已生成且非空

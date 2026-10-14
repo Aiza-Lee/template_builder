@@ -2,262 +2,330 @@ name: Build and Publish
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
   release:
-    types: [ published ]
+    types: [published]
   workflow_dispatch:
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
   DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      image: ${{ steps.metadata.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Resolve application version and image name
+        id: metadata
+        shell: bash
+        run: |
+          VERSION=$(python scripts/ci.py version)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Verify CI helpers
+        run: python -m unittest discover -s tests/ci -v
+      - name: Lint GitHub Actions workflows
+        run: docker run --rm -v "$PWD:/repo:ro" --workdir /repo rhysd/actionlint:1.7.12
+
   test:
+    name: test (${{ matrix.check_name }})
+    needs: prepare
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        include:
+          - os: ubuntu-24.04
+            check_name: ubuntu-latest
+          - os: windows-2022
+            check_name: windows-latest
+          - os: macos-15
+            check_name: macos-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "9.0.x"
-
-      - name: Install TeX Live, Pygments and Fonts (Linux only)
-        if: matrix.os == 'ubuntu-latest'
+          dotnet-version: '9.0.x'
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: nuget-${{ runner.os }}-${{ runner.arch }}-
+      - name: Install TeX Live, Pygments and fonts
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            texlive-xetex \
-            texlive-latex-recommended \
-            texlive-latex-extra \
-            texlive-fonts-recommended \
-            texlive-lang-chinese \
-            python3-pygments \
-            fonts-firacode \
-            fonts-noto-cjk
-          fc-cache -fv
-
+            texlive-xetex texlive-latex-recommended texlive-latex-extra \
+            texlive-fonts-recommended texlive-lang-chinese python3-pygments \
+            fonts-firacode fonts-noto-cjk
+          fc-cache -f
+          command -v xelatex
+          command -v pygmentize
+          test -n "$(kpsewhich ctexart.cls)"
       - name: Restore
         run: dotnet restore template_builder.sln
-
       - name: Build
-        run: dotnet build template_builder.sln --configuration Release --no-restore -p:TreatWarningsAsErrors=true
-
+        run: dotnet build template_builder.sln --configuration Release --no-restore -p:ContinuousIntegrationBuild=true
       - name: Test
-        run: dotnet test template_builder.sln --configuration Release --no-build --verbosity normal
-
-      - name: Verify Real PDF Generation (CLI Smoke, Linux only)
-        if: matrix.os == 'ubuntu-latest'
+        run: dotnet test template_builder.sln --configuration Release --no-build --verbosity minimal --logger "trx;LogFileName=tests.trx" --results-directory TestResults
+      - name: Require real PDF tests to execute on Linux
+        if: runner.os == 'Linux'
         run: |
-          mkdir -p /tmp/smoke-sample/src
-          echo 'int main() { return 0; }' > /tmp/smoke-sample/src/main.cpp
-          dotnet run --project template_builder.csproj -c Release --no-build -- init -o /tmp/smoke-sample/config.jsonc
-          dotnet run --project template_builder.csproj -c Release --no-build -- build -s /tmp/smoke-sample/src -c /tmp/smoke-sample/config.jsonc -o /tmp/smoke-sample/output.pdf --sample 1
-          test -s /tmp/smoke-sample/output.pdf
-          rm -rf /tmp/smoke-sample
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('TestResults/tests.trx').getroot()
+          ns = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
+          counters = root.find('t:ResultSummary/t:Counters', ns).attrib
+          if int(counters['total']) == 0 or counters['executed'] != counters['total']:
+              raise SystemExit(f"Linux tests must all execute: {counters}")
+          PY
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults/*.trx
+          retention-days: 14
 
   publish:
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: test
+    # Packaging is a PR gate too; only release-assets writes to a GitHub release.
+    needs: [prepare, test]
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             runtime: linux-x64
-            archive: template_builder-linux-x64.tar.gz
-            checksum: template_builder-linux-x64.tar.gz.sha256
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             runtime: linux-arm64
-            archive: template_builder-linux-arm64.tar.gz
-            checksum: template_builder-linux-arm64.tar.gz.sha256
-          - os: macos-latest
+          - os: macos-15-intel
             runtime: osx-x64
-            archive: template_builder-osx-x64.tar.gz
-            checksum: template_builder-osx-x64.tar.gz.sha256
-          - os: macos-latest
+          - os: macos-15
             runtime: osx-arm64
-            archive: template_builder-osx-arm64.tar.gz
-            checksum: template_builder-osx-arm64.tar.gz.sha256
-          - os: windows-latest
+          - os: windows-2022
             runtime: win-x64
-            archive: template_builder-win-x64.zip
-            checksum: template_builder-win-x64.zip.sha256
     runs-on: ${{ matrix.os }}
+    env:
+      APP_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "9.0.x"
-
-      - name: Determine version
-        id: version_step
+          dotnet-version: '9.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: nuget-${{ runner.os }}-${{ runner.arch }}-
+      - name: Publish self-contained binaries
         shell: bash
         run: |
-          REF="${{ github.ref_name }}"
-          if [[ "$REF" =~ ^v[0-9] ]]; then
-            VER="${REF#v}"
-          else
-            VER="2.0.0-rc.1"
-          fi
-          echo "version=$VER" >> "$GITHUB_OUTPUT"
-
-      - name: Publish self-contained binaries
-        run: dotnet publish template_builder.csproj --configuration Release --runtime ${{ matrix.runtime }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:Version=${{ steps.version_step.outputs.version }} --output publish/template_builder-${{ matrix.runtime }}
-
-      - name: Clean artifacts (Unix)
-        if: matrix.os != 'windows-latest'
-        run: |
-          find publish/template_builder-${{ matrix.runtime }} -type f \( -name '*.pdb' -o -name '*.xml' -o -name '.DS_Store' \) -delete
-
-      - name: Clean artifacts (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          Get-ChildItem "publish\template_builder-${{ matrix.runtime }}" -Include *.pdb,*.xml,.DS_Store -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
-
-      - name: Archive release (tar.gz)
-        if: matrix.os != 'windows-latest'
-        run: |
-          tar -czf publish/${{ matrix.archive }} -C publish template_builder-${{ matrix.runtime }}
-
-      - name: Archive release (zip)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "publish\template_builder-${{ matrix.runtime }}\*" -DestinationPath "publish\${{ matrix.archive }}"
-
-      - name: Generate checksum (Unix)
-        if: matrix.os != 'windows-latest'
-        run: |
-          sha256sum publish/${{ matrix.archive }} > publish/${{ matrix.checksum }}
-
-      - name: Generate checksum (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          (Get-FileHash "publish\${{ matrix.archive }}" -Algorithm SHA256).Hash | Out-File -Encoding ascii "publish\${{ matrix.checksum }}"
-
-      - name: Verify unpack and execute smoke (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          Expand-Archive -Path "publish\${{ matrix.archive }}" -DestinationPath "publish\verify_unpack"
-          $exe = "publish\verify_unpack\template_builder.exe"
-          if (-not (Test-Path $exe)) { throw "Published executable not found: $exe" }
-          & $exe --version
-          & $exe --help
-          New-Item -ItemType Directory -Path "publish\verify_smoke\src" -Force
-          Set-Content -Path "publish\verify_smoke\src\main.cpp" -Value "int main() { return 0; }"
-          & $exe init -o "publish\verify_smoke\config.jsonc"
-          & $exe validate -s "publish\verify_smoke\src" -c "publish\verify_smoke\config.jsonc" --format json
-          Remove-Item -Recurse -Force "publish\verify_unpack", "publish\verify_smoke"
-
-      - name: Verify unpack and execute smoke (Unix Native / Rosetta)
-        if: matrix.os != 'windows-latest' && matrix.runtime != 'linux-arm64'
-        run: |
-          mkdir -p publish/verify_unpack
-          tar -xzf publish/${{ matrix.archive }} -C publish/verify_unpack
-          BIN="publish/verify_unpack/template_builder"
-          if [ ! -f "$BIN" ]; then echo "Binary not found: $BIN"; exit 1; fi
-          chmod +x "$BIN"
-          "$BIN" --version
-          "$BIN" --help
-          mkdir -p /tmp/verify_smoke/src
-          echo 'int main() { return 0; }' > /tmp/verify_smoke/src/main.cpp
-          "$BIN" init -o /tmp/verify_smoke/config.jsonc
-          "$BIN" validate -s /tmp/verify_smoke/src -c /tmp/verify_smoke/config.jsonc --format json
-          rm -rf publish/verify_unpack /tmp/verify_smoke
-
-      - name: Verify unpack and execute smoke (Linux ARM64 via QEMU)
-        if: matrix.runtime == 'linux-arm64'
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
-          mkdir -p publish/verify_unpack
-          tar -xzf publish/${{ matrix.archive }} -C publish/verify_unpack
-          BIN="publish/verify_unpack/template_builder"
-          if [ ! -f "$BIN" ]; then echo "Binary not found: $BIN"; exit 1; fi
-          chmod +x "$BIN"
-          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$BIN" --version
-          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$BIN" --help
-          mkdir -p /tmp/verify_smoke/src
-          echo 'int main() { return 0; }' > /tmp/verify_smoke/src/main.cpp
-          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$BIN" init -o /tmp/verify_smoke/config.jsonc
-          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$BIN" validate -s /tmp/verify_smoke/src -c /tmp/verify_smoke/config.jsonc --format json
-          rm -rf publish/verify_unpack /tmp/verify_smoke
-
-      - name: Upload release artifacts
-        if: github.event_name == 'release' && github.event.action == 'published'
-        uses: softprops/action-gh-release@v2
+          dotnet publish template_builder.csproj --configuration Release \
+            --runtime '${{ matrix.runtime }}' --self-contained true \
+            -p:Version="$APP_VERSION" -p:ContinuousIntegrationBuild=true \
+            --output 'publish/template_builder-${{ matrix.runtime }}'
+      - name: Archive and checksum
+        run: python scripts/ci.py package ${{ matrix.runtime }}
+      - name: Verify checksum, unpack and run native CLI smoke
+        shell: bash
+        run: python scripts/ci.py verify '${{ matrix.runtime }}' --version "$APP_VERSION"
+      - name: Upload verified release artifacts
+        uses: actions/upload-artifact@v4
         with:
-          files: |
-            publish/${{ matrix.archive }}
-            publish/${{ matrix.checksum }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: release-${{ matrix.runtime }}
+          path: |
+            publish/*.tar.gz
+            publish/*.zip
+            publish/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-diagnostics-${{ matrix.runtime }}
+          path: publish/verify_smoke
+          include-hidden-files: true
+          retention-days: 14
 
   docker:
-    needs: test
-    runs-on: ubuntu-latest
+    needs: [prepare, test]
+    timeout-minutes: 40
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      APP_VERSION: ${{ needs.prepare.outputs.version }}
+      IMAGE: ${{ needs.prepare.outputs.image }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build native image for smoke testing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: template-builder:ci
+          build-args: |
+            APP_VERSION=${{ env.APP_VERSION }}
+            GIT_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
+      - name: Verify container CLI and real PDF as non-root
+        shell: bash
+        run: |
+          mkdir -p temp/docker-smoke
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/temp/docker-smoke:/workspace" \
+            -v "$PWD/scripts/ci.py:/ci.py:ro" \
+            --entrypoint python3 template-builder:ci \
+            /ci.py smoke --version "$APP_VERSION" --work-dir /workspace --pdf -- template_builder
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push verified image by digest
+        id: push
+        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            APP_VERSION=${{ env.APP_VERSION }}
+            GIT_COMMIT=${{ github.sha }}
+      - name: Export image digest
+        if: steps.push.outcome == 'success'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p temp/digests
+          touch "temp/digests/${DIGEST#sha256:}"
+      - name: Upload image digest
+        if: steps.push.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: temp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload container smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-diagnostics-${{ matrix.arch }}
+          path: temp/docker-smoke
+          include-hidden-files: true
+          retention-days: 14
 
-      - name: Extract Docker metadata
+  docker-publish:
+    # Public tags move only after every package and both native images pass.
+    needs: [prepare, publish, docker]
+    if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ${{ needs.prepare.outputs.image }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digests-*
+          path: /tmp/digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract Docker tags
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
-          flavor: |
-            latest=false
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
+            type=sha,format=long
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
             type=semver,pattern={{major}},enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
             type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
-            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+            type=raw,value=dev,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - name: Publish multi-platform manifest
+        env:
+          DOCKER_METADATA_JSON: ${{ steps.meta.outputs.json }}
+        shell: bash
+        run: |
+          mapfile -t TAGS < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_JSON")
+          ARGS=()
+          for TAG in "${TAGS[@]}"; do ARGS+=(--tag "$TAG"); done
+          SOURCES=()
+          for DIGEST in /tmp/digests/*; do SOURCES+=("$IMAGE@sha256:$(basename "$DIGEST")"); done
+          test "${#SOURCES[@]}" -eq 2
+          docker buildx imagetools create "${ARGS[@]}" "${SOURCES[@]}"
+          docker buildx imagetools inspect "${TAGS[0]}"
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+  release-assets:
+    needs: [publish, docker-publish]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
         with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            APP_VERSION=${{ steps.meta.outputs.version || '2.0.0-rc.1' }}
-            GIT_COMMIT=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          pattern: release-*
+          path: publish
+          merge-multiple: true
+      - name: Upload all verified assets together
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: true
+          files: |
+            publish/*.tar.gz
+            publish/*.zip
+            publish/*.sha256

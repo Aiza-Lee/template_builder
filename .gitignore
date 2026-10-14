@@ -1,7 +1,7 @@
 /output
 /preview
 /build
-/scripts/__pycache__
+**/__pycache__
 **/bin
 **/obj
 /publish
