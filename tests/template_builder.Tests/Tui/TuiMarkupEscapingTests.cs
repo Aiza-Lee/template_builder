@@ -31,7 +31,7 @@ public class TuiMarkupEscapingTests {
 
         // 验证 Spectre.Console Markup 解析不抛出 "Could not find color or style" 等异常
         var markup = new Markup(promptTitle);
-        var plain = TuiScaffolding.RenderToPlainText(c => c.Write(markup));
+        var plain = TuiScaffolding.RenderToPlainText(c => c.Write(markup), width: 300);
 
         Assert.Contains(fileInfo.Name, plain);
     }
@@ -56,7 +56,7 @@ public class TuiMarkupEscapingTests {
 
         var rendered = TuiScaffolding.RenderToPlainText(c => {
             c.MarkupLine($"[bold]{I18n.T("ConfigMenu.ConfigSource", "配置来源")}[/]：{finalSourceLabel}");
-        });
+        }, width: 300);
 
         Assert.Contains(fileInfo.FullName, rendered);
     }

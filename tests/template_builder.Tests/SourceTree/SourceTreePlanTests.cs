@@ -173,7 +173,7 @@ public class SourceTreePlanTests {
         foreach (var mode in new[] { SourceTreeFilterMode.All, SourceTreeFilterMode.IncludedOnly, SourceTreeFilterMode.ExcludedOnly }) {
             var output = TuiScaffolding.RenderToPlainText(c => {
                 TuiViewRenderer.RenderSourceTreePreview(c, plan, mode);
-            });
+            }, width: 300);
 
             Assert.Contains("源码收录与章节结构预检面板", output);
             Assert.Contains(tmp.Path, output);
