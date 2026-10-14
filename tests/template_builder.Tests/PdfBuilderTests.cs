@@ -1566,6 +1566,29 @@ public class PdfBuilderTests {
     }
 
     [Fact]
+    public void Build_RelativeCustomFontDirs_ResolvedRelativeToSourceDirAndPassedToRunner() {
+        var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner($$"""
+            {
+                "TEX": {
+                    "global": {
+                        "custom_font_dirs": ["my_custom_fonts"]
+                    }
+                }
+            }
+            """);
+        var relativeFontsDir = Path.Combine(tmp.Path, "src", "my_custom_fonts");
+        Directory.CreateDirectory(relativeFontsDir);
+        try {
+            builder.Build();
+            Assert.NotEmpty(runner.Calls);
+            Assert.NotNull(runner.Calls[0].ExtraFontDirs);
+            Assert.Contains(relativeFontsDir, runner.Calls[0].ExtraFontDirs!);
+        } finally {
+            tmp.Dispose();
+        }
+    }
+
+    [Fact]
     public void Build_UserFilesInBuildDir_PreservedOnSuccess() {
         var (tmp, builder, runner) = CreateBuilderFixtureWithFakeRunner("{}");
         var userBuildDir = Path.Combine(tmp.Path, "src", "build");

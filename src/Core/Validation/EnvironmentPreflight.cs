@@ -41,7 +41,7 @@ namespace Core.Validation {
             foreach (var customDir in customDirs) {
                 if (string.IsNullOrWhiteSpace(customDir)) continue;
                 var fullPath = Path.IsPathRooted(customDir)
-                    ? customDir
+                    ? Path.GetFullPath(customDir)
                     : Path.GetFullPath(Path.Combine(sourceDir.FullName, customDir));
                 var exists = Directory.Exists(fullPath);
                 checks.Add(new ValidationCheck("fonts", customDir, exists,

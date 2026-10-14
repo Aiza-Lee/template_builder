@@ -462,7 +462,7 @@ namespace Core {
             foreach (var customDir in customDirs) {
                 if (string.IsNullOrWhiteSpace(customDir)) continue;
                 var fullPath = Path.IsPathRooted(customDir)
-                    ? customDir
+                    ? Path.GetFullPath(customDir)
                     : Path.GetFullPath(Path.Combine(_options.SourceDir.FullName, customDir));
                 if (Directory.Exists(fullPath)) {
                     dirs.Add(fullPath);
