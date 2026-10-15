@@ -5,7 +5,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 from unittest.mock import patch
 
@@ -71,7 +73,7 @@ class ArchiveTests(unittest.TestCase):
                     self.assertEqual(Path(command[0]).parent.name, folder.name)
                     self.assertEqual(Path(command[0]).name, name)
                     self.assertEqual(Path(command[0]).read_bytes(), b"binary fixture")
-                    if not runtime.startswith("win-"):
+                    if os.name != "nt" and not runtime.startswith("win-"):
                         self.assertTrue(Path(command[0]).stat().st_mode & 0o111)
                     self.assertEqual(version, "2.1.0-rc.1")
 
@@ -97,6 +99,61 @@ class ArchiveTests(unittest.TestCase):
 
 
 class SmokeTests(unittest.TestCase):
+    def test_cli_preserves_unicode_when_parent_streams_default_to_legacy_encoding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = root / "fake_cli.py"
+            fixture.write_text(textwrap.dedent('''\
+                import json
+                from pathlib import Path
+                import sys
+
+                # Emulate the app's UTF-8 stdout/stderr, independent of Python's defaults.
+                sys.stdout.reconfigure(encoding="utf-8")
+                sys.stderr.reconfigure(encoding="utf-8")
+                args = sys.argv[1:]
+                if args == ["--version"]:
+                    print("2.1.0")
+                elif args == ["--help"]:
+                    print("帮助：将算法编译成 PDF")
+                    print("诊断：标准错误中的中文", file=sys.stderr)
+                elif args[0] == "init":
+                    config = Path(args[args.index("-o") + 1])
+                    config.write_text("{}", encoding="utf-8")
+                    config.with_name("DefaultConfig.schema.json").write_text("{}", encoding="utf-8")
+                    print("配置文件已生成")
+                elif args[0] == "validate":
+                    ok = Path(args[args.index("-s") + 1]).is_dir()
+                    print(json.dumps({"overallOk": ok, "errorCount": 0 if ok else 1}))
+                    sys.exit(0 if ok else 2)
+                else:
+                    sys.exit(99)
+                '''), encoding="utf-8")
+            for encoding in ("cp1252", "ascii"):
+                with self.subTest(encoding=encoding):
+                    env = {**os.environ, "PYTHONIOENCODING": f"{encoding}:strict", "PYTHONUTF8": "0"}
+                    result = subprocess.run(
+                        [sys.executable, str(ci.ROOT / "scripts/ci.py"), "smoke",
+                         "--version", "2.1.0", "--work-dir", str(root / encoding),
+                         "--", sys.executable, str(fixture)],
+                        env=env, capture_output=True, timeout=30,
+                    )
+                    output = result.stdout.decode("utf-8")
+                    self.assertEqual(0, result.returncode, result.stderr.decode("utf-8", errors="replace"))
+                    self.assertIn("帮助：将算法编译成 PDF", output)
+                    self.assertIn("诊断：标准错误中的中文", output)
+                    self.assertIn("配置文件已生成", output)
+                    failed = subprocess.run(
+                        [sys.executable, str(ci.ROOT / "scripts/ci.py"), "smoke",
+                         "--version", "版本不匹配", "--work-dir", str(root / encoding),
+                         "--", sys.executable, str(fixture)],
+                        env=env, capture_output=True, timeout=30,
+                    )
+                    self.assertEqual(1, failed.returncode)
+                    diagnostic = failed.stderr.decode("utf-8")
+                    self.assertIn("Expected version 版本不匹配, got 2.1.0", diagnostic)
+                    self.assertNotIn("UnicodeEncodeError", diagnostic)
+
     def test_nonzero_native_exit_is_not_masked_by_later_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = subprocess.CompletedProcess(["fixture"], 7, "", "failed")

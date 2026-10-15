@@ -83,3 +83,11 @@ docker run --rm -v "$PWD:/repo:ro" --workdir /repo rhysd/actionlint:1.7.12
 - workflow YAML 与内嵌 Bash 语法检查通过；本地没有 Docker，actionlint 二进制下载超时，因此完整 actionlint、容器及其他系统/架构的执行留待 GitHub Actions。不能将本地结果等同于远端全矩阵通过。
 
 设计依据：[GitHub runner 列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)、[Docker metadata-action 的 version 输出](https://github.com/docker/metadata-action)、[Docker Buildx 导出参数](https://github.com/docker/build-push-action)、[Ubuntu .NET 原生依赖](https://learn.microsoft.com/en-us/dotnet/core/install/linux-ubuntu-install)、[actionlint 用法](https://github.com/rhysd/actionlint/blob/main/docs/usage.md)。
+
+### 后续排查记录（2026-10-15）
+
+`temp/logs_104567533680.zip`（提交 `3870ef0`）显示：actionlint、三系统 .NET 测试、四个 Unix 发布包，以及 amd64/arm64 容器的真实 PDF 验证均通过。唯一失败发生在 Windows 包的 `--help` 冒烟：Python 已按 UTF-8 解码子进程输出，却向默认 `cp1252` 的 stdout 打印中文，触发 `UnicodeEncodeError`。日志中的 Windows 可执行文件已成功输出版本号，不能据此认定应用自身启动失败。Windows 发布门禁失败后，公共镜像标签合并任务没有执行。
+
+修复在 CI 脚本入口明确将 stdout/stderr 配置为 UTF-8，保留原始中文诊断内容和真实失败退出码。新增独立子进程回归检查，强制 `PYTHONIOENCODING=cp1252:strict` / `ascii:strict`、关闭 UTF-8 mode，验证帮助、初始化、JSON 校验和包含中文的失败诊断。该测试在修复前复现相同异常，修复后通过。
+
+发布矩阵现会在五个原生平台上运行全部 CI 脚本回归检查；Unix 执行权限断言仅在支持 POSIX 权限的宿主上执行。9 项脚本回归在本地默认编码及强制 cp1252 环境下均通过；真实 Linux 自包含归档也在强制 cp1252 环境下通过校验、解包和 CLI 冒烟。Windows 本机结果及最终公共标签合并仍需由下一次 GitHub Actions 验证。
