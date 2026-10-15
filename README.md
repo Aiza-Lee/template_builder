@@ -53,6 +53,7 @@ docker run --rm -it -u "$(id -u):$(id -g)" -v "$(pwd)":/workspace ghcr.io/aiza-l
 
 #### 环境要求
 - [.NET 9.0 SDK（9.0.3xx，与 global.json 一致）](https://dotnet.microsoft.com/download)
+- Python 3.12+（本地打包脚本使用，CI 会自动安装）
 - [TeX Live](https://www.tug.org/texlive/)（包含 `xelatex` 与 `ctexart` 宏包）
 - [Pygments](https://pygments.org/)（`pygmentize` 命令行工具）
 - 字体：[Fira Code](https://github.com/tonsky/FiraCode)

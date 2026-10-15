@@ -7,12 +7,11 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
-import tarfile
 import tempfile
 import xml.etree.ElementTree as ET
-import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 SEMVER = re.compile(
@@ -36,6 +35,11 @@ def resolve_version(event, ref_type, ref_name):
     return version
 
 
+def sha256(path):
+    with path.open("rb") as source:
+        return hashlib.file_digest(source, "sha256").hexdigest()
+
+
 def package(runtime, publish_dir):
     publish_dir = Path(publish_dir)
     folder = publish_dir / f"template_builder-{runtime}"
@@ -45,20 +49,13 @@ def package(runtime, publish_dir):
     for file in folder.rglob("*"):
         if file.is_file() and (file.suffix in (".pdb", ".xml") or file.name == ".DS_Store"):
             file.unlink()
-    suffix = ".zip" if runtime.startswith("win-") else ".tar.gz"
-    archive = publish_dir / f"{folder.name}{suffix}"
     # All platforms preserve the same top-level directory.
-    if suffix == ".zip":
-        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as output:
-            for file in sorted(folder.rglob("*")):
-                if file.is_file():
-                    output.write(file, file.relative_to(publish_dir))
-    else:
-        with tarfile.open(archive, "w:gz") as output:
-            output.add(folder, arcname=folder.name)
-    checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
+    archive = Path(shutil.make_archive(
+        str(folder), "zip" if runtime.startswith("win-") else "gztar",
+        root_dir=publish_dir, base_dir=folder.name,
+    ))
     archive.with_name(archive.name + ".sha256").write_text(
-        f"{checksum}  {archive.name}\n", encoding="ascii"
+        f"{sha256(archive)}  {archive.name}\n", encoding="ascii"
     )
     return archive
 
@@ -73,9 +70,9 @@ def smoke(command, work_dir, version, pdf=False):
             text=True, encoding="utf-8", errors="replace", timeout=180,
         )
         print(result.stdout, end="")
-        print(result.stderr, end="")
+        print(result.stderr, end="", file=sys.stderr)
         if result.returncode != expected:
-            raise RuntimeError(f"{args}: expected exit {expected}, got {result.returncode}")
+            raise RuntimeError(f"{result.args}: expected exit {expected}, got {result.returncode}")
         return result.stdout
 
     actual_version = run("--version").strip().split("+", 1)[0]
@@ -106,16 +103,14 @@ def verify(runtime, publish_dir, version):
     suffix = ".zip" if runtime.startswith("win-") else ".tar.gz"
     archive = publish_dir / f"template_builder-{runtime}{suffix}"
     expected = archive.with_name(archive.name + ".sha256").read_text(encoding="ascii").strip()
-    actual = f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}"
+    actual = f"{sha256(archive)}  {archive.name}"
     if expected != actual:
         raise RuntimeError(f"Checksum mismatch: {archive}")
     with tempfile.TemporaryDirectory(prefix="ci-unpack-") as unpack:
         if suffix == ".zip":
-            with zipfile.ZipFile(archive) as packed:
-                packed.extractall(unpack)
+            shutil.unpack_archive(archive, unpack)
         else:
-            with tarfile.open(archive) as packed:
-                packed.extractall(unpack, filter="data")
+            shutil.unpack_archive(archive, unpack, filter="data")
         binary = Path(unpack) / f"template_builder-{runtime}" / (
             "template_builder.exe" if runtime.startswith("win-") else "template_builder"
         )

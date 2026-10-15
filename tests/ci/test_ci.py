@@ -141,7 +141,7 @@ class SmokeTests(unittest.TestCase):
                     output = result.stdout.decode("utf-8")
                     self.assertEqual(0, result.returncode, result.stderr.decode("utf-8", errors="replace"))
                     self.assertIn("帮助：将算法编译成 PDF", output)
-                    self.assertIn("诊断：标准错误中的中文", output)
+                    self.assertIn("诊断：标准错误中的中文", result.stderr.decode("utf-8"))
                     self.assertIn("配置文件已生成", output)
                     failed = subprocess.run(
                         [sys.executable, str(ci.ROOT / "scripts/ci.py"), "smoke",

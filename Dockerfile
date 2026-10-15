@@ -1,10 +1,5 @@
 # ==============================================================================
-# Multi-stage Dockerfile for template_builder
-#
-# Stage 1: Build single-file self-contained binary using official .NET 9 SDK
-# Stage 2: Runtime image with Ubuntu 24.04, modern XeLaTeX, Python Pygments,
-#          and native font compatibility layer (Times New Roman, SimSun, SimHei,
-#          KaiTi, FangSong, Arial, Fira Code)
+# Build the app and its TeX runtime, verify PDF generation, then export the image.
 # ==============================================================================
 
 ARG DOTNET_SDK_VERSION=9.0
@@ -55,13 +50,6 @@ RUN set -ex; \
 # ------------------------------------------------------------------------------
 FROM ubuntu:${UBUNTU_VERSION} AS runner
 
-ARG APP_VERSION=2.0.0-rc.1
-ARG GIT_COMMIT=""
-LABEL org.opencontainers.image.title="template_builder" \
-    org.opencontainers.image.source="https://github.com/Aiza-Lee/template_builder" \
-    org.opencontainers.image.version="${APP_VERSION}" \
-    org.opencontainers.image.revision="${GIT_COMMIT}"
-
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -108,3 +96,21 @@ RUN chmod 777 /workspace && chmod 1777 /tmp
 
 ENTRYPOINT ["template_builder"]
 CMD ["--help"]
+
+ARG APP_VERSION=2.0.0-rc.1
+ARG GIT_COMMIT=""
+LABEL org.opencontainers.image.title="template_builder" \
+    org.opencontainers.image.source="https://github.com/Aiza-Lee/template_builder" \
+    org.opencontainers.image.version="${APP_VERSION}" \
+    org.opencontainers.image.revision="${GIT_COMMIT}"
+
+# BuildKit runs this gate before exporting or pushing either architecture.
+FROM runner AS smoke
+USER 1000:1000
+RUN --mount=type=bind,source=scripts/ci.py,target=/ci.py \
+    python3 /ci.py smoke --version "$APP_VERSION" --work-dir /tmp/ci-smoke --pdf -- template_builder
+
+# Mounting the proof makes the gate mandatory without shipping test files.
+FROM runner AS final
+RUN --mount=from=smoke,source=/tmp/ci-smoke/output.pdf,target=/tmp/ci-smoke.pdf \
+    test -s /tmp/ci-smoke.pdf

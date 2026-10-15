@@ -21,32 +21,8 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  prepare:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      version: ${{ steps.metadata.outputs.version }}
-      image: ${{ steps.metadata.outputs.image }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Resolve application version and image name
-        id: metadata
-        shell: bash
-        run: |
-          VERSION=$(python scripts/ci.py version)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-      - name: Verify CI helpers
-        run: python -m unittest discover -s tests/ci -v
-      - name: Lint GitHub Actions workflows
-        run: docker run --rm -v "$PWD:/repo:ro" --workdir /repo rhysd/actionlint:1.7.12
-
   test:
     name: test (${{ matrix.check_name }})
-    needs: prepare
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -64,6 +40,14 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify CI helpers
+        run: python -m unittest discover -s tests/ci -v
+      - name: Lint GitHub Actions workflows
+        if: runner.os == 'Linux'
+        run: docker run --rm -v "$PWD:/repo:ro" --workdir /repo rhysd/actionlint:1.7.12
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -82,12 +66,8 @@ jobs:
           command -v xelatex
           command -v pygmentize
           test -n "$(kpsewhich ctexart.cls)"
-      - name: Restore
-        run: dotnet restore template_builder.sln
-      - name: Build
-        run: dotnet build template_builder.sln --configuration Release --no-restore -p:ContinuousIntegrationBuild=true
-      - name: Test
-        run: dotnet test template_builder.sln --configuration Release --no-build --verbosity minimal --logger "trx;LogFileName=tests.trx" --results-directory TestResults
+      - name: Build and test
+        run: dotnet test template_builder.sln --configuration Release -p:ContinuousIntegrationBuild=true --verbosity minimal --logger "trx;LogFileName=tests.trx" --results-directory TestResults
       - name: Require real PDF tests to execute on Linux
         if: runner.os == 'Linux'
         run: |
@@ -109,7 +89,7 @@ jobs:
 
   publish:
     # Packaging is a PR gate too; only release-assets writes to a GitHub release.
-    needs: [prepare, test]
+    needs: test
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -126,8 +106,6 @@ jobs:
           - os: windows-2022
             runtime: win-x64
     runs-on: ${{ matrix.os }}
-    env:
-      APP_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -136,8 +114,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify CI helpers on native platform
-        run: python -m unittest discover -s tests/ci -v
+      - name: Resolve application version
+        shell: bash
+        run: |
+          VERSION=$(python scripts/ci.py version)
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -176,7 +157,7 @@ jobs:
           retention-days: 14
 
   docker:
-    needs: [prepare, test]
+    needs: test
     timeout-minutes: 40
     permissions:
       contents: read
@@ -191,86 +172,66 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.os }}
     env:
-      APP_VERSION: ${{ needs.prepare.outputs.version }}
-      IMAGE: ${{ needs.prepare.outputs.image }}
+      PUSH_IMAGE: ${{ github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - name: Build native image for smoke testing
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/${{ matrix.arch }}
-          load: true
-          tags: template-builder:ci
-          build-args: |
-            APP_VERSION=${{ env.APP_VERSION }}
-            GIT_COMMIT=${{ github.sha }}
-          cache-from: type=gha,scope=docker-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
-      - name: Verify container CLI and real PDF as non-root
-        shell: bash
+      - name: Resolve application version and image name
         run: |
-          mkdir -p temp/docker-smoke
-          docker run --rm --user "$(id -u):$(id -g)" \
-            -v "$PWD/temp/docker-smoke:/workspace" \
-            -v "$PWD/scripts/ci.py:/ci.py:ro" \
-            --entrypoint python3 template-builder:ci \
-            /ci.py smoke --version "$APP_VERSION" --work-dir /workspace --pdf -- template_builder
+          VERSION=$(python3 scripts/ci.py version)
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
       - name: Log in to GitHub Container Registry
-        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        if: env.PUSH_IMAGE == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push verified image by digest
-        id: push
-        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      - name: Build, verify PDF and export native image
+        id: image
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: final
           platforms: linux/${{ matrix.arch }}
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.PUSH_IMAGE }}
           build-args: |
             APP_VERSION=${{ env.APP_VERSION }}
             GIT_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
       - name: Export image digest
-        if: steps.push.outcome == 'success'
+        if: env.PUSH_IMAGE == 'true'
         env:
-          DIGEST: ${{ steps.push.outputs.digest }}
+          DIGEST: ${{ steps.image.outputs.digest }}
         run: |
           mkdir -p temp/digests
           touch "temp/digests/${DIGEST#sha256:}"
       - name: Upload image digest
-        if: steps.push.outcome == 'success'
+        if: env.PUSH_IMAGE == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: digests-${{ matrix.arch }}
           path: temp/digests/*
           if-no-files-found: error
           retention-days: 1
-      - name: Upload container smoke diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-diagnostics-${{ matrix.arch }}
-          path: temp/docker-smoke
-          include-hidden-files: true
-          retention-days: 14
 
   docker-publish:
-    # Public tags move only after every package and both native images pass.
-    needs: [prepare, publish, docker]
-    if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # A package failure may block a Release, but must not block a verified dev image.
+    needs: [docker, publish]
+    if: >-
+      !cancelled() && needs.docker.result == 'success' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'release' && needs.publish.result == 'success'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
       packages: write
-    env:
-      IMAGE: ${{ needs.prepare.outputs.image }}
     steps:
+      - name: Resolve image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           pattern: digests-*
